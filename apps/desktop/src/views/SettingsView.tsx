@@ -6,7 +6,7 @@ import { useMoyu } from '../state';
 import { Button, Field, Panel, Segmented, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 
-const ACCENTS = ['#7aa2ff', '#5eead4', '#c084fc', '#fb7185', '#fbbf24', '#34d399'];
+const ACCENTS = ['#f5f5f5', '#d4d4d4', '#a3a3a3', '#737373', '#404040', '#1a1a1a'];
 
 const IMAGE_MODEL_HINT: Record<string, string> = {
   xai: 'grok-2-image',

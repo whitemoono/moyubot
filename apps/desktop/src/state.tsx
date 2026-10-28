@@ -34,6 +34,7 @@ interface MoyuContextValue {
   conversation: Conversation | null;
   conversations: ConversationSummary[];
   running: boolean;
+  agentPhase: string | null;
   approval: ApprovalRequest | null;
   schedules: Schedule[];
   memories: MemoryFact[];
@@ -78,8 +79,47 @@ const EMPTY_SETTINGS: AppSettings = {
     wakeOnDemand: true,
   },
   telegram: { enabled: false, token: '', allowedIds: [] },
-  ui: { accent: '#7aa2ff', appearance: 'dark', reduceMotion: false, density: 'comfortable', glassIntensity: 0.6 },
+  ui: { accent: '#f5f5f5', appearance: 'dark', reduceMotion: false, density: 'comfortable', glassIntensity: 0.6 },
 };
+
+/** 浅色主题下把过亮的强调色压暗，免得选中边框 / 图标在白底上消失。 */
+function readableAccent(hex: string): string {
+  const value = hex.replace('#', '');
+  if (value.length !== 6) return hex;
+  const r = parseInt(value.slice(0, 2), 16) / 255;
+  const g = parseInt(value.slice(2, 4), 16) / 255;
+  const b = parseInt(value.slice(4, 6), 16) / 255;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.55 ? '#111111' : hex;
+}
+
+/**
+ * AgentEvent → vendored Grok 引擎的状态名（见 assets/grok/engine/tables.js 播放表）。
+ * undefined 表示这个事件不改变表情。
+ */
+function agentPhaseForEvent(event: AgentEvent): string | undefined {
+  switch (event.type) {
+    case 'run_start':
+    case 'reasoning':
+    case 'tool_end':
+    case 'message_end':
+      return 'thinking';
+    case 'delta':
+      return 'writing';
+    case 'tool_start': {
+      const name = event.call.name;
+      if (name === 'web_fetch' || name === 'recall') return 'searching';
+      if (name === 'cloud_write' || name === 'remember') return 'writing';
+      if (name === 'generate_image') return 'loading';
+      if (name === 'schedule_task') return 'dictating';
+      return 'working';
+    }
+    case 'run_end':
+      return event.ok ? 'happy' : 'alerting';
+    default:
+      return undefined;
+  }
+}
 
 const MoyuContext = createContext<MoyuContextValue | null>(null);
 
@@ -111,6 +151,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
+  const [agentPhase, setAgentPhase] = useState<string | null>(null);
+  const phaseTimer = useRef<number>(0);
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [memories, setMemories] = useState<MemoryFact[]>([]);
@@ -186,6 +228,12 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const off = moyu().onEvent((event: AgentEvent) => {
+      const phase = agentPhaseForEvent(event);
+      if (phase !== undefined) {
+        if (phaseTimer.current) window.clearTimeout(phaseTimer.current);
+        setAgentPhase(phase);
+        if (event.type === 'run_end') phaseTimer.current = window.setTimeout(() => setAgentPhase(null), 2400);
+      }
       if (event.type === 'run_start') {
         activeRunRef.current = event.conversationId;
         runningRef.current = new Set(runningRef.current).add(event.conversationId);
@@ -265,13 +313,13 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--accent', settings.ui.accent);
     root.style.setProperty('--glass-alpha', String(settings.ui.glassIntensity));
     root.dataset.density = settings.ui.density;
     const applyAppearance = () => {
       const systemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
       const light = settings.ui.appearance === 'light' || (settings.ui.appearance === 'system' && systemLight);
       root.dataset.theme = light ? 'light' : 'dark';
+      root.style.setProperty('--accent', light ? readableAccent(settings.ui.accent) : settings.ui.accent);
     };
     applyAppearance();
     const media = window.matchMedia('(prefers-color-scheme: light)');
@@ -535,6 +583,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     conversation,
     conversations,
     running: conversation ? runningConversations.has(conversation.id) : false,
+    agentPhase,
     approval,
     schedules,
     memories,

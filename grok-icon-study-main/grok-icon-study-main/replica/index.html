@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Grok Bot 角色 · 源码复刻</title>
+<style>
+  :root {
+    --paper: #ece7dc;
+    --ink: #161513;
+    --mute: #6d675d;
+    --line: #d4cfc3;
+    --disk: #f3efe6;
+    --bg: #1a1916;
+    --panel: #22211d;
+    --accent: #e8d7a4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--paper); }
+  body {
+    font: 14px/1.5 "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    letter-spacing: 0.01em;
+  }
+  header {
+    padding: 28px 32px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 560;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  header p { margin: 0; color: var(--mute); font-size: 12px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(280px, 420px) 1fr;
+    gap: 28px;
+    padding: 12px 32px 48px;
+    align-items: start;
+  }
+  .stage {
+    position: sticky;
+    top: 20px;
+    background: var(--panel);
+    border: 1px solid #2e2c27;
+    border-radius: 20px;
+    padding: 28px 24px 20px;
+  }
+  .disk {
+    width: min(100%, 280px);
+    aspect-ratio: 1;
+    margin: 0 auto;
+    border-radius: 50%;
+    background: var(--disk);
+    display: grid;
+    place-items: center;
+    box-shadow: inset 0 -18px 40px rgba(40, 30, 10, 0.08), 0 24px 60px rgba(0,0,0,.35);
+  }
+  .disk svg { width: 68%; height: 68%; overflow: visible; color-scheme: light; --bg: var(--disk); --fg: #111; }
+  .stage-disks { display: flex; align-items: flex-end; justify-content: center; gap: 28px; }
+  .disk-login {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: var(--disk);
+    display: grid;
+    place-items: center;
+    box-shadow: inset 0 -8px 18px rgba(40, 30, 10, 0.08), 0 12px 28px rgba(0,0,0,.3);
+  }
+  .disk-login svg { width: 64px; height: 64px; overflow: visible; color-scheme: light; --bg: var(--disk); --fg: #111; }
+  .disk-login span {
+    display: block;
+    margin-top: 8px;
+    font-size: 10px;
+    color: #8d877b;
+    text-align: center;
+  }
+  .readout {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    font-variant-numeric: tabular-nums;
+    color: #b7b1a4;
+    font-size: 12px;
+  }
+  .readout b { color: var(--paper); font-weight: 560; }
+  .modes { display: flex; gap: 8px; margin-top: 16px; }
+  button {
+    appearance: none;
+    border: 1px solid #3a372f;
+    background: #2a2823;
+    color: var(--paper);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+  button[aria-pressed="true"] { background: var(--accent); color: #1a1916; border-color: var(--accent); }
+  button:hover { border-color: #6a6458; }
+  h2 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--mute);
+    font-weight: 560;
+  }
+  section + section { margin-top: 22px; }
+  .states { display: flex; flex-wrap: wrap; gap: 6px; }
+  .states button { font-size: 12px; padding: 5px 10px; }
+  .shapes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 8px;
+  }
+  .shape {
+    background: #2a2823;
+    border: 1px solid #3a372f;
+    border-radius: 10px;
+    padding: 8px 6px 6px;
+    cursor: pointer;
+    color: inherit;
+    text-align: center;
+  }
+  .shape[aria-pressed="true"] { border-color: var(--accent); background: #353228; }
+  .shape svg { width: 48px; height: 48px; display: block; margin: 0 auto 4px; --fg: #efe8d8; --bg: #2a2823; }
+  .shape span { display: block; font-size: 10px; color: #b7b1a4; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatch {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid #111; cursor: pointer; padding: 0;
+  }
+  .swatch[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icons { display: flex; gap: 16px; align-items: center; }
+  .icons figure { margin: 0; text-align: center; }
+  .icons img {
+    width: 72px; height: 72px; border-radius: 16px;
+    background: #111; display: block;
+  }
+  .icons figcaption { margin-top: 6px; font-size: 11px; color: var(--mute); }
+  .note {
+    color: #8d877b;
+    font-size: 12px;
+    max-width: 62ch;
+  }
+  .note code { color: #d8d0c0; font-size: 11px; }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+    .stage { position: static; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Grok Bot Character</h1>
+  <p>从 Grok Bot.app v0.18.0 的 app.asar 抽出 · 个人学习用</p>
+</header>
+<main>
+  <aside class="stage">
+    <div class="stage-disks">
+      <div class="disk" id="disk">
+        <svg id="bot" role="img" aria-label="Grok Bot character"></svg>
+      </div>
+      <div>
+        <div class="disk-login">
+          <svg id="bot64" role="img" aria-label="Login size 64px"></svg>
+        </div>
+        <span style="display:block;margin-top:8px;font-size:10px;color:#8d877b;text-align:center">登录 sizePx: 64</span>
+      </div>
+    </div>
+    <div class="modes">
+      <button id="mode-onboard" aria-pressed="true">登录轮换</button>
+      <button id="mode-hold" aria-pressed="false">锁定状态</button>
+    </div>
+    <div class="modes">
+      <button id="opt-follow" aria-pressed="true">跟随指针</button>
+      <button id="opt-emphasis" aria-pressed="false">emphasis</button>
+      <button id="act-spin">转一圈</button>
+      <button id="act-bounce">跳一下</button>
+      <button id="act-burst">粒子</button>
+    </div>
+    <div class="readout">
+      <div>状态 <b id="r-state">idle</b></div>
+      <div>眼睛 <b id="r-eye">0 → 0</b></div>
+      <div>旋转 <b id="r-spin">0.00°</b></div>
+      <div>挤压 <b id="r-squash">1.000</b></div>
+      <div>overlay <b id="r-ov">—</b></div>
+    </div>
+  </aside>
+  <div>
+    <section>
+      <h2>情绪状态 · 源码 39 态</h2>
+      <div id="states"></div>
+    </section>
+    <section>
+      <h2>身形 · Jo 几何生成器</h2>
+      <div class="shapes" id="shapes"></div>
+    </section>
+    <section>
+      <h2>墨色 · snt 调色板</h2>
+      <div class="swatches" id="swatches"></div>
+    </section>
+    <section>
+      <h2>Dock 静态商标（位图，不是角色引擎）</h2>
+      <div class="icons">
+        <figure>
+          <img src="../assets/icon.iconset/icon_128x128@2x.png" alt="Dock icon 256" />
+          <figcaption>icon.icns 256</figcaption>
+        </figure>
+        <figure>
+          <img src="../assets/app-icon-256.png" alt="In-app icon" />
+          <figcaption>asar app-icon</figcaption>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <h2>这不是截图描摹</h2>
+      <p class="note">
+        引擎按源码 <code>$_t</code> + 登录包装 <code>sd()</code> 拆在
+        <code>src/</code>：math / tables / pose / tricks / eyes / fx / character。
+        右侧 64px 带 <code>pose.scale ≈ 1.04</code>。thinking / orbit / writing / loading
+        等会切 overlay；celebrate 会 <code>spinWild</code>；换身形走弹簧并轮换一记特技。
+        首屏仍从 curious 起播，点「登录轮换」则按 <code>pjn</code> 从 idle 重来。
+        大预览默认开指针跟随；源码 <code>sd().isFollowingPointer</code> 默认关。
+      </p>
+    </section>
+  </div>
+</main>
+<script src="geometry-data.js"></script>
+<script src="src/math.js"></script>
+<script src="src/tables.js"></script>
+<script src="src/pose.js"></script>
+<script src="src/tricks.js"></script>
+<script src="src/fx.js"></script>
+<script src="src/eyes.js"></script>
+<script src="src/character.js"></script>
+<script>
+  const readout = {
+    state: document.getElementById("r-state"),
+    eye: document.getElementById("r-eye"),
+    spin: document.getElementById("r-spin"),
+    squash: document.getElementById("r-squash"),
+    ov: document.getElementById("r-ov"),
+  };
+  const stateRoot = document.getElementById("states");
+  function paintReadout(s) {
+    readout.state.textContent = s.state;
+    readout.eye.textContent = `${s.eyeFrom} → ${s.eyeTo}`;
+    readout.spin.textContent = `${s.spin.toFixed(2)}°`;
+    readout.squash.textContent = s.squash.toFixed(3);
+    if (readout.ov) readout.ov.textContent = s.overlay || "—";
+  }
+  function markState(name) {
+    stateRoot.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.state === name ? "true" : "false");
+    });
+  }
+  function syncModes(mode) {
+    document.getElementById("mode-onboard").setAttribute("aria-pressed", mode === "onboarding");
+    document.getElementById("mode-hold").setAttribute("aria-pressed", mode === "hold");
+  }
+
+  GROK_META.groups.forEach((group) => {
+    const h = document.createElement("h2");
+    h.textContent = group.label;
+    h.style.marginTop = "8px";
+    stateRoot.appendChild(h);
+    const row = document.createElement("div");
+    row.className = "states";
+    group.states.forEach((name) => {
+      const b = document.createElement("button");
+      b.textContent = name;
+      b.dataset.state = name;
+      b.addEventListener("click", () => {
+        bots.forEach((el) => {
+          el.setMode("hold");
+          el.setState(name, { resetEyes: false });
+        });
+        syncModes("hold");
+      });
+      row.appendChild(b);
+    });
+    stateRoot.appendChild(row);
+  });
+
+  const shared = { mode: "onboarding", shape: "blob", color: "black", scheme: "light", loginWrap: true };
+  const bot = new GrokCharacter(document.getElementById("bot"), {
+    ...shared,
+    followPointer: true,
+    onChange(snap) { paintReadout(snap); markState(snap.state); },
+  });
+  const bot64 = new GrokCharacter(document.getElementById("bot64"), { ...shared, sizePx: 64 });
+  const bots = [bot, bot64];
+  window.__bots = bots;
+  // skip the first idle beat so the face is obvious on load
+  bots.forEach((el) => {
+    el.moodN = 1;
+    el.setState("curious", { resetEyes: true });
+  });
+  setInterval(() => paintReadout(bot.snapshot()), 80);
+
+  const shapeRoot = document.getElementById("shapes");
+  Object.entries(GROK_GEO.shapes).forEach(([id, shape]) => {
+    const b = document.createElement("button");
+    b.className = "shape";
+    b.dataset.shape = id;
+    b.innerHTML = `<svg viewBox="-15 -15 259 259"><path d="${shape.path}" style="fill:var(--fg)"></path></svg><span>${shape.label}</span>`;
+    b.addEventListener("click", () => {
+      bots.forEach((el) => el.setShape(id));
+      shapeRoot.querySelectorAll("button").forEach((el) => {
+        el.setAttribute("aria-pressed", el === b ? "true" : "false");
+      });
+    });
+    if (id === "blob") b.setAttribute("aria-pressed", "true");
+    shapeRoot.appendChild(b);
+  });
+
+  const swatchRoot = document.getElementById("swatches");
+  Object.entries(GROK_GEO.palette).forEach(([id, pal]) => {
+    const b = document.createElement("button");
+    b.className = "swatch";
+    b.title = id;
+    b.style.background = pal.light;
+    b.addEventListener("click", () => {
+      bots.forEach((el) => el.setColor(id, "light"));
+      swatchRoot.querySelectorAll("button").forEach((el) => {
+        el.setAttribute("aria-pressed", el === b ? "true" : "false");
+      });
+    });
+    if (id === "black") b.setAttribute("aria-pressed", "true");
+    swatchRoot.appendChild(b);
+  });
+
+  document.getElementById("mode-onboard").onclick = () => {
+    bots.forEach((el) => el.setMode("onboarding"));
+    syncModes("onboarding");
+  };
+  document.getElementById("mode-hold").onclick = () => {
+    bots.forEach((el) => el.setMode("hold"));
+    syncModes("hold");
+  };
+  document.getElementById("opt-follow").onclick = () => {
+    const on = document.getElementById("opt-follow").getAttribute("aria-pressed") !== "true";
+    document.getElementById("opt-follow").setAttribute("aria-pressed", on ? "true" : "false");
+    bots.forEach((el) => el.setFollowPointer(on));
+  };
+  document.getElementById("opt-emphasis").onclick = () => {
+    const on = document.getElementById("opt-emphasis").getAttribute("aria-pressed") !== "true";
+    document.getElementById("opt-emphasis").setAttribute("aria-pressed", on ? "true" : "false");
+    bots.forEach((el) => el.setEmphasis(on));
+  };
+  document.getElementById("act-spin").onclick = () => bots.forEach((el) => el.spinOnce(1));
+  document.getElementById("act-bounce").onclick = () => bots.forEach((el) => el.bounceOnce());
+  document.getElementById("act-burst").onclick = () => bots.forEach((el) => el.burstOnce());
+</script>
+</body>
+</html>

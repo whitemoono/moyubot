@@ -13,14 +13,7 @@ const DEFAULT_PROMPT = `你是 {bot_name}，一个运行在 MoyuBot 里的通用
 - 长任务先说明计划，再用工具一步步执行，每一步都给出可验证的结果。
 - 不确定的信息要说明不确定，不要编造命令输出。`;
 
-const GRADIENTS = [
-  { from: '#7aa2ff', to: '#c084fc' },
-  { from: '#5eead4', to: '#60a5fa' },
-  { from: '#fbbf24', to: '#fb7185' },
-  { from: '#a78bfa', to: '#f472b6' },
-  { from: '#34d399', to: '#a3e635' },
-  { from: '#f97316', to: '#ef4444' },
-];
+const NEUTRAL_AVATAR = { from: '#e6e6e6', to: '#e6e6e6' };
 
 const TOOLS: { id: string; label: string; hint: string }[] = [
   { id: 'cloud_exec', label: '云电脑命令', hint: '在共享 Linux 里执行 shell' },
@@ -35,14 +28,13 @@ const TOOLS: { id: string; label: string; hint: string }[] = [
 
 function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
   const now = Date.now();
-  const gradient = GRADIENTS[Math.floor(Math.random() * GRADIENTS.length)]!;
   return seed
     ? { ...seed, id: crypto.randomUUID(), name: `${seed.name} 副本`, handle: `${seed.handle}-copy`, createdAt: now, updatedAt: now }
     : {
         id: crypto.randomUUID(),
         name: '新 Bot',
         handle: 'bot',
-        avatar: { ...gradient, glyph: 'B' },
+        avatar: { ...NEUTRAL_AVATAR, glyph: 'B' },
         providerId: provider?.id ?? '',
         model: provider?.defaultModel ?? '',
         temperature: 0.7,
@@ -83,7 +75,6 @@ export function BotsView() {
       <div className="bots-grid">
         {settings.bots.map((item) => (
           <Panel key={item.id} className={`bot-card ${activeBot?.id === item.id ? 'is-active' : ''}`}>
-            <div className="bot-card__glow" style={{ background: `radial-gradient(circle at 30% 0%, ${item.avatar.from}66, transparent 60%)` }} />
             <div className="bot-card__head">
               <BotAvatar bot={item} size="xl" />
               <div className="bot-card__title">
@@ -249,18 +240,6 @@ function BotEditor({
                 <input className="input" value={draft.handle} onChange={(event) => patch('handle', event.target.value)} />
               </Field>
             </div>
-          </div>
-          <div className="swatch-row">
-            {GRADIENTS.map((gradient) => (
-              <button
-                key={gradient.from}
-                type="button"
-                aria-label="颜色"
-                className={`swatch ${gradient.from === draft.avatar.from ? 'is-active' : ''}`}
-                style={{ background: `linear-gradient(140deg, ${gradient.from}, ${gradient.to})` }}
-                onClick={() => patch('avatar', { ...gradient, glyph: draft.avatar.glyph })}
-              />
-            ))}
           </div>
         </section>
 

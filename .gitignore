@@ -9,3 +9,6 @@ release/
 apps/desktop/src/generated/
 data/
 .work/
+.moyu-data/
+.moyu-userdata/
+.tmp-*

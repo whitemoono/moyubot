@@ -41,6 +41,7 @@ function createWindow(): BrowserWindow {
     trafficLightPosition: { x: 18, y: 18 },
     backgroundColor: '#05060a',
     roundedCorners: true,
+    icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

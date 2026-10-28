@@ -1,3 +1,4 @@
+import logoUrl from './assets/brand/logo.png';
 import { useEffect, useRef } from 'react';
 import { useMoyu } from './state';
 import { Inspector } from './components/Inspector';
@@ -12,17 +13,7 @@ import { TasksView } from './views/TasksView';
 import { SettingsView } from './views/SettingsView';
 
 function Backdrop() {
-  return (
-    <>
-      <div className="wallpaper" aria-hidden="true" />
-      <div className="aurora aurora--1" aria-hidden="true" />
-      <div className="aurora aurora--2" aria-hidden="true" />
-      <div className="aurora aurora--3" aria-hidden="true" />
-      <div className="grain" aria-hidden="true" />
-      <div className="cursor-glow" aria-hidden="true" />
-      <div className="vignette" aria-hidden="true" />
-    </>
-  );
+  return <div className="wallpaper" aria-hidden="true" />;
 }
 
 function ApprovalSheet() {
@@ -102,33 +93,13 @@ export function App() {
     };
   }, [view]);
 
-  useEffect(() => {
-    let frame = 0;
-    const onMove = (event: PointerEvent) => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        document.documentElement.style.setProperty('--mx', `${event.clientX}px`);
-        document.documentElement.style.setProperty('--my', `${event.clientY}px`);
-      });
-    };
-    window.addEventListener('pointermove', onMove);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, []);
-
   return (
     <div className="app">
       <Backdrop />
       <TitleBar />
       {!ready ? (
         <div className="splash">
-          <div className="hero-orb">
-            <span className="hero-orb__glass" />
-            <span className="hero-orb__ring" />
-          </div>
+          <img className="splash-logo" src={logoUrl} alt="" />
           <p>正在启动 MoyuBot…</p>
         </div>
       ) : (

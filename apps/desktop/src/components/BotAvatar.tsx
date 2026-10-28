@@ -1,36 +1,25 @@
-import { useId } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Bot } from '@moyu/core';
-import { GROK_AVATAR } from '../assets/grok/geometry';
+import { useMoyu } from '../state';
+import { GROK_ENGINE_ENABLED, createGrokCharacter, type GrokCharacterInstance } from '../assets/grok/grok-engine';
 
 /**
- * Bot 头像：把 `assets/grok/avatar-geometry.json` 里的团子轮廓 + idle 眼睛画成 SVG，
- * 轮廓填 Bot 自己的渐变色，眼睛按 handle 哈希挑一种「神情」。
- *
- * 角色几何提炼自 blessonism/grok-icon-study（造型归 xAI），出处与授权说明见 docs/ASSETS.md。
- * 素材被关掉时自动回落到渐变底 + 首字母。
+ * Bot 头像 = vendored 的 Grok 角色引擎实例（登录页同款，64px 设计）。
+ * 身形固定 blob 圆团子，眼睛走上游 25 组多边形播放表；
+ * 表情只看这个 Bot 自己的运行活动：审批请求 → listening，Agent 事件流 →
+ * thinking / working / searching / writing / loading，空闲时进入上游
+ * onboarding 轮换（idle ↔ curious ↔ happy…）。云电脑状态由状态球表达，
+ * 不映射到头像。授权与出处见 docs/ASSETS.md。
  */
 
 type AvatarBot = Pick<Bot, 'id' | 'name' | 'avatar'> & { handle?: string };
 
 /**
- * 上游只给了 idle 那一组眼睛的坐标，其余 24 组是为旋转过的身形准备的，直接搬过来会越出轮廓。
- * 所以表情差异靠对同一组眼睛做刚体变换得到，坐标中心取团子的 (114, 114)。
+ * 身形固定 blob（上游登录页官方形状，近圆的团子）：头像位是圆形容器，
+ * 其他身形（teardrop / capsule 等）是纵向拉长的，放进去会显成椭圆。
+ * Bot 的个性差异走表情轮换（onboarding）与运行状态，不靠身形。
  */
-const POSES: { label: string; transform: string }[] = [
-  { label: '空闲', transform: 'translate(-6 26)' },
-  { label: '好奇', transform: 'translate(-58 34)' },
-  { label: '专注', transform: 'translate(-18 52)' },
-  { label: '俏皮', transform: 'rotate(-9 114 114) translate(-10 40)' },
-  { label: '眯眼', transform: 'translate(114 114) scale(1 0.72) translate(-114 -114) translate(-12 40)' },
-  { label: '张望', transform: 'translate(-36 18)' },
-];
-
-/** 稳定哈希：同一个 Bot 每次启动都是同一张脸。 */
-function hashTo(seed: string, count: number): number {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  return Math.abs(hash) % count;
-}
+const AVATAR_SHAPE = 'blob';
 
 export function BotAvatar({
   bot,
@@ -41,37 +30,56 @@ export function BotAvatar({
   size?: 'sm' | 'lg' | 'xl';
   className?: string;
 }) {
-  const gradientId = `blob-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  const plate = `bot-avatar${size === 'sm' ? '' : ` bot-avatar--${size}`}${className ? ` ${className}` : ''}`;
-  const gradient = `linear-gradient(140deg, ${bot.avatar.from}, ${bot.avatar.to})`;
+  const { bot: activeBot, running, approval, agentPhase, settings } = useMoyu();
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const charRef = useRef<GrokCharacterInstance | null>(null);
 
-  if (!GROK_AVATAR) {
-    return (
-      <span className={plate} style={{ background: gradient }}>
-        {bot.avatar.glyph}
-      </span>
-    );
+  // 表情只看这个 Bot 自己的活动：审批 → 倾听，本会话在跑 → agent 阶段，其余 → 登录页式表情轮换。
+  // 云电脑状态（休眠/唤醒/执行）由云电脑自己的状态球表达，不让所有头像一起睡觉。
+  const mood =
+    approval?.botId === bot.id
+      ? 'listening'
+      : activeBot?.id === bot.id && running
+        ? agentPhase ?? 'thinking'
+        : null;
+
+  useEffect(() => {
+    if (!GROK_ENGINE_ENABLED || !svgRef.current) return;
+    const char = createGrokCharacter(svgRef.current, {
+      shape: AVATAR_SHAPE,
+      mode: 'onboarding',
+      loginWrap: true,
+      inkFlat: 'var(--avatar-ink)',
+      eyeColor: 'var(--avatar-void)',
+      reduceMotion: settings.ui.reduceMotion,
+    });
+    charRef.current = char;
+    return () => {
+      char?.destroy();
+      charRef.current = null;
+    };
+  }, [settings.ui.reduceMotion]);
+
+  useEffect(() => {
+    const char = charRef.current;
+    if (!char) return;
+    if (mood) {
+      char.setMode('hold');
+      char.setState(mood, { resetEyes: false });
+    } else {
+      char.setMode('onboarding');
+    }
+  }, [mood]);
+
+  const plate = `bot-avatar${size === 'sm' ? '' : ` bot-avatar--${size}`}${className ? ` ${className}` : ''}`;
+
+  if (!GROK_ENGINE_ENABLED) {
+    return <span className={`${plate} bot-avatar--plain`}>{bot.avatar.glyph}</span>;
   }
 
-  const eyes = GROK_AVATAR.eyes[0]!;
-  const pose = POSES[hashTo(bot.handle || bot.id || bot.name, POSES.length)]!;
-
   return (
-    <span className={`${plate} bot-avatar--art`} title={`${bot.name} · ${pose.label}`}>
-      <svg viewBox={GROK_AVATAR.viewBox.join(' ')} role="img" aria-label={bot.name}>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={bot.avatar.from} />
-            <stop offset="1" stopColor={bot.avatar.to} />
-          </linearGradient>
-        </defs>
-        <path d={GROK_AVATAR.body} fill={`url(#${gradientId})`} />
-        <g className="bot-avatar__eyes" transform={pose.transform}>
-          {eyes.rings.map((ring, index) => (
-            <path key={index} className="bot-avatar__eye" d={ring} />
-          ))}
-        </g>
-      </svg>
+    <span className={`${plate} bot-avatar--art`} title={`${bot.name} · ${mood ?? '轮换中'}`}>
+      <svg ref={svgRef} role="img" aria-label={bot.name} />
     </span>
   );
 }

@@ -111,7 +111,7 @@ export function defaultSettings(dataDir: string): AppSettings {
     },
     telegram: { enabled: false, token: '', allowedIds: [] },
     ui: {
-      accent: '#7aa2ff',
+      accent: '#f5f5f5',
       appearance: 'dark',
       reduceMotion: false,
       density: 'comfortable',

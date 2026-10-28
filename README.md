@@ -124,20 +124,16 @@ MoyuBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
 
 ## 素材引用
 
-**Bot 头像**（界面里那些带多边形眼睛的团子）使用了社区复刻项目的角色几何：
+**Bot 头像**（那些带多边形眼睛的团子）直接复用社区复刻项目的角色引擎：
 
 - [blessonism/grok-icon-study](https://github.com/blessonism/grok-icon-study) —— 对 Grok Bot.app v0.18.0 登录页角色动效的学习复刻
-- 用到的数据：`replica/geometry-data.js` 中的身体轮廓 `blobPath` 与 idle 眼睛 `eyes[0]`，提炼成 `apps/desktop/src/assets/grok/avatar-geometry.json`（2.1 KB）；各 Bot 的神情由渲染层对这同一组眼睛做刚体变换得到
+- 采用内容：上游 `geometry-data.js`（25 组眼睛、18 种身形、11 套墨色）与拆开的引擎模块（math / tables / pose / tricks / fx / eyes / character），原样 vendor 在 `apps/desktop/src/assets/grok/engine/`
+- MoyuBot 侧只做了接入：[BotAvatar.tsx](apps/desktop/src/components/BotAvatar.tsx) 把每个 Bot 头像挂成引擎实例，身形按 handle 哈希挑选，**表情由运行时状态驱动**（审批 → 倾听；Agent 思考 / 执行 / 搜索 / 写作 / 出图；云电脑 休眠 / 唤醒 / 异常；空闲时走登录页同款表情轮换）
 - 角色设计归 **xAI** 所有，上游仓库声明「仅供学习参考，请勿商用或再分发」，且**没有 LICENSE 文件**
 
-因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MoyuBot 自研的代码与文档适用 MIT，角色几何与造型权利仍归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它、如何重新生成）见 [docs/ASSETS.md](docs/ASSETS.md)。
+因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MoyuBot 自研的代码与文档适用 MIT，角色造型与引擎版权归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它）见 [docs/ASSETS.md](docs/ASSETS.md)。
 
-```bash
-# 只重新生成头像几何（需先自行下载上游 geometry-data.js）
-node scripts/build-avatar-geometry.mjs
-```
-
-想去掉这套角色素材：把 [apps/desktop/src/assets/grok/geometry.ts](apps/desktop/src/assets/grok/geometry.ts) 里的 `GROK_AVATAR` 改成 `null`，界面自动回落到「渐变底 + 首字母」头像，其余代码无需改动。
+想去掉这套角色素材：把 [grok-engine.ts](apps/desktop/src/assets/grok/grok-engine.ts) 里的 `GROK_ENGINE_ENABLED` 改成 `false`，头像自动回落到「单色底 + 首字母」，其余代码无需改动。
 
 ## License
 

@@ -1,3 +1,4 @@
+import logoUrl from '../assets/brand/logo.png';
 import { moyu } from '../lib/bridge';
 import { CLOUD_META } from '../lib/format';
 import { useMoyu } from '../state';
@@ -19,7 +20,7 @@ export function TitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar__brand">
-        <span className="brand-orb" aria-hidden="true" />
+        <img className="brand-orb" src={logoUrl} alt="MoyuBot" />
         <span className="brand-text">
           MoyuBot
           <span className="brand-sub">shared cloud · multi provider</span>
