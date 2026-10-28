@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 const CSP = [
   "default-src 'self'",
-  "img-src 'self' data: blob: mesh-asset:",
+  "img-src 'self' data: blob: moyu-asset:",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "connect-src 'self'",
@@ -14,7 +14,7 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'mesh-csp',
+      name: 'moyu-csp',
       transformIndexHtml(html, ctx) {
         if (ctx.server) return html;
         return html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${CSP}" />`);

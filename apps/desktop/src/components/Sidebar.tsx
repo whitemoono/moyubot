@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { CLOUD_META, formatRelative } from '../lib/format';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import type { View } from '../state';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
@@ -15,7 +15,7 @@ const NAV: { id: View; label: string; icon: IconName }[] = [
 ];
 
 export function Sidebar() {
-  const { settings, bot, selectBot, conversations, conversation, selectConversation, newConversation, view, setView, cloud, cloudAction } = useMesh();
+  const { settings, bot, selectBot, conversations, conversation, selectConversation, newConversation, view, setView, cloud, cloudAction } = useMoyu();
 
   const botConversations = useMemo(
     () => conversations.filter((item) => !bot || item.botId === bot.id).slice(0, 18),

@@ -23,7 +23,7 @@ let call = 0;
 const server = http.createServer(async (req, res) => {
   if (req.url === '/v1/models') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ data: [{ id: 'mesh-demo' }] }));
+    res.end(JSON.stringify({ data: [{ id: 'moyu-demo' }] }));
     return;
   }
   if (req.url !== '/v1/chat/completions') {
@@ -93,10 +93,10 @@ store.updateSettings({
 });
 const provider = store.getSettings().providers[0];
 store.updateSettings({
-  providers: [{ ...provider, baseUrl: `http://127.0.0.1:${PORT}/v1`, defaultModel: 'mesh-demo' }],
+  providers: [{ ...provider, baseUrl: `http://127.0.0.1:${PORT}/v1`, defaultModel: 'moyu-demo' }],
   bots: store.getSettings().bots.map((bot) => ({
     ...bot,
-    model: 'mesh-demo',
+    model: 'moyu-demo',
     approvalPolicy: 'never',
     image: { ...bot.image, backend: 'cloud', wakeHost: true },
   })),

@@ -91,7 +91,7 @@ export class MockDriver implements CloudDriver {
   readonly kind = 'mock' as const;
   private machine: MachineSummary = {
     id: `mock_${newId('m')}`,
-    name: 'meshbot-shared',
+    name: 'moyubot-shared',
     state: 'suspended',
     autoSuspendAfterSeconds: 600,
     updatedAt: new Date().toISOString(),
@@ -193,10 +193,10 @@ export class MockDriver implements CloudDriver {
     const now = new Date().toISOString();
     let stdout = '';
     if (/^\s*(uname|whoami|pwd|ls|cat|echo|python3? --version|df)/.test(cmd)) {
-      if (cmd.includes('uname')) stdout = `Linux meshbot-shared 6.18.54-fc #1 SMP x86_64 GNU/Linux\n`;
+      if (cmd.includes('uname')) stdout = `Linux moyubot-shared 6.18.54-fc #1 SMP x86_64 GNU/Linux\n`;
       else if (cmd.includes('whoami')) stdout = `user\n`;
       else if (cmd.includes('pwd')) stdout = `/data/home\n`;
-      else if (cmd.startsWith('ls')) stdout = `Desktop\nDocuments\nDownloads\nmeshbot\n`;
+      else if (cmd.startsWith('ls')) stdout = `Desktop\nDocuments\nDownloads\nmoyubot\n`;
       else if (cmd.includes('--version')) stdout = `Python 3.13.5\n`;
       else if (cmd.includes('df')) stdout = `Filesystem      Size  Used Avail Use%\n/dev/vda1        16G  2.1G   13G  14% /data\n`;
       else stdout = '';

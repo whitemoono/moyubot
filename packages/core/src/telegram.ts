@@ -95,7 +95,7 @@ export class TelegramGateway {
     const chatId = message.chat.id;
     const allowed = settings.telegram.allowedIds.map((id) => id.trim()).filter(Boolean);
     if (!allowed.includes(String(chatId)) && !allowed.includes(String(message.from?.id ?? ''))) {
-      await this.reply(chatId, `⛔ 未授权的会话 (chat ${chatId})。\n把 ${chatId} 加进 MeshBot → 设置 → Telegram 白名单。`);
+      await this.reply(chatId, `⛔ 未授权的会话 (chat ${chatId})。\n把 ${chatId} 加进 MoyuBot → 设置 → Telegram 白名单。`);
       return;
     }
     const text = (message.text ?? '').trim();
@@ -109,7 +109,7 @@ export class TelegramGateway {
     if (text === '/help' || text === '/start') {
       await this.reply(
         chatId,
-        `MeshBot · ${bot.name}\n直接发消息即可对话。命令：\n/new 新会话\n/status 云主机状态\n/account 当前绑定\n/help 帮助`,
+        `MoyuBot · ${bot.name}\n直接发消息即可对话。命令：\n/new 新会话\n/status 云主机状态\n/account 当前绑定\n/help 帮助`,
       );
       return;
     }

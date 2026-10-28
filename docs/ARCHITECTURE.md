@@ -1,36 +1,36 @@
 # 架构说明
 
-MeshBot 分成两层：**`packages/core`** 是与 UI 完全无关的纯 Node 逻辑（供应商适配、Agent 循环、云主机编排、持久化、调度、Telegram），编译成 CommonJS 后被 **`apps/desktop`** 的 Electron 主进程直接引用；渲染层只通过 `contextBridge` 暴露的 `window.mesh` 与主进程通信。
+MoyuBot 分成两层：**`packages/core`** 是与 UI 完全无关的纯 Node 逻辑（供应商适配、Agent 循环、云主机编排、持久化、调度、Telegram），编译成 CommonJS 后被 **`apps/desktop`** 的 Electron 主进程直接引用；渲染层只通过 `contextBridge` 暴露的 `window.moyu` 与主进程通信。
 
 ```
-apps/desktop/electron/main.ts     窗口、mesh-asset:// 协议、启动流程
-                  /app.ts         MeshApp：所有 mesh:* IPC 的装配点
-                  /preload.ts     contextBridge → window.mesh
-apps/desktop/src/state.tsx        MeshProvider：bootstrap、事件归约、乐观更新、toast
+apps/desktop/electron/main.ts     窗口、moyu-asset:// 协议、启动流程
+                  /app.ts         MoyuApp：所有 moyu:* IPC 的装配点
+                  /preload.ts     contextBridge → window.moyu
+apps/desktop/src/state.tsx        MoyuProvider：bootstrap、事件归约、乐观更新、toast
               /views/*            聊天 / Bot / 云电脑 / 任务 / 设置
               /components/*       玻璃组件、标题栏、侧栏、检查器
               /styles/liquid.css  设计系统（唯一的样式来源）
 packages/core/src/index.ts        对外 barrel
 ```
 
-**重要约束**：渲染层只能 `import type` 自 `@mesh/core`。运行时导入会把 Node 内置模块带进浏览器产物，Vite 会直接报错。所有运行时数据都经 IPC 往返。
+**重要约束**：渲染层只能 `import type` 自 `@moyu/core`。运行时导入会把 Node 内置模块带进浏览器产物，Vite 会直接报错。所有运行时数据都经 IPC 往返。
 
-## 主进程装配（`MeshApp`）
+## 主进程装配（`MoyuApp`）
 
-`MeshApp` 在构造时创建并互相注入这些单例：
+`MoyuApp` 在构造时创建并互相注入这些单例：
 
 | 组件 | 职责 |
 | --- | --- |
 | `SafeSecretBox` | 用 Electron `safeStorage` 加解密，密钥存 `secrets.bin.json` |
 | `Store` | `settings.json`、`conversations/*.json`、`memories.json`、`schedules.json` |
 | `CloudHost` | 懒加载 driver，持有云主机状态机与空闲计时器 |
-| `AgentRuntime` | 一次会话内的工具循环，事件以 `mesh:event` 推给渲染层 |
+| `AgentRuntime` | 一次会话内的工具循环，事件以 `moyu:event` 推给渲染层 |
 | `ScheduleRunner` | 30s tick，到点调 `AgentRuntime.runUnattended` |
 | `TelegramGateway` | 长轮询，白名单过滤后转发给同一个 Agent |
 
 密钥读取统一走 `keyProvider`：`CloudHost` 和供应商适配器都不持有明文 Key，每次用时才向 `Store` + `SecretBox` 索取。因此设置页保存 Key 后无需重启，`invalidateDriver()` 即可生效。
 
-IPC 通道一览（全部 `ipcMain.handle`，命名空间 `mesh:`）：
+IPC 通道一览（全部 `ipcMain.handle`，命名空间 `moyu:`）：
 
 ```
 bootstrap · settings:save · provider:key · provider:test · provider:models
@@ -44,7 +44,7 @@ memories · memory:add · memory:delete
 artifact:open · open-external · win
 ```
 
-主进程 → 渲染层只有两个单向事件：`mesh:event`（Agent 增量、工具开始/结束、审批请求）与 `mesh:cloud`（云状态变化）。
+主进程 → 渲染层只有两个单向事件：`moyu:event`（Agent 增量、工具开始/结束、审批请求）与 `moyu:cloud`（云状态变化）。
 
 ## Agent 循环（`agent.ts`）
 
@@ -55,7 +55,7 @@ artifact:open · open-external · win
    - 调供应商流式接口，`onDelta` 逐字推 `assistant` 增量（含 `reasoning` 增量）。
    - 若返回 `tool_calls`：把 `assistant(tool_calls)` 与 `tool` 结果按规范化 `AgentMessage` 顺序压入历史，执行工具，继续下一轮。
    - 若没有工具调用：本轮结束，落盘。
-3. 工具执行前过审批闸门：`bot.approvalPolicy === 'ask'`（界面上的「每次确认」）时通过 `ApprovalRequest` 阻塞等待 `mesh:approve`；`'never'`（自动执行）与 `'always'`（全部允许）都直接放行。被拒绝的结果以「用户拒绝」文本回灌给模型，而不是抛错中断整轮对话。
+3. 工具执行前过审批闸门：`bot.approvalPolicy === 'ask'`（界面上的「每次确认」）时通过 `ApprovalRequest` 阻塞等待 `moyu:approve`；`'never'`（自动执行）与 `'always'`（全部允许）都直接放行。被拒绝的结果以「用户拒绝」文本回灌给模型，而不是抛错中断整轮对话。
 4. 全程 `try/finally` 保证 `stop()` 之后状态复位，且 `CloudHost.endTask()` 一定会被调用（否则会漏掉空闲挂起）。
 
 `runUnattended()` 复用同一循环，但跳过审批（定时任务与 Telegram 场景），失败只记日志不弹窗。
@@ -102,7 +102,7 @@ artifact:open · open-external · win
 
 工具的输出不进入助手正文。早期版本把 stdout 接进 `onStream`，导致命令行回显混在回答里；现在 `ToolContext` 里没有流式回调，工具结果只以 `tool` 消息的形式回到模型。
 
-所有产物路径都相对工作区，渲染时转成 `mesh-asset://local/<rel>`，由主进程注册的协议处理器经 `resolveArtifact()` 解析，避免渲染层拿到任意文件系统访问权。
+所有产物路径都相对工作区，渲染时转成 `moyu-asset://local/<rel>`，由主进程注册的协议处理器经 `resolveArtifact()` 解析，避免渲染层拿到任意文件系统访问权。
 
 ## 持久化（`store.ts`）
 
@@ -114,10 +114,10 @@ artifact:open · open-external · win
 
 ## 渲染层
 
-`state.tsx` 里的 `MeshProvider` 是唯一的状态源：
+`state.tsx` 里的 `MoyuProvider` 是唯一的状态源：
 
 - 启动时 `bootstrap()` 拿 `BootstrapPayload`。
-- `send()` 先本地插入用户消息与占位助手消息（乐观更新），随后按 `mesh:event` 增量替换内容。
+- `send()` 先本地插入用户消息与占位助手消息（乐观更新），随后按 `moyu:event` 增量替换内容。
 - 事件归约器同时维护云状态、工具运行列表、待审批请求与 toast 队列。
 - 主题、强调色、玻璃浓度、密度都写成根元素 CSS 变量，切换主题只改 `data-theme`。
 
@@ -125,4 +125,4 @@ artifact:open · open-external · win
 
 ## 测试策略
 
-`scripts/smoke.mjs` 在 `127.0.0.1:8791` 起一个假的 OpenAI SSE 服务，用 `MESH_DATA_DIR=.work/demo-data` 启动主进程级流程，断言：唤醒云主机 → 触发 `generate_image` → 产物落盘 → 二次回复。它不依赖任何真实 API Key，因此 CI 里可直接跑。
+`scripts/smoke.mjs` 在 `127.0.0.1:8791` 起一个假的 OpenAI SSE 服务，用 `MOYU_DATA_DIR=.work/demo-data` 启动主进程级流程，断言：唤醒云主机 → 触发 `generate_image` → 产物落盘 → 二次回复。它不依赖任何真实 API Key，因此 CI 里可直接跑。

@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import type { Bot } from '@mesh/core';
+import type { Bot } from '@moyu/core';
 import { GROK_AVATAR } from '../assets/grok/geometry';
 
 /**

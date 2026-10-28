@@ -1,5 +1,5 @@
 /**
- * Shared contract between the MeshBot core, the Electron main process and the renderer.
+ * Shared contract between the MoyuBot core, the Electron main process and the renderer.
  * Everything here must stay JSON-serialisable: it crosses the IPC boundary.
  */
 
@@ -302,11 +302,11 @@ export interface BootstrapPayload {
   version: string;
 }
 
-export const DEFAULT_SYSTEM_PROMPT = `你是 {bot_name}，一个运行在 MeshBot 里的通用智能体。
+export const DEFAULT_SYSTEM_PROMPT = `你是 {bot_name}，一个运行在 MoyuBot 里的通用智能体。
 你有一台共享的云端 Linux 电脑（4 vCPU / 8 GB），平时处于休眠状态，需要时会被自动唤醒。
 - 涉及文件、命令、脚本、绘图的任务，用 cloud_* 工具在云电脑里完成；聊天闲聊不必唤醒云电脑。
 - 需要生成图片时调用 generate_image，它会按配置走云主机或图像 API。
 - 长任务先说明计划，再用工具一步步执行，每一步都给出可验证的结果。
 - 不确定的信息要说明不确定，不要编造命令输出。`;
 
-export const DEFAULT_CLOUD_COMMAND = `mkdir -p "$(dirname {out})" && python3 /opt/meshbot/draw.py --prompt {prompt} --out {out}`;
+export const DEFAULT_CLOUD_COMMAND = `mkdir -p "$(dirname {out})" && python3 /opt/moyubot/draw.py --prompt {prompt} --out {out}`;

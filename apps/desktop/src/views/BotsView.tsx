@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { ApprovalPolicy, Bot, ProviderConfig } from '@mesh/core';
-import { mesh } from '../lib/bridge';
-import { useMesh } from '../state';
+import type { ApprovalPolicy, Bot, ProviderConfig } from '@moyu/core';
+import { moyu } from '../lib/bridge';
+import { useMoyu } from '../state';
 import { Button, Field, IconButton, Panel, Segmented, Sheet, Toggle } from '../components/Glass';
 import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 
-const DEFAULT_PROMPT = `你是 {bot_name}，一个运行在 MeshBot 里的通用智能体。
+const DEFAULT_PROMPT = `你是 {bot_name}，一个运行在 MoyuBot 里的通用智能体。
 你有一台共享的云端 Linux 电脑（4 vCPU / 8 GB），平时处于休眠状态，需要时会被自动唤醒。
 - 涉及文件、命令、脚本、绘图的任务，用 cloud_* 工具在云电脑里完成；聊天闲聊不必唤醒云电脑。
 - 需要生成图片时调用 generate_image，它会按配置走云主机或图像 API。
@@ -53,8 +53,8 @@ function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
           backend: 'api',
           aspect: '1:1',
           wakeHost: true,
-          cloudCommand: 'mkdir -p "$(dirname {out})" && python3 /opt/meshbot/draw.py --prompt {prompt} --out {out}',
-          cloudOutputPath: '/data/meshbot/out/{name}.png',
+          cloudCommand: 'mkdir -p "$(dirname {out})" && python3 /opt/moyubot/draw.py --prompt {prompt} --out {out}',
+          cloudOutputPath: '/data/moyubot/out/{name}.png',
         },
         wakeOnTask: true,
         createdAt: now,
@@ -63,7 +63,7 @@ function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
 }
 
 export function BotsView() {
-  const { settings, saveBot, deleteBot, selectBot, bot: activeBot } = useMesh();
+  const { settings, saveBot, deleteBot, selectBot, bot: activeBot } = useMoyu();
   const [editing, setEditing] = useState<Bot | null>(null);
 
   const providerName = (id: string) => settings.providers.find((provider) => provider.id === id)?.name ?? '未绑定供应商';
@@ -168,7 +168,7 @@ function BotEditor({
   onSave: (bot: Bot) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
-  const { secrets, saveProviderKey, toast } = useMesh();
+  const { secrets, saveProviderKey, toast } = useMoyu();
   const [draft, setDraft] = useState<Bot>(initial);
   const [key, setKey] = useState('');
   const [models, setModels] = useState<string[]>([]);
@@ -183,7 +183,7 @@ function BotEditor({
     if (!draft.providerId) return;
     setLoadingModels(true);
     try {
-      const list = await mesh().listModels(draft.providerId);
+      const list = await moyu().listModels(draft.providerId);
       setModels(list);
       if (list.length) toast(`拉到 ${list.length} 个模型`);
       else toast('供应商没有返回模型列表，可手动填写', 'warn');
@@ -199,7 +199,7 @@ function BotEditor({
     if (key) await saveProviderKey(draft.providerId, key);
     setTesting(true);
     try {
-      const result = await mesh().testProvider(draft.providerId);
+      const result = await moyu().testProvider(draft.providerId);
       toast(result.ok ? `连接正常 · ${result.latencyMs}ms` : `失败：${result.message}`, result.ok ? 'info' : 'error');
     } finally {
       setTesting(false);

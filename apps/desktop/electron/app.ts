@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, app, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, ScheduleRunner, Store, TelegramGateway, resolveArtifact } from '@mesh/core';
+import { AgentRuntime, CloudHost, ScheduleRunner, Store, TelegramGateway, resolveArtifact } from '@moyu/core';
 import type {
   AgentEvent,
   AppSettings,
@@ -18,8 +18,8 @@ import type {
   SecretBox,
   SendMessageInput,
   SendMessageResult,
-} from '@mesh/core';
-import { createChatProvider } from '@mesh/core';
+} from '@moyu/core';
+import { createChatProvider } from '@moyu/core';
 
 class SafeSecretBox implements SecretBox {
   private data: Record<string, string> = {};
@@ -78,7 +78,7 @@ interface PendingApproval {
   timer: NodeJS.Timeout;
 }
 
-export class MeshApp {
+export class MoyuApp {
   readonly store: Store;
   readonly cloud: CloudHost;
   readonly runtime: AgentRuntime;
@@ -99,25 +99,25 @@ export class MeshApp {
       settings: this.store.getSettings().cloud,
       apiKey: () => this.store.secrets.get('cloud:instabox') ?? '',
       onStatus: (status) => {
-        this.send('mesh:cloud', status);
-        this.send('mesh:event', { type: 'cloud', status } satisfies AgentEvent);
+        this.send('moyu:cloud', status);
+        this.send('moyu:event', { type: 'cloud', status } satisfies AgentEvent);
       },
       onLog: (level, text) => {
-        this.send('mesh:event', { type: 'log', level, text } satisfies AgentEvent);
+        this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent);
       },
     });
 
     this.runtime = new AgentRuntime({
       store: this.store,
       cloud: this.cloud,
-      emit: (event) => this.send('mesh:event', event),
+      emit: (event) => this.send('moyu:event', event),
       requestApproval: (request) => this.waitForApproval(request),
     });
 
     this.scheduler = new ScheduleRunner({
       store: this.store,
       runtime: this.runtime,
-      onLog: (level, text) => this.send('mesh:event', { type: 'log', level, text } satisfies AgentEvent),
+      onLog: (level, text) => this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent),
     });
   }
 
@@ -137,11 +137,11 @@ export class MeshApp {
   }
 
   private waitForApproval(request: ApprovalRequest): Promise<boolean> {
-    this.send('mesh:event', { type: 'approval', request } satisfies AgentEvent);
+    this.send('moyu:event', { type: 'approval', request } satisfies AgentEvent);
     return new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         this.approvals.delete(request.id);
-        this.send('mesh:event', { type: 'approval_done', requestId: request.id, approved: false } satisfies AgentEvent);
+        this.send('moyu:event', { type: 'approval_done', requestId: request.id, approved: false } satisfies AgentEvent);
         resolve(false);
       }, 120_000);
       this.approvals.set(request.id, { resolve, timer });
@@ -149,7 +149,7 @@ export class MeshApp {
   }
 
   private registerIpc(): void {
-    ipcMain.handle('mesh:bootstrap', (): BootstrapPayload => {
+    ipcMain.handle('moyu:bootstrap', (): BootstrapPayload => {
       const settings = this.store.getSettings();
       const providerKeys: Record<string, boolean> = {};
       for (const provider of settings.providers) {
@@ -172,23 +172,23 @@ export class MeshApp {
       };
     });
 
-    ipcMain.handle('mesh:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
+    ipcMain.handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
       const next = this.store.updateSettings(patch);
       if (patch.cloud) this.cloud.updateSettings(next.cloud);
       if (patch.telegram) void this.restartTelegram();
       return next;
     });
 
-    ipcMain.handle('mesh:provider:key', (_event, input: { providerId: string; key: string }) => {
+    ipcMain.handle('moyu:provider:key', (_event, input: { providerId: string; key: string }) => {
       this.store.secrets.set(this.store.providerSecretKey(input.providerId), input.key.trim());
     });
 
-    ipcMain.handle('mesh:telegram:token', (_event, token: string) => {
+    ipcMain.handle('moyu:telegram:token', (_event, token: string) => {
       this.store.secrets.set('telegram:token', token.trim());
       void this.restartTelegram();
     });
 
-    ipcMain.handle('mesh:provider:test', async (_event, providerId: string): Promise<ProviderTestResult> => {
+    ipcMain.handle('moyu:provider:test', async (_event, providerId: string): Promise<ProviderTestResult> => {
       const config = this.store.getProvider(providerId);
       if (!config) return { ok: false, latencyMs: 0, message: '供应商不存在' };
       const key = this.store.secrets.get(this.store.providerSecretKey(providerId)) ?? '';
@@ -202,60 +202,60 @@ export class MeshApp {
       }
     });
 
-    ipcMain.handle('mesh:provider:models', async (_event, providerId: string): Promise<string[]> => {
+    ipcMain.handle('moyu:provider:models', async (_event, providerId: string): Promise<string[]> => {
       const config = this.store.getProvider(providerId);
       if (!config) return [];
       const key = this.store.secrets.get(this.store.providerSecretKey(providerId)) ?? '';
       return createChatProvider(config, key).listModels();
     });
 
-    ipcMain.handle('mesh:bot:save', (_event, bot: Bot): Bot => {
+    ipcMain.handle('moyu:bot:save', (_event, bot: Bot): Bot => {
       const next: Bot = { ...bot, updatedAt: Date.now(), createdAt: bot.createdAt || Date.now() };
       this.store.upsertBot(next);
       return next;
     });
 
-    ipcMain.handle('mesh:bot:delete', (_event, botId: string) => {
+    ipcMain.handle('moyu:bot:delete', (_event, botId: string) => {
       this.store.removeBot(botId);
     });
 
-    ipcMain.handle('mesh:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {
+    ipcMain.handle('moyu:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {
       return this.runtime.send(input);
     });
 
-    ipcMain.handle('mesh:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
+    ipcMain.handle('moyu:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
 
-    ipcMain.handle('mesh:approve', (_event, decision: ApprovalDecision) => {
+    ipcMain.handle('moyu:approve', (_event, decision: ApprovalDecision) => {
       const pending = this.approvals.get(decision.requestId);
       if (!pending) return;
       clearTimeout(pending.timer);
       this.approvals.delete(decision.requestId);
       pending.resolve(decision.approved);
-      this.send('mesh:event', { type: 'approval_done', requestId: decision.requestId, approved: decision.approved } satisfies AgentEvent);
+      this.send('moyu:event', { type: 'approval_done', requestId: decision.requestId, approved: decision.approved } satisfies AgentEvent);
     });
 
-    ipcMain.handle('mesh:conversations', (_event, botId?: string) => this.store.listConversations(botId));
-    ipcMain.handle('mesh:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
-    ipcMain.handle('mesh:conversation:new', (_event, botId: string): Conversation => this.store.createConversation(botId));
-    ipcMain.handle('mesh:conversation:delete', (_event, id: string) => this.store.deleteConversation(id));
+    ipcMain.handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
+    ipcMain.handle('moyu:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
+    ipcMain.handle('moyu:conversation:new', (_event, botId: string): Conversation => this.store.createConversation(botId));
+    ipcMain.handle('moyu:conversation:delete', (_event, id: string) => this.store.deleteConversation(id));
 
-    ipcMain.handle('mesh:cloud', (): CloudStatus => this.cloud.status());
-    ipcMain.handle('mesh:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
+    ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
+    ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
       try {
         if (action === 'wake' || action === 'start') await this.cloud.ensureAwake('手动唤醒');
         else if (action === 'sleep' || action === 'stop') await this.cloud.suspend('手动休眠');
         else await this.cloud.refresh();
       } catch (error) {
-        this.send('mesh:event', { type: 'log', level: 'error', text: (error as Error).message } satisfies AgentEvent);
+        this.send('moyu:event', { type: 'log', level: 'error', text: (error as Error).message } satisfies AgentEvent);
       }
       return this.cloud.status();
     });
 
-    ipcMain.handle('mesh:cloud:exec', async (_event, cmd: string): Promise<ExecResult> => {
+    ipcMain.handle('moyu:cloud:exec', async (_event, cmd: string): Promise<ExecResult> => {
       return this.cloud.exec(cmd, { timeoutSeconds: 60 });
     });
 
-    ipcMain.handle('mesh:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
+    ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
       if (typeof input.apiKey === 'string') {
         const key = input.apiKey.trim();
         if (key) this.store.secrets.set('cloud:instabox', key);
@@ -272,33 +272,33 @@ export class MeshApp {
       return this.cloud.status();
     });
 
-    ipcMain.handle('mesh:schedules', (): Schedule[] => this.store.listSchedules());
-    ipcMain.handle('mesh:schedule:add', (_event, input: { botId: string; cron: string; prompt: string }): Schedule => {
+    ipcMain.handle('moyu:schedules', (): Schedule[] => this.store.listSchedules());
+    ipcMain.handle('moyu:schedule:add', (_event, input: { botId: string; cron: string; prompt: string }): Schedule => {
       return this.scheduler.create(input.botId, input.cron, input.prompt);
     });
-    ipcMain.handle('mesh:schedule:delete', (_event, id: string) => this.store.removeSchedule(id));
-    ipcMain.handle('mesh:schedule:toggle', (_event, id: string): Schedule[] => {
+    ipcMain.handle('moyu:schedule:delete', (_event, id: string) => this.store.removeSchedule(id));
+    ipcMain.handle('moyu:schedule:toggle', (_event, id: string): Schedule[] => {
       const schedule = this.store.listSchedules().find((item) => item.id === id);
       if (schedule) this.store.upsertSchedule({ ...schedule, enabled: !schedule.enabled });
       return this.store.listSchedules();
     });
 
-    ipcMain.handle('mesh:memories', (_event, botId?: string): MemoryFact[] => this.store.listMemories(botId));
-    ipcMain.handle('mesh:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
+    ipcMain.handle('moyu:memories', (_event, botId?: string): MemoryFact[] => this.store.listMemories(botId));
+    ipcMain.handle('moyu:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
       this.store.addMemory(input.botId, input.text.trim()),
     );
-    ipcMain.handle('mesh:memory:delete', (_event, id: string) => this.store.removeMemory(id));
+    ipcMain.handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
 
-    ipcMain.handle('mesh:artifact:open', async (_event, relPath: string) => {
+    ipcMain.handle('moyu:artifact:open', async (_event, relPath: string) => {
       const file = resolveArtifact(this.store.getSettings().cloud.workspaceDir, relPath);
       if (file) await shell.openPath(file);
     });
 
-    ipcMain.handle('mesh:open-external', async (_event, url: string) => {
+    ipcMain.handle('moyu:open-external', async (_event, url: string) => {
       if (/^https:\/\//i.test(url)) await shell.openExternal(url);
     });
 
-    ipcMain.handle('mesh:win', (_event, action: 'minimize' | 'maximize' | 'close') => {
+    ipcMain.handle('moyu:win', (_event, action: 'minimize' | 'maximize' | 'close') => {
       const win = this.win;
       if (!win) return;
       if (action === 'minimize') win.minimize();
@@ -319,7 +319,7 @@ export class MeshApp {
       store: this.store,
       runtime: this.runtime,
       token,
-      onLog: (level, text) => this.send('mesh:event', { type: 'log', level, text } satisfies AgentEvent),
+      onLog: (level, text) => this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent),
     });
     await this.telegram.start();
   }

@@ -12,7 +12,7 @@ import type {
   Schedule,
   SendMessageInput,
   SendMessageResult,
-} from '@mesh/core';
+} from '@moyu/core';
 
 export interface ConversationSummary {
   id: string;
@@ -22,7 +22,7 @@ export interface ConversationSummary {
   preview?: string;
 }
 
-export interface MeshBridge {
+export interface MoyuBridge {
   bootstrap(): Promise<BootstrapPayload>;
   saveSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   setProviderKey(providerId: string, key: string): Promise<void>;
@@ -60,17 +60,17 @@ export interface MeshBridge {
 
 declare global {
   interface Window {
-    mesh: MeshBridge;
+    moyu: MoyuBridge;
   }
 }
 
-export const mesh = (): MeshBridge => {
-  if (!window.mesh) throw new Error('MeshBridge 未注入：请通过桌面端启动');
-  return window.mesh;
+export const moyu = (): MoyuBridge => {
+  if (!window.moyu) throw new Error('MoyuBridge 未注入：请通过桌面端启动');
+  return window.moyu;
 };
 
 /** Turn a workspace-relative artifact path into a readable URL. */
 export function assetUrl(relative?: string): string | undefined {
   if (!relative) return undefined;
-  return `mesh-asset://local/${relative.split(/[\\/]/).map(encodeURIComponent).join('/')}`;
+  return `moyu-asset://local/${relative.split(/[\\/]/).map(encodeURIComponent).join('/')}`;
 }

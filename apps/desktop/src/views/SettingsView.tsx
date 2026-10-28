@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { AppSettings, ProviderConfig } from '@mesh/core';
-import { mesh } from '../lib/bridge';
+import type { AppSettings, ProviderConfig } from '@moyu/core';
+import { moyu } from '../lib/bridge';
 import { PRESETS as PROVIDER_PRESETS } from '../lib/presets';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { Button, Field, Panel, Segmented, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 
@@ -19,7 +19,7 @@ const IMAGE_MODEL_HINT: Record<string, string> = {
 const imageModelHint = (provider: ProviderConfig) => IMAGE_MODEL_HINT[provider.id] ?? '留空则用供应商默认';
 
 export function SettingsView() {
-  const { settings, saveSettings, secrets, saveProviderKey, setView, version, platform, toast } = useMesh();
+  const { settings, saveSettings, secrets, saveProviderKey, setView, version, platform, toast } = useMoyu();
   const [providers, setProviders] = useState<ProviderConfig[]>(settings.providers);
   const [telegramToken, setTelegramToken] = useState('');
   const [telegramIds, setTelegramIds] = useState(settings.telegram.allowedIds.join(', '));
@@ -54,7 +54,7 @@ export function SettingsView() {
 
   const persistTelegram = async (patch: Partial<AppSettings['telegram']>) => {
     if (telegramToken) {
-      await mesh().setTelegramToken(telegramToken);
+      await moyu().setTelegramToken(telegramToken);
       setTelegramToken('');
     }
     await saveSettings({ telegram: { ...settings.telegram, ...patch, allowedIds: telegramIds.split(',').map((id) => id.trim()).filter(Boolean) } });
@@ -267,7 +267,7 @@ function ProviderRow({
   onChange: (patch: Partial<ProviderConfig>) => void;
   onSaveKey: (key: string) => Promise<void>;
 }) {
-  const { toast } = useMesh();
+  const { toast } = useMoyu();
   const [key, setKey] = useState('');
   const [testing, setTesting] = useState(false);
   const [models, setModels] = useState<string[]>(provider.models);
@@ -276,7 +276,7 @@ function ProviderRow({
     if (key) await onSaveKey(key);
     setTesting(true);
     try {
-      const result = await mesh().testProvider(provider.id);
+      const result = await moyu().testProvider(provider.id);
       toast(`${provider.name}：${result.ok ? '连接正常' : '失败'} · ${result.message}`, result.ok ? 'info' : 'error');
     } finally {
       setTesting(false);
@@ -285,7 +285,7 @@ function ProviderRow({
 
   const pull = async () => {
     try {
-      const list = await mesh().listModels(provider.id);
+      const list = await moyu().listModels(provider.id);
       setModels(list);
       onChange({ models: list });
       toast(`${provider.name}：${list.length} 个模型`);

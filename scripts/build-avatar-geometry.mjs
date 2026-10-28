@@ -1,5 +1,5 @@
 /**
- * Extract the bot-avatar geometry MeshBot needs from the upstream study repo.
+ * Extract the bot-avatar geometry MoyuBot needs from the upstream study repo.
  *
  * The upstream project (https://github.com/blessonism/grok-icon-study) ships no license and
  * asks that its assets not be redistributed, so we do NOT vendor its source files. Instead this

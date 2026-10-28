@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CLOUD_META, formatDuration } from '../lib/format';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { Button, Field, Panel, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 
@@ -17,7 +17,7 @@ const IDLE_OPTIONS = [
 ];
 
 export function CloudView() {
-  const { settings, cloud, saveCloud, cloudAction, secrets, toast } = useMesh();
+  const { settings, cloud, saveCloud, cloudAction, secrets, toast } = useMoyu();
   const [apiKey, setApiKey] = useState('');
   const [machineName, setMachineName] = useState(settings.cloud.machineName);
   const [idle, setIdle] = useState(settings.cloud.idleSuspendMinutes);
@@ -25,7 +25,7 @@ export function CloudView() {
   const [template, setTemplate] = useState(settings.cloud.templateId);
   const [driver, setDriver] = useState(settings.cloud.driver);
   const [lines, setLines] = useState<TerminalLine[]>([
-    { kind: 'out', text: 'MeshBot 云终端 · 唤醒后可直接在这里跑命令' },
+    { kind: 'out', text: 'MoyuBot 云终端 · 唤醒后可直接在这里跑命令' },
   ]);
   const [command, setCommand] = useState('uname -a');
   const [busy, setBusy] = useState(false);
@@ -40,7 +40,7 @@ export function CloudView() {
     setBusy(true);
     setLines((prev) => [...prev, { kind: 'cmd', text: `$ ${cmd}` }]);
     try {
-      const result = await window.mesh.cloudExec(cmd);
+      const result = await window.moyu.cloudExec(cmd);
       setLines((prev) => [
         ...prev,
         ...(result.stdout ? [{ kind: 'out' as const, text: result.stdout }] : []),

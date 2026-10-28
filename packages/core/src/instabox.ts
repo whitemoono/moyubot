@@ -88,7 +88,7 @@ export class InstaBoxClient {
     return {
       'content-type': 'application/json',
       'x-api-key': this.apiKey,
-      'user-agent': 'MeshBot/0.1',
+      'user-agent': 'MoyuBot/0.1',
       ...extra,
     };
   }

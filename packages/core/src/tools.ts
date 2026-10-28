@@ -31,7 +31,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     description: '读取云电脑上的文本文件内容。',
     parameters: {
       type: 'object',
-      properties: { path: { type: 'string', description: '绝对路径，例如 /data/meshbot/notes.md' } },
+      properties: { path: { type: 'string', description: '绝对路径，例如 /data/moyubot/notes.md' } },
       required: ['path'],
     },
   },
@@ -201,8 +201,8 @@ function placeholderSvg(prompt: string, aspect: string): Uint8Array {
   <circle cx="${orbX}" cy="${orbY}" r="${orbR * 1.62}" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
   <rect x="64" y="${baseY - 190}" width="128" height="2" fill="url(#line)"/>
   <text x="64" y="${baseY - 132}" fill="#eaf0ff" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="46" font-weight="600">${escape(lines[0] ?? '共享云电脑')}</text>
-  <text x="64" y="${baseY - 76}" fill="#9fb0d8" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="34">${escape(lines[1] ?? 'MeshBot · 云主机出图预览')}</text>
-  <text x="64" y="${baseY}" fill="#6d7fa6" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="22">MeshBot 演示占位图 · 接入云主机绘图模型后即为真实成图 · ${aspect}</text>
+  <text x="64" y="${baseY - 76}" fill="#9fb0d8" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="34">${escape(lines[1] ?? 'MoyuBot · 云主机出图预览')}</text>
+  <text x="64" y="${baseY}" fill="#6d7fa6" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="22">MoyuBot 演示占位图 · 接入云主机绘图模型后即为真实成图 · ${aspect}</text>
 </svg>`;
   return new Uint8Array(Buffer.from(svg, 'utf8'));
 }
@@ -284,7 +284,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         }
         try {
           if (usesCloud) {
-            const remoteOut = (ctx.bot.image.cloudOutputPath || '/data/meshbot/out/{name}.png')
+            const remoteOut = (ctx.bot.image.cloudOutputPath || '/data/moyubot/out/{name}.png')
               .replace('{name}', newId('draw'))
               .replace('{prompt}', prompt)
               .replace('{aspect}', aspect);
@@ -359,7 +359,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         if (/^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|\[::1\])/i.test(host)) {
           return finish({ ok: false, summary: '拒绝访问内网地址' });
         }
-        const res = await fetch(url, { signal: ctx.signal, headers: { 'user-agent': 'MeshBot/0.1' } });
+        const res = await fetch(url, { signal: ctx.signal, headers: { 'user-agent': 'MoyuBot/0.1' } });
         if (!res.ok) return finish({ ok: false, summary: `抓取失败：HTTP ${res.status}` });
         const html = (await res.text()).slice(0, 200_000);
         const text = html

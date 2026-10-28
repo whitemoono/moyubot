@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { cronLabel } from '../lib/format';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { Button, Field, Panel, Sheet, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 
@@ -13,11 +13,11 @@ const PRESETS = [
 ];
 
 export function TasksView() {
-  const { settings, schedules, deleteSchedule, toggleSchedule, addSchedule, toast } = useMesh();
+  const { settings, schedules, deleteSchedule, toggleSchedule, addSchedule, toast } = useMoyu();
   const [open, setOpen] = useState(false);
   const [botId, setBotId] = useState(settings.bots[0]?.id ?? '');
   const [cron, setCron] = useState('0 9 * * 1-5');
-  const [prompt, setPrompt] = useState('检查云电脑 /data/meshbot 下最新的文件，用三句话汇报变化。');
+  const [prompt, setPrompt] = useState('检查云电脑 /data/moyubot 下最新的文件，用三句话汇报变化。');
 
   const submit = async () => {
     if (!botId) {

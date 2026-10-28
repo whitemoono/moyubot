@@ -4,9 +4,9 @@
 
 ## 已完成（0.1）
 
-- [x] pnpm workspace：`@mesh/core`（纯逻辑，CJS）+ `@mesh/desktop`（Electron + React + Vite）
+- [x] pnpm workspace：`@moyu/core`（纯逻辑，CJS）+ `@moyu/desktop`（Electron + React + Vite）
 - [x] 供应商适配器：OpenAI 兼容 / Anthropic 原生 / Gemini 原生，含流式与工具调用
-- [x] 绘图：OpenAI `/images/generations` 与 Gemini `responseModalities`，产物落盘 + `mesh-asset://` 协议渲染
+- [x] 绘图：OpenAI `/images/generations` 与 Gemini `responseModalities`，产物落盘 + `moyu-asset://` 协议渲染
 - [x] Agent 循环：14 步上限、8 个工具、审批闸门、停止/中断
 - [x] 云主机：InstaBox 驱动（唤醒、执行、文件读写、自动挂起）+ 离线 Mock 驱动
 - [x] 按需唤醒策略：纯聊天不唤云，空闲计时器 + 服务端 `autoSuspendAfterSeconds` 双兜底
@@ -30,8 +30,8 @@
 ## 0.3 — 平台扩展
 
 - [ ] **macOS**：`electron-builder --mac`（dmg，arm64 + x64），标题栏改用原生 traffic lights，`safeStorage` 走 Keychain
-- [ ] **Android**：共享 `@mesh/core` 的协议层太重（依赖 Node 内置），计划拆出 `@mesh/protocol`（纯 TS、无 IO），用 Capacitor 或 Tauri Mobile 承载 UI
-- [ ] **iOS**：与 Android 共用 `@mesh/protocol`，UI 复用同一套设计变量
+- [ ] **Android**：共享 `@moyu/core` 的协议层太重（依赖 Node 内置），计划拆出 `@moyu/protocol`（纯 TS、无 IO），用 Capacitor 或 Tauri Mobile 承载 UI
+- [ ] **iOS**：与 Android 共用 `@moyu/protocol`，UI 复用同一套设计变量
 - [ ] 移动端定位为「遥控器 + 审批端」：发指令、看进度、点批准，重活仍在云主机
 
 ## 0.4 — 生态

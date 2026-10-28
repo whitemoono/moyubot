@@ -1,8 +1,8 @@
 {
-  "name": "@mesh/desktop",
+  "name": "@moyu/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "MeshBot Windows desktop client (Electron + React, liquid glass)",
+  "description": "MoyuBot Windows desktop client (Electron + React, liquid glass)",
   "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "dist": "electron-builder --win nsis"
   },
   "dependencies": {
-    "@mesh/core": "workspace:*",
+    "@moyu/core": "workspace:*",
     "dompurify": "^3.2.7",
     "marked": "^16.4.0",
     "react": "^19.2.0",
@@ -29,8 +29,8 @@
     "vite": "^7.1.9"
   },
   "build": {
-    "appId": "sh.meshbot.desktop",
-    "productName": "MeshBot",
+    "appId": "sh.moyubot.desktop",
+    "productName": "MoyuBot",
     "directories": {
       "output": "release"
     },

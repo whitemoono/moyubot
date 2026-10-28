@@ -1,6 +1,6 @@
-import { mesh } from '../lib/bridge';
+import { moyu } from '../lib/bridge';
 import { CLOUD_META } from '../lib/format';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { Icon } from './Icon';
 
 const TITLES: Record<string, string> = {
@@ -12,7 +12,7 @@ const TITLES: Record<string, string> = {
 };
 
 export function TitleBar() {
-  const { view, cloud, platform } = useMesh();
+  const { view, cloud, platform } = useMoyu();
   const isMac = platform === 'darwin';
   const stateLabel = CLOUD_META[cloud.state].label;
 
@@ -21,7 +21,7 @@ export function TitleBar() {
       <div className="titlebar__brand">
         <span className="brand-orb" aria-hidden="true" />
         <span className="brand-text">
-          MeshBot
+          MoyuBot
           <span className="brand-sub">shared cloud · multi provider</span>
         </span>
       </div>
@@ -35,13 +35,13 @@ export function TitleBar() {
       <div className="titlebar__right">
         {isMac ? null : (
           <div className="win-controls">
-            <button type="button" className="win-btn" aria-label="最小化" onClick={() => void mesh().win('minimize')}>
+            <button type="button" className="win-btn" aria-label="最小化" onClick={() => void moyu().win('minimize')}>
               <Icon name="minimize" size={14} strokeWidth={1.9} />
             </button>
-            <button type="button" className="win-btn" aria-label="最大化" onClick={() => void mesh().win('maximize')}>
+            <button type="button" className="win-btn" aria-label="最大化" onClick={() => void moyu().win('maximize')}>
               <Icon name="maximize" size={12} strokeWidth={1.9} />
             </button>
-            <button type="button" className="win-btn win-btn--close" aria-label="关闭" onClick={() => void mesh().win('close')}>
+            <button type="button" className="win-btn win-btn--close" aria-label="关闭" onClick={() => void moyu().win('close')}>
               <Icon name="close" size={14} strokeWidth={1.9} />
             </button>
           </div>

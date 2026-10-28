@@ -1,13 +1,13 @@
-# MeshBot
+# MoyuBot
 
 > 多个 Bot 共用一台「睡着了」的云电脑 —— 需要时唤醒，干完活继续睡。
 > Multi-provider bot workforce on one on-demand cloud computer. Liquid-glass desktop UI.
 
-MeshBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本地运行的 Agent 循环、可自定义接入任意大模型供应商、长期记忆、定时任务、Telegram 远程通道、工具审批。
+MoyuBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本地运行的 Agent 循环、可自定义接入任意大模型供应商、长期记忆、定时任务、Telegram 远程通道、工具审批。
 区别在于它把「执行环境」交给一台按需唤醒的云主机（默认接入 [InstaBox](https://instabox.sh)）：平时挂起不烧钱，只有真正要跑命令或画图时才开机，任务结束自动休眠。
 
 ```
-┌──────────── MeshBot 桌面端 (Electron + React) ────────────┐
+┌──────────── MoyuBot 桌面端 (Electron + React) ────────────┐
 │  会话 / Bot 阵容 / 云电脑 / 定时任务 / 设置                │
 │                                                            │
 │  Agent 循环 ── 工具调用 ── 审批 ── 记忆 ── 定时器           │
@@ -40,7 +40,7 @@ MeshBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本�
 xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里云百炼、Moonshot、本地 Ollama，以及任意 OpenAI 兼容端点。每个 Bot 独立绑定供应商与模型，API Key 用系统级加密（Electron `safeStorage`）单独存进 `secrets.bin.json`，不会落进可读的 `settings.json`。
 
 **共享云电脑 + 按需唤醒**
-所有 Bot 共用一台云主机。纯聊天不会唤醒它；只有当 Agent 真的调用 `cloud_exec` / `cloud_read` / `cloud_write`，或者要出图时，才 `wake` 一次。工作区 `/data/meshbot` 持久保留，休眠不丢文件。本地空闲计时器（默认 3 分钟）和服务端 `autoSuspendAfterSeconds` 双重兜底，避免忘关烧配额。
+所有 Bot 共用一台云主机。纯聊天不会唤醒它；只有当 Agent 真的调用 `cloud_exec` / `cloud_read` / `cloud_write`，或者要出图时，才 `wake` 一次。工作区 `/data/moyubot` 持久保留，休眠不丢文件。本地空闲计时器（默认 3 分钟）和服务端 `autoSuspendAfterSeconds` 双重兜底，避免忘关烧配额。
 
 **真正的 Agent 循环**
 最多 14 步的工具链：执行命令、读文件、写文件、生成图片、写入记忆、召回记忆、创建定时任务、抓网页。可配置「自动执行 / 每步审批」，审批请求以玻璃弹层形式阻塞在界面上，也可以从 Telegram 远程批准。
@@ -74,7 +74,7 @@ pnpm dev          # 自动先编译 core，再启动 Vite + Electron
 | 命令 | 说明 |
 | --- | --- |
 | `pnpm dev` | 编译 core 并启动开发模式（Vite HMR + Electron） |
-| `pnpm dev:core` | 只监听编译 `@mesh/core`（改了 core 时另开一个终端） |
+| `pnpm dev:core` | 只监听编译 `@moyu/core`（改了 core 时另开一个终端） |
 | `pnpm build` | 编译 core + 桌面端产物 |
 | `pnpm typecheck` | 全仓库类型检查 |
 | `pnpm smoke` | 起一个假的 OpenAI SSE 服务，跑通「唤云 → 工具调用 → 出图 → 落盘 → 二次回复」 |
@@ -85,7 +85,7 @@ pnpm dev          # 自动先编译 core，再启动 Vite + Electron
 
 ```
 apps/desktop             Electron 主进程 + React 渲染层
-  electron/              main / preload / app（全部 mesh:* IPC）
+  electron/              main / preload / app（全部 moyu:* IPC）
   src/                   views、components、state、liquid.css 设计系统
 packages/core            与 UI 无关的纯逻辑，编译成 CJS 供主进程引用
   src/providers/         OpenAI 兼容 / Anthropic / Gemini 适配器
@@ -103,7 +103,7 @@ scripts/                 smoke 测试与演示数据脚本
 
 ## 数据存放
 
-默认在用户数据目录下（可用 `MESH_DATA_DIR` 覆盖，便于便携部署与测试）：
+默认在用户数据目录下（可用 `MOYU_DATA_DIR` 覆盖，便于便携部署与测试）：
 
 ```
 settings.json          设置（不含密钥）
@@ -111,16 +111,16 @@ secrets.bin.json       safeStorage 加密后的密钥
 conversations/*.json   会话与消息
 memories.json          长期记忆
 schedules.json         定时任务
-artifacts/             生成图片等产物（mesh-asset:// 协议读取）
+artifacts/             生成图片等产物（moyu-asset:// 协议读取）
 ```
 
 ## InstaBox 说明
 
-MeshBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回机器）、`PATCH /v1/machines/{id}`（`autoSuspendAfterSeconds`，付费档 300–1800 秒）、`POST /v1/machines/{id}/exec`（`Accept: text/event-stream` 流式 stdout/stderr/exit）、`PUT/GET .../files`（原始字节读写）。异步生命周期操作返回 `202` + operation id，客户端会轮询 `GET /v1/operations/{id}?wait=25s`。
+MoyuBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回机器）、`PATCH /v1/machines/{id}`（`autoSuspendAfterSeconds`，付费档 300–1800 秒）、`POST /v1/machines/{id}/exec`（`Accept: text/event-stream` 流式 stdout/stderr/exit）、`PUT/GET .../files`（原始字节读写）。异步生命周期操作返回 `202` + operation id，客户端会轮询 `GET /v1/operations/{id}?wait=25s`。
 
 ## 关于名字
 
-根目录 `package.json` 里仍叫 `meshbots`（历史包名），产品名一律 MeshBot。
+根目录 `package.json` 里仍叫 `moyubot`（历史包名），产品名一律 MoyuBot。
 
 ## 素材引用
 
@@ -130,7 +130,7 @@ MeshBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
 - 用到的数据：`replica/geometry-data.js` 中的身体轮廓 `blobPath` 与 idle 眼睛 `eyes[0]`，提炼成 `apps/desktop/src/assets/grok/avatar-geometry.json`（2.1 KB）；各 Bot 的神情由渲染层对这同一组眼睛做刚体变换得到
 - 角色设计归 **xAI** 所有，上游仓库声明「仅供学习参考，请勿商用或再分发」，且**没有 LICENSE 文件**
 
-因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MeshBot 自研的代码与文档适用 MIT，角色几何与造型权利仍归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它、如何重新生成）见 [docs/ASSETS.md](docs/ASSETS.md)。
+因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MoyuBot 自研的代码与文档适用 MIT，角色几何与造型权利仍归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它、如何重新生成）见 [docs/ASSETS.md](docs/ASSETS.md)。
 
 ```bash
 # 只重新生成头像几何（需先自行下载上游 geometry-data.js）

@@ -10,8 +10,8 @@ import type {
   MemoryFact,
   Message,
   Schedule,
-} from '@mesh/core';
-import { mesh } from './lib/bridge';
+} from '@moyu/core';
+import { moyu } from './lib/bridge';
 import type { ConversationSummary } from './lib/bridge';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
@@ -22,7 +22,7 @@ export interface Toast {
   level: 'info' | 'warn' | 'error';
 }
 
-interface MeshContextValue {
+interface MoyuContextValue {
   ready: boolean;
   settings: AppSettings;
   cloud: CloudStatus;
@@ -70,7 +70,7 @@ const EMPTY_SETTINGS: AppSettings = {
   cloud: {
     driver: 'mock',
     baseUrl: 'https://api.instabox.sh',
-    machineName: 'meshbot-shared',
+    machineName: 'moyubot-shared',
     templateId: 'agent-browser',
     autoSuspendAfterSeconds: 600,
     idleSuspendMinutes: 3,
@@ -81,17 +81,17 @@ const EMPTY_SETTINGS: AppSettings = {
   ui: { accent: '#7aa2ff', appearance: 'dark', reduceMotion: false, density: 'comfortable', glassIntensity: 0.6 },
 };
 
-const MeshContext = createContext<MeshContextValue | null>(null);
+const MoyuContext = createContext<MoyuContextValue | null>(null);
 
-export function useMesh(): MeshContextValue {
-  const value = useContext(MeshContext);
-  if (!value) throw new Error('useMesh must be used inside MeshProvider');
+export function useMoyu(): MoyuContextValue {
+  const value = useContext(MoyuContext);
+  if (!value) throw new Error('useMoyu must be used inside MoyuProvider');
   return value;
 }
 
 let toastSeq = 0;
 
-export function MeshProvider({ children }: { children: ReactNode }) {
+export function MoyuProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(EMPTY_SETTINGS);
   const [cloud, setCloud] = useState<CloudStatus>({
@@ -100,7 +100,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     awakeMs: 0,
     wakeCount: 0,
   });
-  const [secrets, setSecrets] = useState<MeshContextValue['secrets']>({
+  const [secrets, setSecrets] = useState<MoyuContextValue['secrets']>({
     providerKeys: {},
     cloudKey: false,
     telegramToken: false,
@@ -133,7 +133,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const bot = useMemo(() => settings.bots.find((item) => item.id === activeBotId) ?? settings.bots[0], [settings.bots, activeBotId]);
 
   const loadConversations = useCallback(async (botId?: string) => {
-    const list = await mesh().conversations(botId);
+    const list = await moyu().conversations(botId);
     setConversations(list);
     return list;
   }, []);
@@ -155,7 +155,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const boot = await mesh().bootstrap();
+        const boot = await moyu().bootstrap();
         if (cancelled) return;
         setSettings(boot.settings);
         setCloud(boot.cloud);
@@ -170,7 +170,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
         setConversations(boot.conversations);
         const latest = boot.conversations.find((item) => item.botId === initialBot);
         if (latest) {
-          const conv = await mesh().conversation(latest.id);
+          const conv = await moyu().conversation(latest.id);
           if (!cancelled) setConversation(conv ?? null);
         }
         setReady(true);
@@ -185,7 +185,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   useEffect(() => {
-    const off = mesh().onEvent((event: AgentEvent) => {
+    const off = moyu().onEvent((event: AgentEvent) => {
       if (event.type === 'run_start') {
         activeRunRef.current = event.conversationId;
         runningRef.current = new Set(runningRef.current).add(event.conversationId);
@@ -250,7 +250,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
         if (event.level !== 'info') toast(event.text, event.level === 'error' ? 'error' : 'warn');
       }
     });
-    const offCloud = mesh().onCloud((status) => setCloud(status));
+    const offCloud = moyu().onCloud((status) => setCloud(status));
     return () => {
       off();
       offCloud();
@@ -260,7 +260,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!activeBotId) return;
     void loadConversations();
-    void mesh().memories(activeBotId).then(setMemories).catch(() => undefined);
+    void moyu().memories(activeBotId).then(setMemories).catch(() => undefined);
   }, [activeBotId, loadConversations]);
 
   useEffect(() => {
@@ -285,9 +285,9 @@ export function MeshProvider({ children }: { children: ReactNode }) {
       void (async () => {
         const list = await loadConversations(botId);
         const latest = list.find((item) => item.botId === botId);
-        if (latest) setConversation((await mesh().conversation(latest.id)) ?? null);
+        if (latest) setConversation((await moyu().conversation(latest.id)) ?? null);
         else setConversation(null);
-        void mesh().memories(botId).then(setMemories);
+        void moyu().memories(botId).then(setMemories);
       })();
       setView('chat');
     },
@@ -296,7 +296,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const selectConversation = useCallback(
     async (id: string) => {
-      const conv = await mesh().conversation(id);
+      const conv = await moyu().conversation(id);
       if (conv) {
         setConversation(conv);
         setActiveBotId(conv.botId);
@@ -308,7 +308,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const newConversation = useCallback(async () => {
     if (!bot) return;
-    const conv = await mesh().newConversation(bot.id);
+    const conv = await moyu().newConversation(bot.id);
     setConversation(conv);
     await loadConversations(bot.id);
     setView('chat');
@@ -316,7 +316,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const deleteConversation = useCallback(
     async (id: string) => {
-      await mesh().deleteConversation(id);
+      await moyu().deleteConversation(id);
       if (conversationRef.current?.id === id) setConversation(null);
       await loadConversations();
     },
@@ -360,7 +360,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
         ],
       });
       try {
-        const result = await mesh().send({
+        const result = await moyu().send({
           conversationId: conversation?.id,
           botId: bot.id,
           text: trimmed,
@@ -415,12 +415,12 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     if (!conversation) return;
-    void mesh().stop(conversation.id);
+    void moyu().stop(conversation.id);
   }, [conversation]);
 
   const saveBot = useCallback(
     async (nextBot: Bot) => {
-      const saved = await mesh().saveBot(nextBot);
+      const saved = await moyu().saveBot(nextBot);
       setSettings((prev) => {
         const exists = prev.bots.some((item) => item.id === saved.id);
         return { ...prev, bots: exists ? prev.bots.map((item) => (item.id === saved.id ? saved : item)) : [...prev.bots, saved] };
@@ -433,7 +433,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
 
   const deleteBot = useCallback(
     async (botId: string) => {
-      await mesh().deleteBot(botId);
+      await moyu().deleteBot(botId);
       setSettings((prev) => ({ ...prev, bots: prev.bots.filter((item) => item.id !== botId) }));
       toast('Bot 已删除');
     },
@@ -441,13 +441,13 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   );
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const next = await mesh().saveSettings(patch);
+    const next = await moyu().saveSettings(patch);
     setSettings(next);
   }, []);
 
   const saveCloud = useCallback(
     async (patch: Partial<AppSettings['cloud']>, apiKey?: string) => {
-      const status = await mesh().saveCloud(patch, apiKey);
+      const status = await moyu().saveCloud(patch, apiKey);
       setCloud(status);
       if (apiKey !== undefined) setSecrets((prev) => ({ ...prev, cloudKey: Boolean(apiKey.trim()) }));
       setSettings((prev) => ({ ...prev, cloud: { ...prev.cloud, ...patch } }));
@@ -459,7 +459,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const cloudAction = useCallback(
     async (action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop') => {
       try {
-        const status = await mesh().cloudAction(action);
+        const status = await moyu().cloudAction(action);
         setCloud(status);
       } catch (error) {
         toast((error as Error).message, 'error');
@@ -469,43 +469,43 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   );
 
   const saveProviderKey = useCallback(async (providerId: string, key: string) => {
-    await mesh().setProviderKey(providerId, key);
+    await moyu().setProviderKey(providerId, key);
     setSecrets((prev) => ({ ...prev, providerKeys: { ...prev.providerKeys, [providerId]: Boolean(key) } }));
   }, []);
 
-  const refreshSchedules = useCallback(async () => setSchedules(await mesh().schedules()), []);
+  const refreshSchedules = useCallback(async () => setSchedules(await moyu().schedules()), []);
   const addSchedule = useCallback(
     async (botId: string, cron: string, prompt: string) => {
-      const schedule = await mesh().addSchedule({ botId, cron, prompt });
-      setSchedules(await mesh().schedules());
+      const schedule = await moyu().addSchedule({ botId, cron, prompt });
+      setSchedules(await moyu().schedules());
       return schedule;
     },
     [],
   );
   const toggleSchedule = useCallback(async (id: string) => {
-    setSchedules(await mesh().toggleSchedule(id));
+    setSchedules(await moyu().toggleSchedule(id));
   }, []);
   const deleteSchedule = useCallback(
     async (id: string) => {
-      await mesh().deleteSchedule(id);
-      setSchedules(await mesh().schedules());
+      await moyu().deleteSchedule(id);
+      setSchedules(await moyu().schedules());
     },
     [],
   );
   const refreshMemories = useCallback(async () => {
-    if (activeBotId) setMemories(await mesh().memories(activeBotId));
+    if (activeBotId) setMemories(await moyu().memories(activeBotId));
   }, [activeBotId]);
   const addMemory = useCallback(
     async (text: string) => {
       if (!activeBotId) return;
-      await mesh().addMemory(activeBotId, text);
+      await moyu().addMemory(activeBotId, text);
       await refreshMemories();
     },
     [activeBotId, refreshMemories],
   );
   const deleteMemory = useCallback(
     async (id: string) => {
-      await mesh().deleteMemory(id);
+      await moyu().deleteMemory(id);
       await refreshMemories();
     },
     [refreshMemories],
@@ -514,13 +514,13 @@ export function MeshProvider({ children }: { children: ReactNode }) {
   const respondApproval = useCallback(
     async (approved: boolean) => {
       if (!approval) return;
-      await mesh().approve({ requestId: approval.id, approved });
+      await moyu().approve({ requestId: approval.id, approved });
       setApproval(null);
     },
     [approval],
   );
 
-  const value: MeshContextValue = {
+  const value: MoyuContextValue = {
     ready,
     settings,
     cloud,
@@ -528,7 +528,7 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     view,
     setView: (next) => {
       setView(next);
-      void mesh().saveSettings({ activeView: next });
+      void moyu().saveSettings({ activeView: next });
     },
     bot,
     selectBot,
@@ -564,5 +564,5 @@ export function MeshProvider({ children }: { children: ReactNode }) {
     toast,
   };
 
-  return <MeshContext.Provider value={value}>{children}</MeshContext.Provider>;
+  return <MoyuContext.Provider value={value}>{children}</MoyuContext.Provider>;
 }

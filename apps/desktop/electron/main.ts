@@ -2,17 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BrowserWindow, Menu, app, net, protocol } from 'electron';
-import { resolveArtifact } from '@mesh/core';
-import { MeshApp } from './app';
+import { resolveArtifact } from '@moyu/core';
+import { MoyuApp } from './app';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5273';
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
-let meshApp: MeshApp | undefined;
+let moyuApp: MoyuApp | undefined;
 let mainWindow: BrowserWindow | undefined;
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: 'mesh-asset',
+    scheme: 'moyu-asset',
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
   },
 ]);
@@ -53,13 +53,13 @@ function createWindow(): BrowserWindow {
 
   win.once('ready-to-show', async () => {
     win.show();
-    const capturePath = process.env.MESH_CAPTURE;
+    const capturePath = process.env.MOYU_CAPTURE;
     if (capturePath) {
       await new Promise((resolve) => setTimeout(resolve, 2500));
       const image = await win.webContents.capturePage();
       fs.mkdirSync(path.dirname(capturePath), { recursive: true });
       fs.writeFileSync(capturePath, image.toPNG());
-      console.log(`[mesh] captured ${capturePath}`);
+      console.log(`[moyu] captured ${capturePath}`);
       setTimeout(() => app.quit(), 300);
     }
   });
@@ -84,12 +84,12 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
 
-  const dataDir = process.env.MESH_DATA_DIR ?? path.join(app.getPath('userData'), 'mesh');
-  meshApp = new MeshApp(dataDir, app.getVersion());
-  meshApp.start();
+  const dataDir = process.env.MOYU_DATA_DIR ?? path.join(app.getPath('userData'), 'moyu');
+  moyuApp = new MoyuApp(dataDir, app.getVersion());
+  moyuApp.start();
 
-  const workspaceDir = meshApp.store.getSettings().cloud.workspaceDir;
-  protocol.handle('mesh-asset', async (request) => {
+  const workspaceDir = moyuApp.store.getSettings().cloud.workspaceDir;
+  protocol.handle('moyu-asset', async (request) => {
     const url = new URL(request.url);
     const relative = decodeURIComponent(url.pathname).replace(/^\/+/, '');
     const file = resolveArtifact(workspaceDir, relative);
@@ -98,12 +98,12 @@ app.whenReady().then(() => {
   });
 
   mainWindow = createWindow();
-  meshApp.setWindow(mainWindow);
+  moyuApp.setWindow(mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow();
-      meshApp?.setWindow(mainWindow);
+      moyuApp?.setWindow(mainWindow);
     }
   });
 });
@@ -113,9 +113,9 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  meshApp?.dispose();
+  moyuApp?.dispose();
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('[mesh] uncaught', error);
+  console.error('[moyu] uncaught', error);
 });

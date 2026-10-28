@@ -1,23 +1,23 @@
 {
-  "name": "meshbots",
+  "name": "moyubot",
   "version": "0.1.0",
   "private": true,
-  "description": "MeshBot — multi-provider bots sharing one sleeping cloud computer, with an iOS 26 liquid-glass desktop UI",
+  "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, with an iOS 26 liquid-glass desktop UI",
   "license": "MIT",
   "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @mesh/core build && pnpm --filter @mesh/desktop dev",
-    "dev:core": "pnpm --filter @mesh/core dev",
-    "build": "pnpm --filter @mesh/core build && pnpm --filter @mesh/desktop build",
+    "dev": "pnpm --filter @moyu/core build && pnpm --filter @moyu/desktop dev",
+    "dev:core": "pnpm --filter @moyu/core dev",
+    "build": "pnpm --filter @moyu/core build && pnpm --filter @moyu/desktop build",
     "typecheck": "pnpm -r typecheck",
-    "start": "pnpm --filter @mesh/desktop start",
+    "start": "pnpm --filter @moyu/desktop start",
     "smoke": "pnpm build && node scripts/smoke.mjs",
     "seed": "node scripts/seed-demo.mjs",
     "avatars": "node scripts/build-avatar-geometry.mjs",
-    "dist": "pnpm build && pnpm --filter @mesh/desktop dist"
+    "dist": "pnpm build && pnpm --filter @moyu/desktop dist"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

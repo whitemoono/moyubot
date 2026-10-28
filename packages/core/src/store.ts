@@ -90,7 +90,7 @@ export function defaultSettings(dataDir: string): AppSettings {
         image: {
           backend: 'api',
           cloudCommand: DEFAULT_CLOUD_COMMAND,
-          cloudOutputPath: '/data/meshbot/out/{name}.png',
+          cloudOutputPath: '/data/moyubot/out/{name}.png',
           aspect: '1:1',
           wakeHost: true,
         },
@@ -102,7 +102,7 @@ export function defaultSettings(dataDir: string): AppSettings {
     cloud: {
       driver: 'instabox',
       baseUrl: 'https://api.instabox.sh',
-      machineName: 'meshbot-shared',
+      machineName: 'moyubot-shared',
       templateId: 'agent-browser',
       autoSuspendAfterSeconds: 600,
       idleSuspendMinutes: 3,

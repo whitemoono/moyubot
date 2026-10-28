@@ -18,7 +18,7 @@ export function openLinksExternally(event: MouseEvent<HTMLDivElement>): void {
   const href = anchor.getAttribute('href');
   if (!href) return;
   event.preventDefault();
-  if (/^https:\/\//.test(href)) void window.mesh?.openExternal(href);
+  if (/^https:\/\//.test(href)) void window.moyu?.openExternal(href);
 }
 
 export function highlightCode(root: HTMLElement): void {

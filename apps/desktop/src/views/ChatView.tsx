@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Bot, Message, ToolResult } from '@mesh/core';
-import { assetUrl, mesh } from '../lib/bridge';
+import type { Bot, Message, ToolResult } from '@moyu/core';
+import { assetUrl, moyu } from '../lib/bridge';
 import { formatClock } from '../lib/format';
 import { highlightCode, openLinksExternally, renderMarkdown } from '../lib/markdown';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
@@ -23,8 +23,8 @@ const TOOL_ICON: Record<string, IconName> = {
 const SUGGESTIONS = [
   { icon: 'image' as IconName, title: '画一张液态玻璃风格的海报', text: '用 16:9 画一张「iOS 液态玻璃」风格的产品海报，主题是多人共用的云电脑，画面要通透、有折射光。' },
   { icon: 'terminal' as IconName, title: '在云电脑上体检环境', text: '唤醒云电脑，检查 Python 版本、磁盘空间和已安装的浏览器，然后用一段话总结。' },
-  { icon: 'folder' as IconName, title: '整理一份工作台报告', text: '在云电脑 /data/meshbot 下建一个 weekly 目录，写一份本周工作摘要模板并读回来确认。' },
-  { icon: 'clock' as IconName, title: '每个工作日 9 点汇报', text: '创建一个定时任务：每个工作日 9 点唤醒云电脑，检查 /data/meshbot 下最新文件并汇报。' },
+  { icon: 'folder' as IconName, title: '整理一份工作台报告', text: '在云电脑 /data/moyubot 下建一个 weekly 目录，写一份本周工作摘要模板并读回来确认。' },
+  { icon: 'clock' as IconName, title: '每个工作日 9 点汇报', text: '创建一个定时任务：每个工作日 9 点唤醒云电脑，检查 /data/moyubot 下最新文件并汇报。' },
 ];
 
 function MessageBubble({ message }: { message: Message }) {
@@ -114,7 +114,7 @@ function MessageBubble({ message }: { message: Message }) {
                     key={attachment.id}
                     type="button"
                     className="artifact artifact--auto"
-                    onClick={() => (attachment.path ? void mesh().openArtifact(attachment.path) : undefined)}
+                    onClick={() => (attachment.path ? void moyu().openArtifact(attachment.path) : undefined)}
                     title="点击用系统查看器打开"
                   >
                     <img src={url} alt={attachment.name} />
@@ -149,7 +149,7 @@ function MessageBubble({ message }: { message: Message }) {
 }
 
 function Composer({ bot }: { bot: Bot }) {
-  const { conversation, running, sendMessage, stop, saveBot, settings, newConversation } = useMesh();
+  const { conversation, running, sendMessage, stop, saveBot, settings, newConversation } = useMoyu();
   const [text, setText] = useState('');
   const [images, setImages] = useState<{ name?: string; mimeType: string; dataUrl: string }[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -301,7 +301,7 @@ function Composer({ bot }: { bot: Bot }) {
 }
 
 function EmptyState({ bot }: { bot: Bot }) {
-  const { sendMessage, setView } = useMesh();
+  const { sendMessage, setView } = useMoyu();
   return (
     <div className="empty">
       <div className="hero-orb" aria-hidden="true">
@@ -312,7 +312,7 @@ function EmptyState({ bot }: { bot: Bot }) {
         你好，我是 <span className="gradient-text">{bot.name}</span>
       </h1>
       <p className="empty__sub">
-        我跑在 MeshBot 上，和其他 Bot 共用一台随时休眠的云电脑。
+        我跑在 MoyuBot 上，和其他 Bot 共用一台随时休眠的云电脑。
         <br />
         对话不烧钱，只有真正要去云端跑任务或画图时才唤醒。
       </p>
@@ -342,7 +342,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView() {
-  const { bot, conversation, running, newConversation, setView } = useMesh();
+  const { bot, conversation, running, newConversation, setView } = useMoyu();
   const messages = conversation?.messages ?? [];
   const scrollRef = useAutoScroll<HTMLDivElement>([messages.length, messages.at(-1)?.content, messages.at(-1)?.toolResults?.length]);
 

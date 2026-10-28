@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { CLOUD_META, formatDuration, formatRelative } from '../lib/format';
-import { useMesh } from '../state';
+import { useMoyu } from '../state';
 import { Button, IconButton, Panel } from './Glass';
 import { Icon } from './Icon';
 
 export function Inspector() {
-  const { cloud, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast } = useMesh();
+  const { cloud, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast } = useMoyu();
   const [draft, setDraft] = useState('');
   const meta = CLOUD_META[cloud.state];
   const provider = settings.providers.find((item) => item.id === bot?.providerId);

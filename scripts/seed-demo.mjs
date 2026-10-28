@@ -10,7 +10,7 @@ import process from 'node:process';
 
 const core = await import('../packages/core/dist/index.js');
 
-const dataDir = process.env.MESH_DATA_DIR ?? path.join(process.cwd(), '.work', 'demo-data');
+const dataDir = process.env.MOYU_DATA_DIR ?? path.join(process.cwd(), '.work', 'demo-data');
 const store = new core.Store(dataDir);
 const now = Date.now();
 
@@ -78,11 +78,11 @@ store.updateSettings({
 });
 
 store.addMemory(first.id, '用户偏好 16:9 的宽幅海报', true);
-store.addMemory(first.id, '所有产出物放在 /data/meshbot 下');
+store.addMemory(first.id, '所有产出物放在 /data/moyubot 下');
 store.addMemory('bot_nova', '周报模板：本周进展 / 阻塞 / 下周计划');
 
 const schedules = [
-  { botId: 'bot_orbit', cron: '0 9 * * 1-5', prompt: '检查云电脑 /data/meshbot 下最新的文件并用三句话汇报。' },
+  { botId: 'bot_orbit', cron: '0 9 * * 1-5', prompt: '检查云电脑 /data/moyubot 下最新的文件并用三句话汇报。' },
   { botId: first.id, cron: '0 */2 * * *', prompt: '抓取 InstaBox 状态页，如果 api.instabox.sh 不可用就记一条记忆。' },
 ];
 for (const item of schedules) {
@@ -143,7 +143,7 @@ if (!store.listConversations(first.id).length) {
     id: messageId,
     role: 'assistant',
     // 说明为什么唤醒、产物落在哪，避免把工具回显混进正文。
-    content: '云主机已就绪，海报出好了：分层玻璃质感的球体，标题压在下三分之一。\n原图已落在 `/data/meshbot/out/poster-169.svg`，本地也存了一份，点开可以看大图。',
+    content: '云主机已就绪，海报出好了：分层玻璃质感的球体，标题压在下三分之一。\n原图已落在 `/data/moyubot/out/poster-169.svg`，本地也存了一份，点开可以看大图。',
     createdAt: now - 60_000,
     model: first.model,
     toolCalls: [call],
@@ -153,7 +153,7 @@ if (!store.listConversations(first.id).length) {
         name: call.name,
         ok: true,
         summary: '云主机出图 · 16:9 · 唤云 2.1s',
-        detail: 'wake 2.1s → generate_image → /data/meshbot/images/poster-169.svg',
+        detail: 'wake 2.1s → generate_image → /data/moyubot/images/poster-169.svg',
         durationMs: 8400,
       },
     ],

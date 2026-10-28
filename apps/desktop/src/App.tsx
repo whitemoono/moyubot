@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useMesh } from './state';
+import { useMoyu } from './state';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { TitleBar } from './components/TitleBar';
@@ -26,7 +26,7 @@ function Backdrop() {
 }
 
 function ApprovalSheet() {
-  const { approval, respondApproval } = useMesh();
+  const { approval, respondApproval } = useMoyu();
   if (!approval) return null;
   return (
     <Sheet
@@ -61,7 +61,7 @@ function ApprovalSheet() {
 }
 
 function Toasts() {
-  const { toasts } = useMesh();
+  const { toasts } = useMoyu();
   if (!toasts.length) return null;
   return (
     <div className="toasts">
@@ -76,7 +76,7 @@ function Toasts() {
 }
 
 export function App() {
-  const { ready, view, settings } = useMesh();
+  const { ready, view, settings } = useMoyu();
 
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -129,7 +129,7 @@ export function App() {
             <span className="hero-orb__glass" />
             <span className="hero-orb__ring" />
           </div>
-          <p>正在启动 MeshBot…</p>
+          <p>正在启动 MoyuBot…</p>
         </div>
       ) : (
         <div className={`window-body ${view === 'cloud' || view === 'settings' ? 'window-body--wide' : ''}`.trim()}>

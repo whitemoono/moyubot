@@ -1,4 +1,4 @@
-import type { CloudState } from '@mesh/core';
+import type { CloudState } from '@moyu/core';
 
 export function formatRelative(timestamp?: number): string {
   if (!timestamp) return '—';

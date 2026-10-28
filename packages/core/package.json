@@ -1,10 +1,10 @@
 {
-  "name": "@mesh/core",
+  "name": "@moyu/core",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "description": "MeshBot core: provider adapters, InstaBox cloud-host orchestrator, agent loop",
+  "description": "MoyuBot core: provider adapters, InstaBox cloud-host orchestrator, agent loop",
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",
