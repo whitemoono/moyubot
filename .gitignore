@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+.DS_Store
+.env
+.env.*
+apps/desktop/src/generated/
+data/
+.work/

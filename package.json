@@ -1,0 +1,25 @@
+{
+  "name": "meshbots",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MeshBot — multi-provider bots sharing one sleeping cloud computer, with an iOS 26 liquid-glass desktop UI",
+  "license": "MIT",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @mesh/core build && pnpm --filter @mesh/desktop dev",
+    "dev:core": "pnpm --filter @mesh/core dev",
+    "build": "pnpm --filter @mesh/core build && pnpm --filter @mesh/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "start": "pnpm --filter @mesh/desktop start",
+    "smoke": "pnpm build && node scripts/smoke.mjs",
+    "seed": "node scripts/seed-demo.mjs",
+    "dist": "pnpm build && pnpm --filter @mesh/desktop dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^22.18.0"
+  }
+}

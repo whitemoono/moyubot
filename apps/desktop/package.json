@@ -1,0 +1,46 @@
+{
+  "name": "@mesh/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MeshBot Windows desktop client (Electron + React, liquid glass)",
+  "license": "MIT",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -p tsconfig.electron.json && vite build",
+    "start": "electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@mesh/core": "workspace:*",
+    "dompurify": "^3.2.7",
+    "marked": "^16.4.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^42.1.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  },
+  "build": {
+    "appId": "sh.meshbot.desktop",
+    "productName": "MeshBot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["nsis"]
+    }
+  }
+}
