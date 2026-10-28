@@ -16,6 +16,7 @@
     "start": "pnpm --filter @mesh/desktop start",
     "smoke": "pnpm build && node scripts/smoke.mjs",
     "seed": "node scripts/seed-demo.mjs",
+    "avatars": "node scripts/build-avatar-geometry.mjs",
     "dist": "pnpm build && pnpm --filter @mesh/desktop dist"
   },
   "devDependencies": {

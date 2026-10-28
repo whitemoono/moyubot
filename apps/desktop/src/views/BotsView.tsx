@@ -3,6 +3,7 @@ import type { ApprovalPolicy, Bot, ProviderConfig } from '@mesh/core';
 import { mesh } from '../lib/bridge';
 import { useMesh } from '../state';
 import { Button, Field, IconButton, Panel, Segmented, Sheet, Toggle } from '../components/Glass';
+import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 
 const DEFAULT_PROMPT = `你是 {bot_name}，一个运行在 MeshBot 里的通用智能体。
@@ -84,9 +85,7 @@ export function BotsView() {
           <Panel key={item.id} className={`bot-card ${activeBot?.id === item.id ? 'is-active' : ''}`}>
             <div className="bot-card__glow" style={{ background: `radial-gradient(circle at 30% 0%, ${item.avatar.from}66, transparent 60%)` }} />
             <div className="bot-card__head">
-              <span className="bot-avatar bot-avatar--xl" style={{ background: `linear-gradient(140deg, ${item.avatar.from}, ${item.avatar.to})` }}>
-                {item.avatar.glyph}
-              </span>
+              <BotAvatar bot={item} size="xl" />
               <div className="bot-card__title">
                 <h3>{item.name}</h3>
                 <p>@{item.handle}</p>
@@ -237,9 +236,7 @@ function BotEditor({
         <section className="editor-block">
           <h3>身份</h3>
           <div className="identity-row">
-            <span className="bot-avatar bot-avatar--xl" style={{ background: `linear-gradient(140deg, ${draft.avatar.from}, ${draft.avatar.to})` }}>
-              {draft.avatar.glyph}
-            </span>
+            <BotAvatar bot={draft} size="xl" />
             <div className="identity-fields">
               <Field label="名字">
                 <input

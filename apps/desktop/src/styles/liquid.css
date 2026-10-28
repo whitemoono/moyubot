@@ -580,6 +580,44 @@ select {
 .bot-avatar--lg { width: 40px; height: 40px; border-radius: 13px; font-size: 16px; }
 .bot-avatar--xl { width: 52px; height: 52px; border-radius: 17px; font-size: 20px; }
 
+/* Character art (geometry from the grok-icon-study set): the blob is the avatar, so drop the plate. */
+.bot-avatar--art {
+  position: relative;
+  background: transparent;
+  color: inherit;
+  text-shadow: none;
+  overflow: hidden;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.7);
+}
+
+.bot-avatar--art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* viewBox 两侧各有 15 单位留白，放大一点让团子涨满整个圆形底板。 */
+  transform: scale(1.13);
+  shape-rendering: geometricPrecision;
+}
+
+.bot-avatar__eye {
+  fill: #fff;
+  fill-opacity: 0.94;
+  /* 浅色渐变底板上的白眼睛会糊成一片，描一圈暗边保住轮廓。 */
+  stroke: rgba(10, 12, 22, 0.32);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.bot-avatar--art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.45), inset 0 -6px 12px -8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
 .bot-avatar--ghost {
   background: rgba(255, 255, 255, 0.06);
   border: 1px dashed rgba(255, 255, 255, 0.2);

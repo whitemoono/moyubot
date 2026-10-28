@@ -122,6 +122,23 @@ MeshBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
 
 根目录 `package.json` 里仍叫 `meshbots`（历史包名），产品名一律 MeshBot。
 
+## 素材引用
+
+**Bot 头像**（界面里那些带多边形眼睛的团子）使用了社区复刻项目的角色几何：
+
+- [blessonism/grok-icon-study](https://github.com/blessonism/grok-icon-study) —— 对 Grok Bot.app v0.18.0 登录页角色动效的学习复刻
+- 用到的数据：`replica/geometry-data.js` 中的身体轮廓 `blobPath` 与 idle 眼睛 `eyes[0]`，提炼成 `apps/desktop/src/assets/grok/avatar-geometry.json`（2.1 KB）；各 Bot 的神情由渲染层对这同一组眼睛做刚体变换得到
+- 角色设计归 **xAI** 所有，上游仓库声明「仅供学习参考，请勿商用或再分发」，且**没有 LICENSE 文件**
+
+因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MeshBot 自研的代码与文档适用 MIT，角色几何与造型权利仍归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它、如何重新生成）见 [docs/ASSETS.md](docs/ASSETS.md)。
+
+```bash
+# 只重新生成头像几何（需先自行下载上游 geometry-data.js）
+node scripts/build-avatar-geometry.mjs
+```
+
+想去掉这套角色素材：把 [apps/desktop/src/assets/grok/geometry.ts](apps/desktop/src/assets/grok/geometry.ts) 里的 `GROK_AVATAR` 改成 `null`，界面自动回落到「渐变底 + 首字母」头像，其余代码无需改动。
+
 ## License
 
 MIT

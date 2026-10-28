@@ -4,6 +4,7 @@ import { assetUrl, mesh } from '../lib/bridge';
 import { formatClock } from '../lib/format';
 import { highlightCode, openLinksExternally, renderMarkdown } from '../lib/markdown';
 import { useMesh } from '../state';
+import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
 import type { IconName } from '../components/Icon';
@@ -360,9 +361,7 @@ export function ChatView() {
     <section className="chat">
       <header className="chat__head">
         <div className="chat__who">
-          <span className="bot-avatar bot-avatar--lg" style={{ background: `linear-gradient(140deg, ${bot.avatar.from}, ${bot.avatar.to})` }}>
-            {bot.avatar.glyph}
-          </span>
+          <BotAvatar bot={bot} size="lg" />
           <div>
             <h2>{bot.name}</h2>
             <p>

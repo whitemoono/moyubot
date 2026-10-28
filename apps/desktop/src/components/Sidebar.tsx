@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { CLOUD_META, formatRelative } from '../lib/format';
 import { useMesh } from '../state';
 import type { View } from '../state';
+import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
 import { IconButton } from './Glass';
 import type { IconName } from './Icon';
@@ -37,12 +38,7 @@ export function Sidebar() {
               className={`bot-row ${bot?.id === item.id ? 'is-active' : ''}`}
               onClick={() => selectBot(item.id)}
             >
-              <span
-                className="bot-avatar"
-                style={{ background: `linear-gradient(140deg, ${item.avatar.from}, ${item.avatar.to})` }}
-              >
-                {item.avatar.glyph}
-              </span>
+              <BotAvatar bot={item} />
               <span className="bot-row__meta">
                 <span className="bot-row__name">{item.name}</span>
                 <span className="bot-row__model">{item.model || '未选模型'}</span>
