@@ -29,6 +29,7 @@
 
 ## 0.3 — 平台扩展
 
+- [ ] **工作区与多端连接**：本地 Windows、云电脑、远程共享电脑，Bot 与数据按工作区隔离；官方多用户连接服务及自部署、设备配对、底部终端、PWA。产品与迁移设计见 [工作区、电脑共享与多端连接](WORKSPACES-AND-SYNC.md)，尚未实现。
 - [ ] **macOS**：`electron-builder --mac`（dmg，arm64 + x64），标题栏改用原生 traffic lights，`safeStorage` 走 Keychain
 - [ ] **Android**：共享 `@moyu/core` 的协议层太重（依赖 Node 内置），计划拆出 `@moyu/protocol`（纯 TS、无 IO），用 Capacitor 或 Tauri Mobile 承载 UI
 - [ ] **iOS**：与 Android 共用 `@moyu/protocol`，UI 复用同一套设计变量
@@ -49,5 +50,5 @@
 ## 默认边界
 
 - 个人模式下 API 直连用户自己的 Key；规划中的额度共享模式优先验证提供者自管模型代理，平台托管须明确启用，详见市场开发文档
-- 不在本地静默执行命令：所有命令都在云主机上跑，本地只做编排
+- 当前版本的电脑工具在云主机执行。本地与共享电脑工作区按上述设计接入，由用户明确选择设备、目录和权限；不能静默改变正在运行任务的执行位置。
 - 不做「免费额度」暗示，云主机费用由用户自己的 InstaBox 账户承担
