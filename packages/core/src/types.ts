@@ -16,10 +16,16 @@ export interface ProviderConfig {
   imageModel?: string;
   /** Extra headers, e.g. OpenRouter's HTTP-Referer. */
   extraHeaders?: Record<string, string>;
+  /** Model input + output limit. Unknown models use a conservative 32K budget. */
+  contextWindowTokens?: number;
   createdAt: number;
 }
 
 export interface BotAvatar {
+  /** Portrait id from the bundled ai girl bot character set. */
+  shape?: string;
+  /** Locally stored, cropped avatar image; absent for animated built-in portraits. */
+  imageDataUrl?: string;
   from: string;
   to: string;
   glyph: string;
@@ -54,7 +60,17 @@ export interface Bot {
   wakeOnTask: boolean;
   createdAt: number;
   updatedAt: number;
+  /** Local navigation preferences, independent of model and conversation identity. */
+  sidebar?: { pinned?: boolean; hidden?: boolean; unread?: boolean; group?: string };
 }
+
+export type BotMetadataPatch = { name?: string; sidebar?: NonNullable<Bot['sidebar']> };
+export interface SidebarBotGroup { name: string; collapsed?: boolean }
+export type BotGroupAction =
+  | { type: 'rename'; name: string }
+  | { type: 'move'; direction: 'up' | 'down' }
+  | { type: 'collapse'; collapsed: boolean }
+  | { type: 'delete' };
 
 export type CloudState =
   | 'unconfigured'
@@ -147,19 +163,31 @@ export interface Attachment {
 
 export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 
+export interface MessageReply {
+  messageId: string;
+  author: string;
+  content: string;
+}
+
 export interface Message {
   id: string;
+  botId?: string;
+  botName?: string;
   role: MessageRole;
   content: string;
+  replyTo?: MessageReply;
   createdAt: number;
   model?: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
   attachments?: Attachment[];
-  usage?: { promptTokens?: number; completionTokens?: number };
+  usage?: TokenUsage;
+  usageTracked?: boolean;
   error?: string;
   /** true while tokens are still streaming in */
   streaming?: boolean;
+  /** Generation was explicitly stopped; preserved separately from provider failures. */
+  stopped?: boolean;
   reasoning?: string;
   /** renderer-only shade for notices */
   tone?: 'info' | 'warning' | 'error';
@@ -168,10 +196,22 @@ export interface Message {
 export interface Conversation {
   id: string;
   botId: string;
+  group?: { memberBotIds: string[] };
   title: string;
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  /** Legacy threads stay on disk after being merged into the bot's single thread. */
+  mergedInto?: string;
+  context?: ConversationContext;
+}
+
+export interface ConversationContext {
+  summary: string;
+  throughMessageId: string;
+  compactedMessages: number;
+  updatedAt: number;
+  model: string;
 }
 
 export interface MemoryFact {
@@ -181,6 +221,7 @@ export interface MemoryFact {
   pinned: boolean;
   createdAt: number;
   lastUsedAt?: number;
+  source?: 'manual' | 'automatic';
 }
 
 export interface Schedule {
@@ -189,12 +230,22 @@ export interface Schedule {
   prompt: string;
   /** 5-field cron in the local timezone. */
   cron: string;
+  kind?: 'cron' | 'once';
+  title?: string;
+  runAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+  closedAt?: number;
+  completedAt?: number;
   enabled: boolean;
   lastRunAt?: number;
   nextRunAt?: number;
   lastStatus?: 'ok' | 'error' | 'running' | 'skipped';
   lastError?: string;
 }
+
+export interface ScheduleInput { prompt: string; title?: string; cron?: string; runAt?: number }
+export interface ScheduleUpdate { action?: 'update' | 'pause' | 'resume' | 'close'; prompt?: string; title?: string; cron?: string; runAt?: number }
 
 export interface TelegramSettings {
   enabled: boolean;
@@ -204,6 +255,10 @@ export interface TelegramSettings {
 }
 
 export interface UiSettings {
+  botGroups?: SidebarBotGroup[];
+  /** Position of the built-in ungrouped section among named groups; omitted means last. */
+  ungroupedGroupIndex?: number;
+  userAvatar?: BotAvatar & { imageDataUrl?: string };
   accent: string;
   appearance: 'dark' | 'light' | 'system';
   reduceMotion: boolean;
@@ -223,14 +278,16 @@ export interface AppSettings {
 }
 
 export type AgentEvent =
+  | { type: 'schedules'; schedules: Schedule[] }
   | { type: 'run_start'; runId: string; conversationId: string }
-  | { type: 'message_start'; message: Message }
-  | { type: 'delta'; messageId: string; text: string }
-  | { type: 'reasoning'; messageId: string; text: string }
-  | { type: 'tool_start'; messageId: string; call: ToolCall }
-  | { type: 'tool_end'; messageId: string; result: ToolResult }
-  | { type: 'message_end'; message: Message }
-  | { type: 'run_end'; runId: string; ok: boolean; error?: string }
+  | { type: 'message_start'; conversationId: string; message: Message }
+  | { type: 'delta'; conversationId: string; messageId: string; text: string }
+  | { type: 'reasoning'; conversationId: string; messageId: string; text: string }
+  | { type: 'tool_start'; conversationId: string; messageId: string; call: ToolCall }
+  | { type: 'tool_end'; conversationId: string; messageId: string; result: ToolResult }
+  | { type: 'message_end'; conversationId: string; message: Message }
+  | { type: 'run_end'; conversationId: string; runId: string; ok: boolean; error?: string }
+  | { type: 'context_compaction'; conversationId: string; phase: 'start' | 'done' | 'error'; context?: ConversationContext }
   | { type: 'cloud'; status: CloudStatus; note?: string }
   | { type: 'approval'; request: ApprovalRequest }
   | { type: 'approval_done'; requestId: string; approved: boolean }
@@ -263,6 +320,7 @@ export interface SendMessageInput {
   botId: string;
   text: string;
   images?: ChatImageInput[];
+  replyTo?: { messageId: string; selectedText?: string };
 }
 
 export interface SendMessageResult {
@@ -270,6 +328,15 @@ export interface SendMessageResult {
   runId: string;
   userMessageId: string;
   assistantMessageId: string;
+}
+
+export interface AppUpdateResult {
+  status: 'available' | 'current' | 'unpublished' | 'error';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  message: string;
+  checkedAt: number;
 }
 
 export interface ProviderTestResult {
@@ -286,10 +353,59 @@ export interface UsageSummary {
   cloudWakeSeconds: number;
 }
 
+/** Provider-reported counts. Input includes cache reads; output includes reasoning. */
+export interface TokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  cachedTokens?: number;
+}
+export interface UsageRecord {
+  id: string;
+  createdAt: number;
+  botId: string;
+  botName: string;
+  providerId: string;
+  providerName: string;
+  model: string;
+  conversationId: string;
+  messageId?: string;
+  purpose: 'chat' | 'compaction' | 'historical';
+  status: 'complete' | 'error';
+  usage?: TokenUsage;
+}
+export interface UsageQuery {
+  start: number;
+  end: number;
+  interval: 'hour' | 'day' | 'week' | 'month';
+  botId?: string;
+  modelKey?: string;
+}
+export interface UsageTotals {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  cacheInputTokens: number;
+  cacheReportedCalls: number;
+  calls: number;
+  reportedCalls: number;
+  compactionCalls: number;
+  historicalCalls: number;
+}
+export interface UsageRow extends UsageTotals { id: string; name: string; detail?: string }
+export interface UsageReport {
+  totals: UsageTotals;
+  bots: UsageRow[];
+  models: UsageRow[];
+  options: { bots: { id: string; name: string }[]; models: { id: string; name: string }[] };
+  buckets: { start: number; end: number; totalTokens: number; bots: Record<string, number>; models: Record<string, number> }[];
+}
+
 export interface BootstrapPayload {
   settings: AppSettings;
   cloud: CloudStatus;
-  conversations: { id: string; botId: string; title: string; updatedAt: number }[];
+  conversations: { id: string; botId: string; title: string; updatedAt: number; group?: Conversation['group']; preview?: string }[];
+  runningConversations: string[];
   schedules: Schedule[];
   memories: MemoryFact[];
   secrets: {

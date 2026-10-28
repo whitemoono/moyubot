@@ -1,4 +1,4 @@
-import type { ProviderConfig, ToolCall } from '../types';
+import type { ProviderConfig, ToolCall, TokenUsage } from '../types';
 
 export interface ToolSchema {
   name: string;
@@ -22,6 +22,7 @@ export interface ChatArgs {
 }
 
 export interface StreamHandlers {
+  onUsage?(usage: TokenUsage): void;
   onText(chunk: string): void;
   onReasoning?(chunk: string): void;
   onToolCall(call: ToolCall): void;
@@ -29,7 +30,7 @@ export interface StreamHandlers {
 
 export interface ChatOutcome {
   finishReason: string;
-  usage?: { promptTokens?: number; completionTokens?: number };
+  usage?: TokenUsage;
 }
 
 export interface ChatProvider {

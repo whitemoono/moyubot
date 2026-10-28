@@ -1,4 +1,3 @@
-import logoUrl from '../assets/brand/logo.png';
 import { moyu } from '../lib/bridge';
 import { CLOUD_META } from '../lib/format';
 import { useMoyu } from '../state';
@@ -12,26 +11,23 @@ const TITLES: Record<string, string> = {
   settings: '设置',
 };
 
-export function TitleBar() {
-  const { view, cloud, platform } = useMoyu();
+export function TitleBar({ collapsed, onToggleSidebar }: { collapsed: boolean; onToggleSidebar: () => void }) {
+  const { view, cloud, platform, setView } = useMoyu();
   const isMac = platform === 'darwin';
   const stateLabel = CLOUD_META[cloud.state].label;
 
   return (
     <header className="titlebar">
       <div className="titlebar__brand">
-        <img className="brand-orb" src={logoUrl} alt="MoyuBot" />
-        <span className="brand-text">
-          MoyuBot
-          <span className="brand-sub">shared cloud · multi provider</span>
-        </span>
+        <button type="button" className="titlebar__sidebar-toggle" aria-label={collapsed ? '展开侧栏' : '收起侧栏'} aria-expanded={!collapsed} onClick={onToggleSidebar}><Icon name="sidebar" size={14} /></button>
+        <span className="titlebar__workspace-dot" /><span>MoyuBot Desktop</span>
       </div>
       <div className="titlebar__center">
         <span className="crumb">{TITLES[view] ?? '对话'}</span>
-        <span className={`cloud-pill cloud-pill--${cloud.state}`}>
+        <button type="button" title="查看云电脑" onClick={() => setView('cloud')} className={`cloud-pill cloud-pill--${cloud.state}`}>
           <span className="cloud-pill__dot" />
           {stateLabel}
-        </span>
+        </button>
       </div>
       <div className="titlebar__right">
         {isMac ? null : (

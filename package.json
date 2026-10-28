@@ -2,7 +2,7 @@
   "name": "moyubot",
   "version": "0.1.0",
   "private": true,
-  "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, with an iOS 26 liquid-glass desktop UI",
+  "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, in a focused desktop workspace",
   "license": "MIT",  "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=20"
@@ -14,6 +14,11 @@
     "typecheck": "pnpm -r typecheck",
     "start": "pnpm --filter @moyu/desktop start",
     "smoke": "pnpm build && node scripts/smoke.mjs",
+    "smoke:desktop": "pnpm build && pnpm --filter @moyu/desktop exec electron ../../scripts/desktop-smoke.cjs",
+    "test:conversations": "pnpm --filter @moyu/core build && node --test scripts/conversation.test.mjs",
+    "test:usage": "pnpm --filter @moyu/core build && node --test scripts/usage.test.mjs",
+    "test:schedules": "pnpm --filter @moyu/core build && node --test scripts/schedules.test.mjs",
+    "test:avatars": "node --test scripts/bot-activity.test.mjs",
     "seed": "node scripts/seed-demo.mjs",
     "dist": "pnpm build && pnpm --filter @moyu/desktop dist"
   },

@@ -9,6 +9,13 @@
  * BotAvatar 自动回落到「单色底 + 首字母」，其它代码不用动。
  */
 import './engine/geometry-data';
+import './engine/chibi-shape';
+import './engine/shiro-shape';
+import './engine/mikan-shape';
+import './engine/neko-shape';
+import './engine/tsuki-shape';
+import './engine/nemu-shape';
+import './engine/zeta-shape';
 import './engine/math';
 import './engine/tables';
 import './engine/pose';
@@ -35,6 +42,8 @@ export interface GrokCharacterOptions {
   emphasis?: boolean;
   paused?: boolean;
   reduceMotion?: boolean;
+  preservePortrait?: boolean;
+  autoTricks?: boolean;
   onChange?: (snapshot: GrokSnapshot) => void;
 }
 
@@ -68,4 +77,15 @@ export function createGrokCharacter(svg: SVGSVGElement, opts: GrokCharacterOptio
 export function grokShapeNames(): string[] {
   const geo = (window as any).GROK_GEO;
   return geo?.shapes ? Object.keys(geo.shapes) : [];
+}
+
+interface GrokPortrait {
+  path: string;
+  decals?: { fill: string; d: string; rule?: 'evenodd' | 'nonzero' }[];
+  iconFace?: { anchors: [number, number][]; rx: number; ry: number; ink?: string };
+}
+
+/** Lightweight portraits for history/reduced motion, with no animation loop per message. */
+export function grokPortrait(shape: string): GrokPortrait | undefined {
+  return (window as any).GROK_GEO?.shapes?.[shape] as GrokPortrait | undefined;
 }

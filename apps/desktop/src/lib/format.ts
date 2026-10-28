@@ -47,6 +47,9 @@ export function cronLabel(cron: string): string {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return cron;
   const [minute, hour, dom, month, dow] = parts as [string, string, string, string, string];
+  if (minute === '*' && hour === '*' && dom === '*' && month === '*' && dow === '*') return '每分钟';
+  if (minute === '0' && /^\*\/\d+$/.test(hour) && dom === '*' && month === '*' && dow === '*') return `每 ${hour.slice(2)} 小时`;
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dom === '*' && month === '*' && /^[0-7]$/.test(dow)) return `每周${['日', '一', '二', '三', '四', '五', '六', '日'][Number(dow)]} ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
   if (minute.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
     return `每 ${minute.slice(2)} 分钟`;
   }

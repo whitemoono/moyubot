@@ -15,11 +15,12 @@ import type {
   SendMessageInput,
   SendMessageResult,
   ToolCall,
-  ToolResult,
 } from './types';
 import type { GeneratedImage } from './providers';
-import { runTool, schemasFor } from './tools';
+import { runTool, schemasFor, toolNamesFor } from './tools';
 import { newId, summarize, truncate } from './util';
+import { contextWindow, isContextOverflow, messagesFor, prepareContext } from './context';
+import { trackedChat } from './usage';
 
 export interface AgentRuntimeDeps {
   store: Store;
@@ -34,8 +35,6 @@ interface RunState {
   conversationId: string;
 }
 
-const MAX_HISTORY_MESSAGES = 40;
-
 export class AgentRuntime {
   private readonly store: Store;
   private readonly cloud: CloudHost;
@@ -43,6 +42,7 @@ export class AgentRuntime {
   private readonly requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   private readonly maxSteps: number;
   private runs = new Map<string, RunState>();
+  private runCompletions = new Map<string, Promise<void>>();
 
   constructor(deps: AgentRuntimeDeps) {
     this.store = deps.store;
@@ -60,7 +60,7 @@ export class AgentRuntime {
     const run = this.runs.get(conversationId);
     if (!run) return false;
     run.abort.abort();
-    this.emit({ type: 'log', level: 'warn', text: '已请求停止当前任务' });
+    this.emit({ type: 'log', level: 'info', text: '已请求停止当前任务' });
     return true;
   }
 
@@ -75,51 +75,22 @@ export class AgentRuntime {
     };
   }
 
-  private buildSystemPrompt(bot: Bot): string {
+  private buildSystemPrompt(bot: Bot, memoryScope = bot.id): string {
     const facts = this.store
-      .listMemories(bot.id)
+      .listMemories(memoryScope)
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt - a.createdAt)
       .slice(0, 24);
     const memoryBlock = facts.length
       ? `\n\n长期记忆（关于用户与这个 Bot 的事实）：\n${facts.map((fact) => `- ${fact.text}`).join('\n')}`
       : '';
     const workspace = this.store.getSettings().cloud.workspaceDir;
+    const scheduleGuide = toolNamesFor(bot).includes('schedule_task') ? `\n\n定时任务（本地时区 ${Intl.DateTimeFormat().resolvedOptions().timeZone}）：用户要求或已允许后续执行才创建；时间不明确先询问。创建前查重，修改前用 list_tasks 定位，不能猜 ID。周期用 cron，一次用含时区 runAt。仅工具成功后确认操作和执行时间；到点执行不要重新创建同一任务。` : '';
     return `${bot.systemPrompt.replace(/\{bot_name\}/g, bot.name)}
 
 当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}
 本地工作区（生成图片会存到这里）：${workspace}
 共享云电脑：${this.cloud.getSettings().machineName} · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠。
-${memoryBlock}`;
-  }
-
-  private historyFor(conversation: Conversation): AgentMessage[] {
-    const messages = conversation.messages
-      .filter((message) => !message.streaming || message.content)
-      .slice(-MAX_HISTORY_MESSAGES);
-    const history: AgentMessage[] = [];
-    for (const message of messages) {
-      if (message.role === 'user') {
-        history.push({
-          role: 'user',
-          content: message.content,
-          images: message.attachments
-            ?.filter((attachment) => attachment.kind === 'image' && attachment.dataUrl)
-            .map((attachment) => ({ mimeType: attachment.mimeType ?? 'image/png', dataUrl: attachment.dataUrl! })),
-        });
-      } else if (message.role === 'assistant') {
-        if (!message.content && !message.toolCalls?.length) continue;
-        history.push({ role: 'assistant', content: message.content, toolCalls: message.toolCalls });
-        for (const result of message.toolResults ?? []) {
-          history.push({
-            role: 'tool',
-            toolCallId: result.id,
-            name: result.name,
-            content: truncate(result.detail ?? result.summary, 8000),
-          });
-        }
-      }
-    }
-    return history;
+${memoryBlock}${scheduleGuide}`;
   }
 
   private attachmentsFrom(images: ChatImageInput[] | undefined) {
@@ -133,13 +104,27 @@ ${memoryBlock}`;
     }));
   }
 
+  private replyFrom(input: SendMessageInput, conversation: Conversation): Message['replyTo'] {
+    if (!input.replyTo) return undefined;
+    const source = conversation.messages.find((message) => message.id === input.replyTo!.messageId);
+    if (!source || !['user', 'assistant'].includes(source.role) || source.streaming) throw new Error('这条消息暂时无法引用，请重新选择。');
+    const selected = input.replyTo.selectedText?.trim();
+    if (selected && !source.content.includes(selected)) throw new Error('引用的文字与原消息不一致，请重新选择。');
+    const author = source.role === 'user' ? '你' : source.botName ?? this.store.getBot(source.botId ?? conversation.botId)?.name ?? 'Bot';
+    return { messageId: source.id, author, content: selected || source.content || source.attachments?.map((file) => `[图片：${file.name ?? '图片'}]`).join('\n') || '（空消息）' };
+  }
+
   async send(input: SendMessageInput): Promise<SendMessageResult> {
+    const target = input.conversationId ? this.store.getConversation(input.conversationId) : undefined;
+    if (target?.group) return this.sendGroup(input, target.id);
     const bot = this.store.getBot(input.botId);
     if (!bot) throw new Error('Bot 不存在');
-    let conversation = input.conversationId ? this.store.getConversation(input.conversationId) : undefined;
-    if (!conversation) conversation = this.store.createConversation(bot.id);
+    const requested = input.conversationId ? this.store.getConversation(input.conversationId) : undefined;
+    if (requested && requested.botId !== bot.id) throw new Error('不能向其他 Bot 的会话发送消息');
+    const conversation = this.store.botConversation(bot.id);
     const conversationId = conversation.id;
     if (this.runs.has(conversationId)) throw new Error('这个会话还在生成中，请先停止或等待完成。');
+    const replyTo = this.replyFrom(input, conversation);
 
     const runId = newId('run');
     const abort = new AbortController();
@@ -150,6 +135,7 @@ ${memoryBlock}`;
       id: newId('msg'),
       role: 'user',
       content: input.text,
+      replyTo,
       createdAt: Date.now(),
       attachments: this.attachmentsFrom(input.images),
     };
@@ -166,11 +152,57 @@ ${memoryBlock}`;
       toolResults: [],
     };
     this.store.appendMessage(conversationId, assistantMessage);
-    this.emit({ type: 'message_start', message: assistantMessage });
+    this.emit({ type: 'message_start', conversationId, message: assistantMessage });
 
-    void this.runLoop({ bot, conversationId, runId, assistantMessage, abort, history: this.historyFor(this.store.getConversation(conversationId)!) });
+    const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage });
+    this.runCompletions.set(conversationId, completion);
+    void completion.finally(() => { if (this.runCompletions.get(conversationId) === completion) this.runCompletions.delete(conversationId); }).catch(() => {});
 
     return { conversationId, runId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id };
+  }
+
+  private async sendGroup(input: SendMessageInput, conversationId: string): Promise<SendMessageResult> {
+    const conversation = this.store.getConversation(conversationId)!;
+    if (this.runs.has(conversationId)) throw new Error('群聊正在回复，请先停止或等待完成。');
+    const bots = conversation.group!.memberBotIds.map((id) => this.store.getBot(id)).filter((bot): bot is Bot => !!bot);
+    if (!bots.length) throw new Error('群聊已没有可用的 Bot，请重新创建群聊。');
+    const replyTo = this.replyFrom(input, conversation);
+    const runId = newId('run');
+    const abort = new AbortController();
+    this.runs.set(conversationId, { abort, conversationId });
+    this.emit({ type: 'run_start', runId, conversationId });
+    const userMessage: Message = { id: newId('msg'), role: 'user', content: input.text, replyTo, createdAt: Date.now(), attachments: this.attachmentsFrom(input.images) };
+    this.store.appendMessage(conversationId, userMessage);
+    const startReply = (bot: Bot): Message => {
+      const message: Message = { id: newId('msg'), role: 'assistant', botId: bot.id, botName: bot.name, content: '', model: bot.model, createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [] };
+      this.store.appendMessage(conversationId, message);
+      this.emit({ type: 'message_start', conversationId, message });
+      return message;
+    };
+    const first = startReply(bots[0]!);
+    void (async () => {
+      let error: string | undefined;
+      try {
+        for (const [index, bot] of bots.entries()) {
+          if (abort.signal.aborted) break;
+          const assistantMessage = index === 0 ? first : startReply(bot);
+          await this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage, group: true });
+          if (assistantMessage.error) error = assistantMessage.error;
+        }
+      } catch (failure) {
+        error = (failure as Error).message;
+        if (first.streaming) {
+          first.streaming = false; first.error = error;
+          this.store.appendMessage(conversationId, first);
+          this.emit({ type: 'message_end', conversationId, message: first });
+        }
+      } finally {
+        if (abort.signal.aborted) error = '已停止';
+        this.runs.delete(conversationId);
+        this.emit({ type: 'run_end', conversationId, runId, ok: !error, error });
+      }
+    })();
+    return { conversationId, runId, userMessageId: userMessage.id, assistantMessageId: first.id };
   }
 
   private async runLoop(params: {
@@ -179,46 +211,68 @@ ${memoryBlock}`;
     runId: string;
     assistantMessage: Message;
     abort: AbortController;
-    history: AgentMessage[];
+    userMessage: Message;
+    group?: boolean;
   }): Promise<void> {
     const { bot, conversationId, runId, assistantMessage, abort } = params;
     const message = assistantMessage;
-    const history = params.history;
+    message.usageTracked = true;
+    const conversation = this.store.getConversation(conversationId)!;
+    const history: AgentMessage[] = params.group ? messagesFor(conversation.messages.slice(conversation.messages.findIndex((item) => item.id === params.userMessage.id), -1), bot.id) : messagesFor([params.userMessage]);
+    const memoryScope = params.group ? conversationId : bot.id;
     let errorText: string | undefined;
 
     try {
       const { provider, imageGenerator } = this.providerFor(bot);
-      const system = this.buildSystemPrompt(bot);
       const tools = schemasFor(bot);
 
       for (let step = 0; step < this.maxSteps; step += 1) {
         if (abort.signal.aborted) throw new Error('任务已停止');
-        const pendingCalls: ToolCall[] = [];
+        let pendingCalls: ToolCall[] = [];
+        const contentBefore = message.content.length;
+        const reasoningBefore = message.reasoning?.length ?? 0;
         const handlers: StreamHandlers = {
           onText: (chunk) => {
             message.content += chunk;
-            this.emit({ type: 'delta', messageId: message.id, text: chunk });
+            this.emit({ type: 'delta', conversationId, messageId: message.id, text: chunk });
           },
           onReasoning: (chunk) => {
             message.reasoning = (message.reasoning ?? '') + chunk;
-            this.emit({ type: 'reasoning', messageId: message.id, text: chunk });
+            this.emit({ type: 'reasoning', conversationId, messageId: message.id, text: chunk });
           },
           onToolCall: (call) => pendingCalls.push(call),
         };
 
-        const outcome = await provider.chat(
-          { model: bot.model, system, messages: history, tools, temperature: bot.temperature, signal: abort.signal },
-          handlers,
-        );
-        if (outcome.usage) message.usage = outcome.usage;
+        let outcome;
+        for (let recovery = 0; recovery < 3; recovery++) {
+          const context = await prepareContext({
+            store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
+            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : ''), tools,
+            signal: abort.signal, emit: this.emit, recovery,
+          });
+          try {
+            outcome = await trackedChat(this.store, bot, conversationId, 'chat', provider, { model: bot.model, ...context, tools, temperature: bot.temperature,
+              maxTokens: Math.min(4096, Math.floor(contextWindow(this.store, bot) * .2)), signal: abort.signal }, handlers, message.id);
+            break;
+          } catch (error) {
+            // A rejected request is retried only before any visible output or side effect.
+            if (!isContextOverflow(error) || recovery === 2 || message.content.length !== contentBefore || (message.reasoning?.length ?? 0) !== reasoningBefore || pendingCalls.length) throw error;
+            pendingCalls = [];
+          }
+        }
+        if (!outcome) throw new Error('模型上下文不足，自动压缩后仍无法继续；完整消息已保留。');
+        if (outcome.usage) message.usage = {
+          promptTokens: (message.usage?.promptTokens ?? 0) + (outcome.usage.promptTokens ?? 0),
+          completionTokens: (message.usage?.completionTokens ?? 0) + (outcome.usage.completionTokens ?? 0),
+        };
         if (!pendingCalls.length) break;
 
         message.toolCalls = [...(message.toolCalls ?? []), ...pendingCalls];
-        history.push({ role: 'assistant', content: message.content, toolCalls: pendingCalls });
+        history.push({ role: 'assistant', content: message.content.slice(contentBefore), toolCalls: pendingCalls });
 
         for (const call of pendingCalls) {
           if (abort.signal.aborted) throw new Error('任务已停止');
-          this.emit({ type: 'tool_start', messageId: message.id, call });
+          this.emit({ type: 'tool_start', conversationId, messageId: message.id, call });
           const result = await runTool(call, {
             bot,
             cloud: this.cloud,
@@ -238,29 +292,21 @@ ${memoryBlock}`;
                       createdAt: Date.now(),
                     })
                 : undefined,
-            remember: (text, pinned) => this.store.addMemory(bot.id, text, pinned),
+            remember: (text, pinned) => this.store.addMemory(memoryScope, text, pinned),
             recall: (query) =>
               this.store
-                .listMemories(bot.id)
+                .listMemories(memoryScope)
                 .filter((fact) => fact.text.toLowerCase().includes(query.toLowerCase()))
                 .map((fact) => fact.text),
-            createSchedule: (cron, prompt) => {
-              const schedule = {
-                id: newId('sched'),
-                botId: bot.id,
-                prompt,
-                cron,
-                enabled: true,
-                lastStatus: undefined as undefined,
-              };
-              return this.store.upsertSchedule(schedule);
-            },
+            createSchedule: (input) => this.store.createSchedule(bot.id, input),
+            listTasks: (includeClosed) => this.store.listSchedules().filter((task) => task.botId === bot.id && (includeClosed || !task.closedAt && !task.completedAt)),
+            updateTask: (id, patch) => this.store.updateSchedule(bot.id, id, patch),
             emitStatus: (status, note) => this.emit({ type: 'cloud', status, note }),
             signal: abort.signal,
           });
 
           message.toolResults = [...(message.toolResults ?? []), result];
-          this.emit({ type: 'tool_end', messageId: message.id, result });
+          this.emit({ type: 'tool_end', conversationId, messageId: message.id, result });
           if (result.artifactPath) {
             message.attachments = [
               ...(message.attachments ?? []),
@@ -285,21 +331,24 @@ ${memoryBlock}`;
     } catch (error) {
       if (abort.signal.aborted) {
         errorText = '已停止';
+        message.stopped = true;
         message.content = message.content || '';
       } else {
         errorText = error instanceof ProviderError ? error.message : (error as Error).message;
         message.error = errorText;
       }
-      this.emit({ type: 'log', level: 'error', text: summarize(errorText, 300) });
+      this.emit({ type: 'log', level: abort.signal.aborted ? 'info' : 'error', text: summarize(errorText, 300) });
     } finally {
       message.streaming = false;
       if (!message.content) {
-        message.content = message.error ? `（没有回复：${message.error}）` : message.toolCalls?.length ? '' : '（空回复）';
+        message.content = message.error ? `（没有回复：${message.error}）` : message.stopped || message.toolCalls?.length ? '' : '（空回复）';
       }
       this.store.appendMessage(conversationId, message);
-      this.emit({ type: 'message_end', message });
-      this.emit({ type: 'run_end', runId, ok: !errorText, error: errorText });
-      this.runs.delete(conversationId);
+      this.emit({ type: 'message_end', conversationId, message });
+      if (!params.group) {
+        this.runs.delete(conversationId);
+        this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
+      }
       this.cloud.touch();
       this.cloud.armIdleIfNeeded?.();
     }
@@ -309,6 +358,9 @@ ${memoryBlock}`;
     const bot = this.store.getBot(botId);
     if (!bot) throw new Error('Bot 不存在');
     const result = await this.send({ botId, text: prompt });
+    await this.runCompletions.get(result.conversationId);
+    const reply = this.store.getConversation(result.conversationId)?.messages.find((message) => message.id === result.assistantMessageId);
+    if (reply?.error || reply?.stopped) throw new Error(reply.error || '任务已停止');
     return { conversationId: result.conversationId };
   }
 }

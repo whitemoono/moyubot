@@ -6,68 +6,23 @@ import { Button, Field, IconButton, Panel, Segmented, Sheet, Toggle } from '../c
 import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 
-const DEFAULT_PROMPT = `你是 {bot_name}，一个运行在 MoyuBot 里的通用智能体。
-你有一台共享的云端 Linux 电脑（4 vCPU / 8 GB），平时处于休眠状态，需要时会被自动唤醒。
-- 涉及文件、命令、脚本、绘图的任务，用 cloud_* 工具在云电脑里完成；聊天闲聊不必唤醒云电脑。
-- 需要生成图片时调用 generate_image，它会按配置走云主机或图像 API。
-- 长任务先说明计划，再用工具一步步执行，每一步都给出可验证的结果。
-- 不确定的信息要说明不确定，不要编造命令输出。`;
+import { BOT_TOOLS as TOOLS, newBot } from '../lib/bots';
+import { AvatarPicker } from '../components/AvatarPicker';
+import { Select } from '../components/Select';
 
-const NEUTRAL_AVATAR = { from: '#e6e6e6', to: '#e6e6e6' };
-
-const TOOLS: { id: string; label: string; hint: string }[] = [
-  { id: 'cloud_exec', label: '云电脑命令', hint: '在共享 Linux 里执行 shell' },
-  { id: 'cloud_read', label: '读书机文件', hint: '读取云电脑上的文本文件' },
-  { id: 'cloud_write', label: '写云机文件', hint: '把结果写进云电脑' },
-  { id: 'generate_image', label: '绘图', hint: '按需唤醒云主机出图' },
-  { id: 'remember', label: '写长期记忆', hint: '跨会话记住事实' },
-  { id: 'recall', label: '查长期记忆', hint: '关键词检索记忆' },
-  { id: 'schedule_task', label: '定时任务', hint: '用 cron 创建自动化' },
-  { id: 'web_fetch', label: '网页抓取', hint: '只读 https 页面' },
-];
-
-function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
-  const now = Date.now();
-  return seed
-    ? { ...seed, id: crypto.randomUUID(), name: `${seed.name} 副本`, handle: `${seed.handle}-copy`, createdAt: now, updatedAt: now }
-    : {
-        id: crypto.randomUUID(),
-        name: '新 Bot',
-        handle: 'bot',
-        avatar: { ...NEUTRAL_AVATAR, glyph: 'B' },
-        providerId: provider?.id ?? '',
-        model: provider?.defaultModel ?? '',
-        temperature: 0.7,
-        systemPrompt: DEFAULT_PROMPT,
-        approvalPolicy: 'never',
-        tools: TOOLS.map((tool) => tool.id),
-        image: {
-          backend: 'api',
-          aspect: '1:1',
-          wakeHost: true,
-          cloudCommand: 'mkdir -p "$(dirname {out})" && python3 /opt/moyubot/draw.py --prompt {prompt} --out {out}',
-          cloudOutputPath: '/data/moyubot/out/{name}.png',
-        },
-        wakeOnTask: true,
-        createdAt: now,
-        updatedAt: now,
-      };
-}
-
-export function BotsView() {
-  const { settings, saveBot, deleteBot, selectBot, bot: activeBot } = useMoyu();
+export function BotsView({ onCreate, embedded = false }: { onCreate: () => void; embedded?: boolean }) {
+  const { settings, saveBot, deleteBot, selectBot, bot: activeBot, updateBotMetadata, toast } = useMoyu();
   const [editing, setEditing] = useState<Bot | null>(null);
 
   const providerName = (id: string) => settings.providers.find((provider) => provider.id === id)?.name ?? '未绑定供应商';
 
   return (
-    <div className="view">
+    <div className={embedded ? 'settings-bots' : 'view'}>
       <header className="view-head">
         <div>
-          <h1>Bot 管理</h1>
-          <p>每个 Bot 有自己的供应商、模型、人格与权限；它们共用同一台按需唤醒的云电脑。</p>
+          {embedded ? <span className="settings-bots__count">{settings.bots.length} 个 Bot<span>独立人格 · 模型与权限</span></span> : <><h1>Bot 管理</h1><p>每个 Bot 有自己的供应商、模型、人格与权限；它们共用同一台按需唤醒的云电脑。</p></>}
         </div>
-        <Button variant="primary" icon="plus" onClick={() => setEditing(newBot(settings.providers[0], undefined))}>
+        <Button variant="primary" icon="plus" onClick={onCreate}>
           新建 Bot
         </Button>
       </header>
@@ -105,12 +60,13 @@ export function BotsView() {
               <Button size="sm" variant="glass" icon="chat" onClick={() => selectBot(item.id)}>
                 开始对话
               </Button>
+              {item.sidebar?.hidden ? <Button size="sm" variant="ghost" icon="sidebar" onClick={() => void updateBotMetadata(item.id, { sidebar: { hidden: false } }).catch((error: Error) => toast(error.message, 'error'))}>显示在侧栏</Button> : null}
               <IconButton name="copy" label="复制这个 Bot" onClick={() => setEditing(newBot(settings.providers.find((p) => p.id === item.providerId), item))} />
             </div>
           </Panel>
         ))}
 
-        <button type="button" className="bot-card bot-card--new" onClick={() => setEditing(newBot(settings.providers[0]))}>
+        <button type="button" className="bot-card bot-card--new" onClick={onCreate}>
           <span className="new-icon">
             <Icon name="plus" size={22} />
           </span>
@@ -127,7 +83,7 @@ export function BotsView() {
           providers={settings.providers}
           onClose={() => setEditing(null)}
           onSave={async (next) => {
-            await saveBot(next);
+            await saveBot(next, { stayInSettings: embedded });
             setEditing(null);
           }}
           onDelete={
@@ -241,26 +197,19 @@ function BotEditor({
               </Field>
             </div>
           </div>
+          <AvatarPicker value={draft.avatar} onChange={(avatar) => patch('avatar', avatar)} />
         </section>
 
         <section className="editor-block">
           <h3>供应商</h3>
           <Field label="供应商">
-            <select
-              className="select"
-              value={draft.providerId}
-              onChange={(event) => {
-                const next = providers.find((item) => item.id === event.target.value);
-                setDraft((prev) => ({ ...prev, providerId: event.target.value, model: next?.defaultModel ?? prev.model }));
+            <Select label="Bot 供应商" value={draft.providerId} options={providers.map((item) => ({ value: item.id, label: item.name, hint: item.kind === 'gemini' ? 'Gemini 协议' : item.kind === 'anthropic' ? 'Anthropic 协议' : 'OpenAI 兼容' }))}
+              onChange={(value) => {
+                const next = providers.find((item) => item.id === value);
+                setDraft((prev) => ({ ...prev, providerId: value, model: next?.defaultModel ?? prev.model }));
                 setModels([]);
               }}
-            >
-              {providers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}（{item.kind === 'gemini' ? 'Gemini 协议' : item.kind === 'anthropic' ? 'Anthropic 协议' : 'OpenAI 兼容'}）
-                </option>
-              ))}
-            </select>
+            />
           </Field>
           {provider ? (
             <p className="inline-hint mono">
@@ -287,12 +236,7 @@ function BotEditor({
           </Field>
           <Field label="模型" hint="可手动填写，也可以从供应商拉取列表">
             <div className="key-row">
-              <input className="input mono" list="model-options" value={draft.model} onChange={(event) => patch('model', event.target.value)} />
-              <datalist id="model-options">
-                {[...new Set([...models, ...(provider?.models ?? [])])].map((model) => (
-                  <option key={model} value={model} />
-                ))}
-              </datalist>
+              <Select allowCustom label="Bot 模型" value={draft.model} onChange={(value) => patch('model', value)} options={[...new Set([...models, ...(provider?.models ?? [])])].map((model) => ({ value: model, label: model }))} />
               <Button size="sm" variant="ghost" loading={loadingModels} onClick={() => void pullModels()}>
                 拉取
               </Button>

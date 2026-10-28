@@ -1,4 +1,5 @@
 export * from './types';
+export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage';
 export * from './util';
 export { Store, PlainSecretBox, defaultSettings } from './store';
 export type { SecretBox, ConversationSummary, SettingsPatch } from './store';

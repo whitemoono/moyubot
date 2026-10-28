@@ -8,8 +8,8 @@ MoyuBot 的 Bot 头像直接使用社区复刻项目的角色引擎（vendored�
 | --- | --- |
 | 仓库 | [blessonism/grok-icon-study](https://github.com/blessonism/grok-icon-study) |
 | 性质 | 对 Grok Bot.app v0.18.0 登录页角色动效的学习复刻（非官方） |
-| 采用内容 | `replica/geometry-data.js`（25 组眼睛、18 种身形、11 套墨色）+ `replica/src/` 引擎（math / tables / pose / tricks / fx / eyes / character） |
-| 放置位置 | `apps/desktop/src/assets/grok/engine/`（原样拷入，未改动） |
+| 采用内容 | 原有 `geometry-data.js`，以及用户提供的 `ai girl bot/replica/` 中的引擎与 7 套角色头像 |
+| 放置位置 | `apps/desktop/src/assets/grok/engine/`；角色文件和引擎保留原文 |
 | 角色设计归属 | xAI |
 
 上游 README 原文声明：
@@ -20,12 +20,14 @@ MoyuBot 的 Bot 头像直接使用社区复刻项目的角色引擎（vendored�
 
 ## 本仓库的使用方式
 
-- `apps/desktop/src/assets/grok/grok-engine.ts` 按上游 `index.html` 的顺序加载 8 个 IIFE 脚本，暴露有类型的 `createGrokCharacter(svg, opts)` 入口。
-- `apps/desktop/src/components/BotAvatar.tsx` 把每个 Bot 头像挂成一个引擎实例：
-  - **身形**按 `handle` 哈希从 blob / teardrop / cloud / capsule / shield / gem / pebble / hex 中挑选，同一 Bot 固定；
-  - **表情**由运行时状态驱动（状态名来自上游 `tables.js` 的播放表）：审批请求 → `listening`；Agent 事件流 → `thinking` / `working` / `searching` / `writing` / `loading` / `dictating` / `happy` / `alerting`；云电脑状态 → `sleeping` / `waking` / `working` / `alerting`；空闲时走登录页同款 `onboarding` 轮换（idle ↔ curious ↔ happy …）；
-  - 墨色与眼白用 CSS 变量 `--avatar-ink` / `--avatar-void` 跟随 MoyuBot 的黑白主题，不引入彩色。
-- 弹簧、眨眼、wink、视线游走、旋转特技、overlay（铅笔 / 铃铛 / 思考点）全部沿用上游实现，MoyuBot 没有重写任何动画逻辑。
+当前角色文件来自用户指定的本地项目 `ai girl bot`：`chibi`（DeepSeek，默认）、`shiro`（ChatGPT）、`mikan`（Claude）、`neko`（Gemini）、`tsuki`（Grok）、`nemu`（Qwen）、`zeta`（GLM）。该本地项目的 MIT 许可证原文保留为 `engine/LICENSE.ai-girl-bot`；它的 README 对原始造型权利的说明仍适用。主项目不依赖该源文件夹的运行服务或绝对路径。
+
+- `apps/desktop/src/assets/grok/grok-engine.ts` 依次加载几何、7 套角色和引擎脚本，暴露有类型的 `createGrokCharacter(svg, opts)` 入口。
+- `apps/desktop/src/components/BotAvatar.tsx` 为实时头像创建引擎实例，历史消息和减少动效模式使用轻量静态 SVG：
+  - **身形**保存为 `bot.avatar.shape`；创建与编辑时均可选择，旧数据和未知值默认使用 DeepSeek；
+  - **表情**优先由各个 Bot 的实际活动驱动；待命时随机展示歪头、微笑、俏皮、小跳等表情，鼠标移入时回应。思考、搜索、回复、工具执行、等待确认、整理记忆、完成、出错和停止各有对应动作，具体规则见 [BOT-ACTIVITY.md](BOT-ACTIVITY.md)；
+  - 角色保留原始彩色图层，主题色保存在 `bot.avatar.from/to` 中；选择器缩略图减少动效，大头像仍响应 Bot 运行状态。
+- 弹簧、眨眼、wink、视线游走沿用上游实现；产品头像关闭自动翻转与整体符号变形，保留用户选择的角色造型，并补充书写、加载和提醒的轻量姿态。上游 overlay 仍保留在引擎中。
 
 ## 授权状态：请注意
 
@@ -47,6 +49,8 @@ MoyuBot 的 Bot 头像直接使用社区复刻项目的角色引擎（vendored�
 直接从上游仓库重新拷贝 `replica/geometry-data.js` 与 `replica/src/*.js` 到 `engine/` 即可，加载顺序见 `grok-engine.ts`。没有生成脚本，也没有中间格式。
 
 ## 其它素材
+
+- App 图标：以 `moyubot-landing/site/logo.webp` 的高清透明图为源，由 `scripts/build-icons.py` 导出桌面 512px PNG、界面 256px PNG 和 Windows 多尺寸 ICO。导出时清理边缘的白色底色并使用预乘透明度缩放，保留画面内部的白色细节。需要重新导出时，在已安装 Pillow 的 Python 环境中运行 `python scripts/build-icons.py`。安装包同时携带图标资源，界面直接使用图片本身的圆角与透明边界。
 
 - 界面图标：全部为 `apps/desktop/src/components/Icon.tsx` 中的自绘内联 SVG。
 - 字体：使用系统字体栈，未附带任何字体文件。

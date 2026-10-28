@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MoyuBot · 一群 AI，一个云电脑</title>
   <meta name="description" content="MoyuBot：开源多智能体 AI Agent 工作空间，所有 Bot 共享一台云电脑，接任务、写代码、整理资料，你负责摸鱼。" />
-  <link rel="icon" href="logo.webp" />
+  <link rel="icon" href="logo.webp?v=2" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,600;0,800;1,800;1,900&family=Noto+Sans+SC:wght@400;500;700;900&family=Ma+Shan+Zheng&display=swap" rel="stylesheet" />
@@ -64,6 +64,12 @@
     }
     .brand { display: flex; align-items: center; gap: 10px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 21px; }
     .brand-logo { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; box-shadow: 0 4px 14px rgba(61,109,242,.25); }
+    .dev-pill {
+      font-family: "Noto Sans SC", sans-serif; font-style: normal; font-weight: 700;
+      font-size: 11px; letter-spacing: .04em; line-height: 1; white-space: nowrap;
+      padding: 4px 7px; border-radius: 999px;
+      color: #9a6700; background: rgba(255, 186, 64, .22); border: 1px solid rgba(214, 148, 28, .38);
+    }
     .nav-tags { display: flex; align-items: center; gap: 14px; color: var(--ink-soft); font-size: 13px; letter-spacing: .3px; }
     .nav-tags span + span::before { content: ""; display: inline-block; width: 1px; height: 11px; margin-right: 14px; background: #c3cee6; vertical-align: -1px; }
     .nav-right {
@@ -89,12 +95,12 @@
     .hero {
       position: relative; min-height: 100vh; min-height: 100svh;
       overflow: hidden; isolation: isolate;
-      display: flex; align-items: center;
+      display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end;
     }
     .hero-bg { position: absolute; inset: -40px; z-index: -3; will-change: transform; }
     .hero-bg-img {
       position: absolute; inset: 0;
-      background: url("bg.jpg") 72% center / cover no-repeat;
+      background: url("bg.jpg?v=2") 72% center / cover no-repeat;
       animation: drift 26s ease-in-out infinite alternate;
     }
     @keyframes drift { from { scale: 1.02; } to { scale: 1.08; } }
@@ -105,12 +111,15 @@
         linear-gradient(0deg, var(--page) 0%, rgba(245,248,255,0) 20%);
     }
 
-    .hero-inner { width: 100%; padding: 120px clamp(20px, 5vw, 72px) 90px; }
+    .hero-inner {
+      flex: 1; display: flex; align-items: center; width: 100%;
+      padding: 92px clamp(20px, 5vw, 72px) 8px;
+    }
     .hero-copy { max-width: 620px; }
 
     .title {
       font-family: Nunito, sans-serif; font-style: italic; font-weight: 900;
-      font-size: clamp(60px, 8.4vw, 120px); line-height: 1; letter-spacing: -1.5px;
+      font-size: clamp(52px, 6.6vw, 96px); line-height: 1; letter-spacing: -1.5px;
       position: relative; display: inline-block; padding-right: .34em;
       filter: drop-shadow(0 10px 24px rgba(61,109,242,.16));
     }
@@ -141,10 +150,14 @@
       font-size: .3em; color: var(--blue-2);
       animation: spark-in 1s var(--ease) 1s both, spark-spin 9s linear 2s infinite;
     }
+    .title .dev-pill {
+      position: absolute; top: .02em; left: calc(100% + 8px);
+      font-size: 14px; padding: 6px 10px;
+    }
     @keyframes spark-in { from { opacity: 0; scale: 0; rotate: -90deg; } to { opacity: 1; scale: 1; rotate: 0deg; } }
     @keyframes spark-spin { 0%, 100% { scale: 1; } 50% { scale: .72; } to { rotate: 360deg; } }
 
-    .slogan { margin-top: 22px; font-size: clamp(26px, 3.1vw, 42px); font-weight: 900; line-height: 1.34; letter-spacing: 1px; }
+    .slogan { margin-top: 14px; font-size: clamp(22px, 2.6vw, 34px); font-weight: 900; line-height: 1.34; letter-spacing: 1px; }
     .slogan em {
       font-style: normal; position: relative; color: var(--blue);
       background: linear-gradient(transparent 68%, rgba(111,155,255,.28) 68%) no-repeat 0 0 / 0% 100%;
@@ -153,9 +166,9 @@
     .slogan em + em { animation-delay: 1.7s; }
     @keyframes mark { to { background-size: 100% 100%; } }
 
-    .desc { margin-top: 20px; max-width: 470px; font-size: 16px; line-height: 1.9; color: var(--ink-soft); }
+    .desc { margin-top: 12px; max-width: 470px; font-size: 15px; line-height: 1.75; color: var(--ink-soft); }
 
-    .features { margin-top: 32px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; max-width: 500px; }
+    .features { margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; max-width: 500px; }
     .feature { text-align: center; }
     .feature-icon {
       width: 52px; height: 52px; margin: 0 auto 10px; border-radius: 16px;
@@ -170,7 +183,7 @@
     .feature small { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-mute); }
 
     /* buttons */
-    .cta { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 14px; }
+    .cta { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 14px; }
     .btn {
       position: relative; overflow: hidden;
       display: inline-flex; align-items: center; gap: 10px;
@@ -191,13 +204,13 @@
     .btn-ghost:hover { background: #fff; border-color: #b9cbfb; }
 
     .note {
-      margin-top: 38px; display: inline-flex; align-items: center; gap: 12px;
+      margin-top: 14px; display: inline-flex; align-items: center; gap: 12px;
       font-family: "Ma Shan Zheng", cursive; font-size: 22px; line-height: 1.35; color: #5b7fd8;
       rotate: -4deg; transform-origin: left;
     }
 
     .status-card {
-      position: absolute; right: clamp(16px, 4vw, 60px); bottom: clamp(56px, 10vh, 110px);
+      position: absolute; z-index: 3; right: clamp(16px, 3vw, 40px); bottom: 168px;
       display: flex; align-items: center; gap: 12px;
       padding: 12px 18px 12px 14px; border-radius: 18px;
       background: var(--glass); border: 1px solid var(--glass-border);
@@ -211,8 +224,9 @@
     @keyframes ping { from { scale: 1; opacity: .7; } to { scale: 3; opacity: 0; } }
 
     .scroll-hint {
+      display: none;
       position: absolute; left: 50%; bottom: 26px; translate: -50% 0;
-      display: grid; justify-items: center; gap: 10px;
+      justify-items: center; gap: 10px;
       font-size: 11px; letter-spacing: 3px; color: var(--ink-mute);
     }
     .scroll-hint i { width: 1px; height: 38px; background: linear-gradient(var(--ink-mute), transparent); position: relative; overflow: hidden; }
@@ -233,6 +247,28 @@
     .lead { margin-top: 16px; color: var(--ink-soft); line-height: 1.85; max-width: 600px; font-size: 16px; }
     .center { text-align: center; }
     .center .lead { margin-left: auto; margin-right: auto; }
+
+    /* ---------- Cast: one row pinned to the bottom of the first screen ---------- */
+    .cast {
+      position: relative; z-index: 2; width: 100%; margin: 0;
+      padding: 4px clamp(16px, 4vw, 56px) 16px;
+      background: linear-gradient(180deg, rgba(245,248,255,0) 0%, rgba(245,248,255,.78) 36%, rgba(245,248,255,.94) 100%);
+    }
+    .cast-row {
+      max-width: 920px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: clamp(4px, 1.2vw, 16px); align-items: end;
+    }
+    .cast-row li {
+      min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0;
+      animation: bob 7.2s ease-in-out var(--d, 0s) infinite;
+    }
+    .cast-row grok-bot { display: block; width: min(100%, 92px); aspect-ratio: 1; }
+    .cast-row span { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+    @keyframes bob {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 0 -8px; }
+    }
 
     /* ---------- Model marquee ---------- */
     .models { padding: 20px 0 10px; }
@@ -351,7 +387,7 @@
     .outro { position: relative; overflow: hidden; isolation: isolate; padding-top: 140px; margin-top: 40px; }
     .outro-bg {
       position: absolute; inset: -80px; z-index: -3;
-      background: url("bg.jpg") center 40% / cover no-repeat;
+      background: url("bg.jpg?v=2") center 40% / cover no-repeat;
       filter: blur(48px) saturate(1.25);
       opacity: .7;
     }
@@ -367,7 +403,7 @@
 
     .outro-inner { text-align: center; padding: 0 clamp(20px, 5vw, 72px) 120px; max-width: 900px; margin: 0 auto; }
     .outro-inner h2 { font-size: clamp(36px, 5vw, 64px); }
-    .outro-inner .cta { justify-content: center; }
+    .outro-inner .cta { justify-content: center; margin-top: 36px; }
     .platforms { margin-top: 26px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
     .platforms li {
       display: inline-flex; align-items: center; gap: 8px;
@@ -398,6 +434,7 @@
       .nav-tags { display: none; }
       .hero-bg-img { background-position: 68% center; }
       .hero-wash { background: linear-gradient(180deg, rgba(245,248,255,.92) 0%, rgba(245,248,255,.72) 55%, rgba(245,248,255,.55) 80%, var(--page) 100%); }
+      .cast-row span { font-size: 12px; }
       .status-card, .scroll-hint { display: none; }
       .bento { grid-template-columns: 1fr; }
       .b-big { grid-column: auto; grid-row: auto; }
@@ -410,6 +447,8 @@
     }
     @media (max-width: 560px) {
       .nav-right .nav-link { display: none; }
+      .title .dev-pill { font-size: 12px; padding: 4px 8px; left: calc(100% + 4px); }
+      .cast-row span { font-size: 11px; }
       .features { grid-template-columns: repeat(2, 1fr); row-gap: 20px; }
       .btn { width: 100%; justify-content: center; }
       .section { padding-top: 80px; padding-bottom: 80px; }
@@ -444,14 +483,15 @@
 
   <nav class="nav" aria-label="主导航">
     <a class="brand" href="#top" aria-label="MoyuBot 首页">
-      <img class="brand-logo" src="logo.webp" alt="" width="34" height="34" />
+      <img class="brand-logo" src="logo.webp?v=2" alt="" width="34" height="34" />
       MoyuBot
+      <em class="dev-pill">开发中</em>
     </a>
     <div class="nav-tags"><span>Open Source</span><span>Multi AI</span><span>Shared Cloud PC</span></div>
     <div class="nav-right">
       <a class="nav-link" href="#features">功能</a>
       <a class="nav-link" href="#how">上手</a>
-      <a class="nav-link" href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+      <a class="nav-link" href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">GitHub</a>
       <a class="nav-cta" href="#download">免费使用</a>
     </div>
   </nav>
@@ -462,7 +502,7 @@
 
     <div class="hero-inner">
       <div class="hero-copy">
-        <h1 class="title" aria-label="MoyuBot"><span class="title-mask" aria-hidden="true"><span class="ch" style="--i:0">M</span><span class="ch" style="--i:1">o</span><span class="ch" style="--i:2">y</span><span class="ch" style="--i:3">u</span><span class="ch" style="--i:4">B</span><span class="ch" style="--i:5">o</span><span class="ch" style="--i:6">t</span></span><span class="spark" aria-hidden="true">✦</span></h1>
+        <h1 class="title" aria-label="MoyuBot，开发中"><span class="title-mask" aria-hidden="true"><span class="ch" style="--i:0">M</span><span class="ch" style="--i:1">o</span><span class="ch" style="--i:2">y</span><span class="ch" style="--i:3">u</span><span class="ch" style="--i:4">B</span><span class="ch" style="--i:5">o</span><span class="ch" style="--i:6">t</span></span><span class="spark" aria-hidden="true">✦</span><em class="dev-pill">开发中</em></h1>
 
         <p class="slogan reveal" style="--d:.7s">一群 <em>AI</em>，一个云电脑，<br />一个<em>摸鱼</em>的理由。</p>
         <p class="desc reveal" style="--d:.85s">
@@ -478,7 +518,7 @@
         </ul>
 
         <div class="cta reveal" style="--d:1.3s">
-          <a class="btn btn-primary" href="https://github.com/" target="_blank" rel="noopener">
+          <a class="btn btn-primary" href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">
             <svg width="20" height="20"><use href="#i-github"/></svg><span>开源免费使用</span>
           </a>
           <a class="btn btn-ghost" href="#download">
@@ -492,6 +532,18 @@
         </p>
       </div>
     </div>
+
+    <section class="cast" aria-label="Bot 小队">
+      <ul class="cast-row">
+        <li style="--d:-1.2s"><grok-bot shape="tsuki" color="tsuki" state="happy" mode="hold" login="false" label="小月"></grok-bot><span>小月</span></li>
+        <li style="--d:-.4s"><grok-bot shape="neko" color="neko" state="curious" mode="hold" login="false" label="小猫"></grok-bot><span>小猫</span></li>
+        <li style="--d:-2.4s"><grok-bot shape="zeta" color="zeta" state="playful" mode="hold" login="false" follow="true" label="小Z"></grok-bot><span>小Z</span></li>
+        <li style="--d:-3s"><grok-bot shape="mikan" color="mikan" state="excited" mode="hold" login="false" label="小橙"></grok-bot><span>小橙</span></li>
+        <li style="--d:-1.8s"><grok-bot shape="shiro" color="shiro" state="shy" mode="hold" login="false" label="小白"></grok-bot><span>小白</span></li>
+        <li style="--d:-.8s"><grok-bot shape="nemu" color="nemu" state="drowsy" mode="hold" login="false" label="小夜"></grok-bot><span>小夜</span></li>
+        <li style="--d:-3.6s"><grok-bot shape="chibi" color="chibi" state="listening" mode="hold" login="false" label="小蓝"></grok-bot><span>小蓝</span></li>
+      </ul>
+    </section>
 
     <div class="status-card reveal" style="--d:1.6s" role="status" data-depth="1">
       <span class="dot" aria-hidden="true"></span>
@@ -608,7 +660,7 @@
         <h2 id="outro-title" class="reveal" style="--d:.08s">今天，也该轮到<span class="grad">你摸鱼</span>了</h2>
         <p class="lead reveal" style="--d:.16s">免费、开源、可自托管。把重复的工作交给 Bot，把灵感留给自己。</p>
         <div class="cta reveal" style="--d:.24s">
-          <a class="btn btn-primary" href="https://github.com/" target="_blank" rel="noopener">
+          <a class="btn btn-primary" href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">
             <svg width="20" height="20"><use href="#i-github"/></svg><span>Star on GitHub</span>
           </a>
           <a class="btn btn-ghost" href="#">
@@ -624,9 +676,9 @@
       </div>
 
       <footer class="footer">
-        <a class="brand" href="#top"><img class="brand-logo" src="logo.webp" alt="" width="28" height="28" />MoyuBot</a>
+        <a class="brand" href="#top"><img class="brand-logo" src="logo.webp?v=2" alt="" width="28" height="28" />MoyuBot<em class="dev-pill">开发中</em></a>
         <nav aria-label="页脚导航">
-          <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">GitHub</a>
           <a href="#">文档</a>
           <a href="#">更新日志</a>
           <a href="#">社区</a>
@@ -733,7 +785,29 @@
     }
     for (let i = 0; i < 4; i++) push();
     if (!reduce) setInterval(push, 1900);
+
+    /* stagger the girl-bot moods so the banner doesn't blink in unison */
+    document.querySelectorAll('.cast grok-bot').forEach((el, i) => {
+      if (reduce) { el.setAttribute('paused', ''); return; }
+      setTimeout(() => el.setAttribute('mode', 'onboarding'), 700 + i * 420);
+    });
   })();
   </script>
+  <script src="bots/geometry-data.js"></script>
+  <script src="bots/chibi-shape.js"></script>
+  <script src="bots/shiro-shape.js"></script>
+  <script src="bots/mikan-shape.js"></script>
+  <script src="bots/neko-shape.js"></script>
+  <script src="bots/tsuki-shape.js"></script>
+  <script src="bots/nemu-shape.js"></script>
+  <script src="bots/zeta-shape.js"></script>
+  <script src="bots/src/math.js"></script>
+  <script src="bots/src/tables.js"></script>
+  <script src="bots/src/pose.js"></script>
+  <script src="bots/src/tricks.js"></script>
+  <script src="bots/src/fx.js"></script>
+  <script src="bots/src/eyes.js"></script>
+  <script src="bots/src/character.js"></script>
+  <script src="bots/src/api.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Bot, CloudStatus, Schedule, ToolCall, ToolResult } from './types';
+import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult } from './types';
 import { DEFAULT_CLOUD_COMMAND } from './types';
 import type { CloudHost } from './cloud';
 import type { GeneratedImage } from './providers';
@@ -86,15 +86,31 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'schedule_task',
-    description: '创建一个定时任务，用 5 段 cron 表达式（本地时区）。任务到点会自动唤醒云电脑执行。',
+    description: 'Schedule work for this Bot. Query first to avoid duplicates. Use either local 5-field cron or a future ISO runAt with timezone. Returns the saved task.',
     parameters: {
       type: 'object',
       properties: {
         cron: { type: 'string', description: '例如 "0 9 * * 1-5" 表示工作日 9:00' },
+        runAt: { type: 'string', description: 'One-off ISO time with Z or UTC offset; excludes cron.' },
+        title: { type: 'string', description: 'Short display name, at most 100 characters.' },
         prompt: { type: 'string', description: '到点后要执行的完整指令' },
       },
-      required: ['cron', 'prompt'],
+      required: ['prompt'],
     },
+  },
+  {
+    name: 'list_tasks',
+    description: 'List this Bot tasks with IDs, timing, state and last results. Query before changes; ask when target is ambiguous.',
+    parameters: { type: 'object', properties: { includeClosed: { type: 'boolean', description: 'Include completed and closed tasks. Default false.' } } },
+  },
+  {
+    name: 'update_task',
+    description: 'Update, pause, resume or close a task from list_tasks, owned by this Bot. Close retains history. Running executions continue. Timing uses either cron or runAt.',
+    parameters: { type: 'object', properties: {
+      taskId: { type: 'string' }, action: { type: 'string', enum: ['update', 'pause', 'resume', 'close'] },
+      title: { type: 'string' }, prompt: { type: 'string' }, cron: { type: 'string' },
+      runAt: { type: 'string', description: 'One-off ISO time with timezone.' },
+    }, required: ['taskId', 'action'] },
   },
   {
     name: 'web_fetch',
@@ -115,14 +131,17 @@ export interface ToolContext {
   requestApproval?: (call: ToolCall, summary: string) => Promise<boolean>;
   remember: (text: string, pinned: boolean) => { id: string };
   recall: (query: string) => string[];
-  createSchedule: (cron: string, prompt: string) => Schedule;
+  createSchedule: (input: ScheduleInput) => Schedule;
+  listTasks: (includeClosed: boolean) => Schedule[];
+  updateTask: (id: string, patch: ScheduleUpdate) => Schedule;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
   signal?: AbortSignal;
 }
 
 export function toolNamesFor(bot: Bot): string[] {
-  return bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
+  const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
+  return names.includes('schedule_task') ? [...new Set([...names, 'list_tasks', 'update_task'])] : names;
 }
 
 export function schemasFor(bot: Bot): ToolSchema[] {
@@ -134,6 +153,15 @@ function requireString(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== 'string' || !value.trim()) throw new Error(`参数 ${key} 必须是非空字符串`);
   return value;
+}
+
+function taskTime(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error('runAt 必须是包含时区的 ISO 8601 时间');
+  const year = Number(value.slice(0, 4)), month = Number(value.slice(5, 7)), day = Number(value.slice(8, 10));
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day || Number(value.slice(11, 13)) > 23) throw new Error('runAt 日期或时间无效');
+  return Date.parse(value);
 }
 
 const IMAGE_EXT = new Map([
@@ -343,14 +371,24 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         });
       }
       case 'schedule_task': {
-        const cron = requireString(args, 'cron');
+        if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用定时任务工具');
         const prompt = requireString(args, 'prompt');
-        const schedule = ctx.createSchedule(cron, prompt);
+        const schedule = ctx.createSchedule({ prompt, title: args.title as string | undefined, cron: args.cron as string | undefined, runAt: taskTime(args.runAt) });
         return finish({
           ok: true,
-          summary: `已创建定时任务：${schedule.cron}`,
-          detail: `任务 id ${schedule.id}\n指令：${prompt}`,
+          summary: `任务已安排：${schedule.title || schedule.prompt.slice(0, 50)}`,
+          detail: JSON.stringify(schedule),
         });
+      }
+      case 'list_tasks': {
+        if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用定时任务工具');
+        const tasks = ctx.listTasks(args.includeClosed === true);
+        return finish({ ok: true, summary: `找到 ${tasks.length} 个任务`, detail: JSON.stringify(tasks) });
+      }
+      case 'update_task': {
+        if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用定时任务工具');
+        const schedule = ctx.updateTask(requireString(args, 'taskId'), { action: requireString(args, 'action') as ScheduleUpdate['action'], title: args.title as string | undefined, prompt: args.prompt as string | undefined, cron: args.cron as string | undefined, runAt: taskTime(args.runAt) });
+        return finish({ ok: true, summary: `任务已${args.action === 'pause' ? '暂停' : args.action === 'resume' ? '恢复' : args.action === 'close' ? '关闭' : '更新'}：${schedule.title || schedule.prompt.slice(0, 50)}`, detail: JSON.stringify(schedule) });
       }
       case 'web_fetch': {
         const url = requireString(args, 'url');

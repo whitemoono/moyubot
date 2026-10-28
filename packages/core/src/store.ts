@@ -2,16 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   AppSettings,
+  BotMetadataPatch,
+  BotGroupAction,
+  SidebarBotGroup,
   CloudHostSettings,
   Conversation,
   MemoryFact,
   Message,
   Schedule,
+  ScheduleInput,
+  ScheduleUpdate,
   TelegramSettings,
   UiSettings,
 } from './types';
 import { DEFAULT_CLOUD_COMMAND, DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, safeJsonParse } from './util';
+import { UsageLedger } from './usage';
+import { nextCronTime } from './scheduler';
 
 export interface SecretBox {
   get(key: string): string | undefined;
@@ -125,6 +132,7 @@ export function defaultSettings(dataDir: string): AppSettings {
 export interface ConversationSummary {
   id: string;
   botId: string;
+  group?: Conversation['group'];
   title: string;
   updatedAt: number;
   preview?: string;
@@ -137,12 +145,14 @@ export type SettingsPatch = Omit<Partial<AppSettings>, 'cloud' | 'ui' | 'telegra
 };
 
 export class Store {
+  readonly usage: UsageLedger;
   readonly dataDir: string;
   readonly secrets: SecretBox;
   settings: AppSettings;
   private conversations = new Map<string, Conversation>();
   private memories: MemoryFact[] = [];
   private scheduleList: Schedule[] = [];
+  private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
   constructor(dataDir: string, secrets?: SecretBox) {
     this.dataDir = dataDir;
@@ -175,7 +185,11 @@ export class Store {
       this.persistSettings();
     }
 
+    this.settings.ui.botGroups = this.listBotGroups();
     this.loadConversations();
+    for (const bot of this.settings.bots) this.botConversation(bot.id);
+    this.usage = new UsageLedger(dataDir);
+    this.usage.backfill(this.conversations.values(), this.settings.bots);
     this.loadMemories();
     this.loadSchedules();
   }
@@ -196,6 +210,7 @@ export class Store {
       ui: patch.ui ? { ...this.settings.ui, ...patch.ui } : this.settings.ui,
       telegram: patch.telegram ? { ...this.settings.telegram, ...patch.telegram } : this.settings.telegram,
     };
+    this.settings.ui.botGroups = this.listBotGroups();
     this.persistSettings();
     return this.settings;
   }
@@ -216,8 +231,68 @@ export class Store {
     const index = this.settings.bots.findIndex((item) => item.id === bot.id);
     if (index >= 0) this.settings.bots[index] = bot;
     else this.settings.bots.push(bot);
+    this.settings.ui.botGroups = this.listBotGroups();
     this.persistSettings();
     return bot;
+  }
+
+  updateBotMetadata(botId: string, patch: BotMetadataPatch) {
+    const bot = this.getBot(botId);
+    if (!bot) throw new Error('Bot 不存在');
+    const name = patch.name === undefined ? bot.name : patch.name.trim();
+    if (!name || name.length > 60) throw new Error('Bot 名字需要 1–60 个字符');
+    const next = { ...bot, name, sidebar: { ...bot.sidebar, ...patch.sidebar }, updatedAt: Date.now() };
+    this.upsertBot(next);
+    return next;
+  }
+
+  listBotGroups(): SidebarBotGroup[] {
+    const groups = new Map<string, SidebarBotGroup>();
+    for (const group of this.settings.ui.botGroups ?? []) {
+      if (group.name && !groups.has(group.name)) groups.set(group.name, { name: group.name, collapsed: !!group.collapsed });
+    }
+    for (const bot of this.settings.bots) {
+      const name = bot.sidebar?.group;
+      if (name && !groups.has(name)) groups.set(name, { name, collapsed: false });
+    }
+    return [...groups.values()];
+  }
+
+  updateBotGroup(name: string, action: BotGroupAction): AppSettings {
+    const groups = this.listBotGroups();
+    const index = groups.findIndex((group) => group.name === name);
+    const hasUngrouped = groups.length > 0 && this.settings.bots.some((bot) => !bot.sidebar?.group && !bot.sidebar?.hidden && !bot.sidebar?.pinned);
+    if (name === '' && action.type !== 'move') throw new Error('未分组仅支持上移和下移');
+    if (index < 0 && !(name === '' && hasUngrouped)) throw new Error('分组不存在');
+    let ungroupedGroupIndex = this.settings.ui.ungroupedGroupIndex;
+    let bots = this.settings.bots;
+    if (action.type === 'rename') {
+      const nextName = action.name.trim();
+      if (!nextName || nextName.length > 60) throw new Error('分组名称需要 1–60 个字符');
+      if (groups.some((group, i) => i !== index && group.name === nextName)) throw new Error('已存在同名分组，请换一个名字');
+      groups[index] = { ...groups[index]!, name: nextName };
+      bots = bots.map((bot) => bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: nextName }, updatedAt: Date.now() } : bot);
+    } else if (action.type === 'delete') {
+      groups.splice(index, 1);
+      if (ungroupedGroupIndex !== undefined && index < ungroupedGroupIndex) ungroupedGroupIndex = Math.max(0, ungroupedGroupIndex - 1);
+      bots = bots.map((bot) => bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: '' }, updatedAt: Date.now() } : bot);
+    } else if (action.type === 'collapse') {
+      groups[index] = { ...groups[index]!, collapsed: action.collapsed };
+    } else if (action.type === 'move') {
+      const ordered = [...groups];
+      if (hasUngrouped) ordered.splice(Math.max(0, Math.min(groups.length, ungroupedGroupIndex ?? groups.length)), 0, { name: '' });
+      const current = ordered.findIndex((group) => group.name === name);
+      const target = current + (action.direction === 'up' ? -1 : 1);
+      if (target >= 0 && target < ordered.length) [ordered[current], ordered[target]] = [ordered[target]!, ordered[current]!];
+      if (hasUngrouped) {
+        const position = ordered.findIndex((group) => group.name === '');
+        ungroupedGroupIndex = position === groups.length ? undefined : position;
+      }
+      groups.splice(0, groups.length, ...ordered.filter((group) => group.name !== ''));
+    } else throw new Error('不支持的分组操作');
+    const previous = this.settings;
+    try { return this.updateSettings({ bots, ui: { botGroups: groups, ungroupedGroupIndex } }); }
+    catch (error) { this.settings = previous; throw error; }
   }
 
   removeBot(botId: string) {
@@ -242,26 +317,62 @@ export class Store {
 
   listConversations(botId?: string): ConversationSummary[] {
     return [...this.conversations.values()]
-      .filter((conv) => !botId || conv.botId === botId)
+      .filter((conv) => !conv.mergedInto && (!botId || conv.botId === botId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((conv) => ({
         id: conv.id,
         botId: conv.botId,
+        group: conv.group,
         title: conv.title,
         updatedAt: conv.updatedAt,
-        preview: conv.messages.at(-1)?.content.slice(0, 120),
+        preview: [...conv.messages].reverse().find((message) => message.content.trim())?.content.slice(0, 120),
       }));
   }
 
   getConversation(id: string): Conversation | undefined {
-    return this.conversations.get(id);
+    const conv = this.conversations.get(id);
+    return conv?.mergedInto ? this.conversations.get(conv.mergedInto) : conv;
   }
 
-  createConversation(botId: string, title = '新对话'): Conversation {
+  createGroup(title: string, memberBotIds: string[]): Conversation {
+    const ids = [...new Set(memberBotIds)];
+    if (ids.length < 2 || ids.length > 12) throw new Error('请选择 2–12 个 Bot');
+    if (ids.some((id) => !this.getBot(id))) throw new Error('群成员中的 Bot 不存在');
+    const name = title.trim();
+    if (name.length > 60) throw new Error('群聊名字最多 60 个字符');
+    const id = newId('group');
+    const conv: Conversation = { id, botId: id, group: { memberBotIds: ids }, title: name || ids.map((id) => this.getBot(id)!.name).join('、').slice(0, 60), messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+    this.conversations.set(id, conv);
+    this.saveConversation(id);
+    return conv;
+  }
+
+  botConversation(botId: string): Conversation {
+    if (!this.getBot(botId)) throw new Error('Bot 不存在');
+    const existing = [...this.conversations.values()]
+      .filter((conv) => conv.botId === botId && !conv.mergedInto)
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    const canonical = existing[0];
+    if (canonical) {
+      if (existing.length > 1) {
+        const messages = new Map<string, Message>();
+        for (const conv of existing) for (const message of conv.messages) messages.set(message.id, message);
+        canonical.messages = [...messages.values()].sort((a, b) => a.createdAt - b.createdAt);
+        canonical.updatedAt = Math.max(...existing.map((conv) => conv.updatedAt));
+        // Rebuild the summary against the merged transcript on the next run.
+        canonical.context = undefined;
+        this.saveConversation(canonical.id);
+        for (const previous of existing.slice(1)) {
+          previous.mergedInto = canonical.id;
+          this.saveConversation(previous.id);
+        }
+      }
+      return canonical;
+    }
     const conv: Conversation = {
       id: newId('conv'),
       botId,
-      title,
+      title: this.getBot(botId)!.name,
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -271,17 +382,20 @@ export class Store {
     return conv;
   }
 
+  /** Compatibility for older scripts: opening a conversation always returns the same one. */
+  createConversation(botId: string, _title?: string): Conversation {
+    return this.botConversation(botId);
+  }
+
   appendMessage(conversationId: string, message: Message): Conversation {
-    const conv = this.conversations.get(conversationId);
+    const conv = this.getConversation(conversationId);
     if (!conv) throw new Error(`conversation ${conversationId} not found`);
     const existing = conv.messages.findIndex((m) => m.id === message.id);
     if (existing >= 0) conv.messages[existing] = message;
     else conv.messages.push(message);
     conv.updatedAt = Date.now();
-    if (conv.title === '新对话' && message.role === 'user') {
-      conv.title = message.content.replace(/\s+/g, ' ').trim().slice(0, 32) || '新对话';
-    }
-    this.saveConversation(conversationId);
+    conv.title = this.getBot(conv.botId)?.name ?? conv.title;
+    this.saveConversation(conv.id);
     return conv;
   }
 
@@ -308,9 +422,10 @@ export class Store {
     return this.memories.filter((fact) => !botId || fact.botId === botId);
   }
 
-  addMemory(botId: string, text: string, pinned = false): MemoryFact {
+  addMemory(botId: string, text: string, pinned = false, source: MemoryFact['source'] = 'manual'): MemoryFact {
     const normalized = text.trim();
-    const existing = this.memories.find((fact) => fact.botId === botId && fact.text.trim() === normalized);
+    const key = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s。.!！]+/gu, '');
+    const existing = this.memories.find((fact) => fact.botId === botId && key(fact.text) === key(normalized));
     if (existing) {
       if (pinned && !existing.pinned) {
         existing.pinned = true;
@@ -318,7 +433,7 @@ export class Store {
       }
       return existing;
     }
-    const fact: MemoryFact = { id: newId('mem'), botId, text: normalized, pinned, createdAt: Date.now() };
+    const fact: MemoryFact = { id: newId('mem'), botId, text: normalized, pinned, source, createdAt: Date.now() };
     this.memories.push(fact);
     writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
     return fact;
@@ -334,22 +449,86 @@ export class Store {
     const file = path.join(this.dataDir, 'schedules.json');
     if (!fs.existsSync(file)) return;
     this.scheduleList = safeJsonParse<Schedule[]>(fs.readFileSync(file, 'utf8'), []);
+    if (this.scheduleList.some((task) => task.lastStatus === 'running')) {
+      this.persistSchedules(this.scheduleList.map((task) => task.lastStatus !== 'running' ? task : {
+        ...task, lastStatus: 'error', lastError: '上次执行因应用退出而中断，请确认聊天中的结果后再安排。',
+        ...(task.kind === 'once' ? { enabled: false, completedAt: Date.now(), nextRunAt: undefined } : {}),
+      }));
+    }
   }
 
   listSchedules(): Schedule[] {
-    return [...this.scheduleList];
+    return this.scheduleList.map((schedule) => ({ ...schedule }));
+  }
+
+  onSchedulesChanged(listener: (schedules: Schedule[]) => void): () => void {
+    this.scheduleListeners.add(listener);
+    return () => { this.scheduleListeners.delete(listener); };
+  }
+
+  private persistSchedules(next: Schedule[]): void {
+    writeJsonAtomic(path.join(this.dataDir, 'schedules.json'), next);
+    this.scheduleList = next;
+    for (const listener of this.scheduleListeners) listener(this.listSchedules());
+  }
+
+  private scheduleTiming(input: { cron?: string; runAt?: number }): Pick<Schedule, 'kind' | 'cron' | 'runAt' | 'nextRunAt'> {
+    if (input.cron !== undefined && input.runAt !== undefined) throw new Error('重复任务和一次性任务只能选择一种时间');
+    if (input.runAt !== undefined) {
+      if (!Number.isFinite(input.runAt) || input.runAt <= Date.now() || input.runAt > 8640000000000000) throw new Error('一次性任务需要有效的未来时间');
+      return { kind: 'once', cron: '', runAt: input.runAt, nextRunAt: input.runAt };
+    }
+    if (typeof input.cron !== 'string' || !input.cron.trim()) throw new Error('请提供 cron 或一次性执行时间');
+    const next = nextCronTime(input.cron);
+    if (!next) throw new Error('这个重复时间在未来一年内没有可执行日期');
+    return { kind: 'cron', cron: input.cron.trim(), runAt: undefined, nextRunAt: next.getTime() };
+  }
+
+  createSchedule(botId: string, input: ScheduleInput): Schedule {
+    if (!this.getBot(botId)) throw new Error('Bot 不存在');
+    if (typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 20000) throw new Error('任务指令不能为空且不能超过 20000 字符');
+    if (input.title !== undefined && (typeof input.title !== 'string' || input.title.length > 100)) throw new Error('任务名称不能超过 100 字符');
+    const timing = this.scheduleTiming(input);
+    const duplicate = this.scheduleList.find((item) => item.botId === botId && !item.closedAt && !item.completedAt && item.prompt === input.prompt.trim() && item.cron === timing.cron && item.runAt === timing.runAt);
+    if (duplicate) return { ...duplicate };
+    return this.upsertSchedule({ id: newId('sched'), botId, prompt: input.prompt.trim(), title: input.title?.trim(), ...timing, enabled: true, createdAt: Date.now(), updatedAt: Date.now() });
+  }
+
+  updateSchedule(botId: string, id: string, patch: ScheduleUpdate): Schedule {
+    const current = this.scheduleList.find((item) => item.id === id && item.botId === botId);
+    if (!current) throw new Error('找不到属于当前 Bot 的任务，请先查询任务列表');
+    if (!patch || !['update', 'pause', 'resume', 'close'].includes(patch.action ?? 'update')) throw new Error('不支持的任务操作');
+    if (current.closedAt || current.completedAt) throw new Error('任务已关闭或已完成，需要时请创建新任务');
+    const next = { ...current, updatedAt: Date.now() };
+    if (patch.prompt !== undefined) {
+      if (typeof patch.prompt !== 'string' || !patch.prompt.trim() || patch.prompt.length > 20000) throw new Error('任务指令不能为空且不能超过 20000 字符');
+      next.prompt = patch.prompt.trim();
+    }
+    if (patch.title !== undefined) {
+      if (typeof patch.title !== 'string' || patch.title.length > 100) throw new Error('任务名称不能超过 100 字符');
+      next.title = patch.title.trim();
+    }
+    if (patch.cron !== undefined || patch.runAt !== undefined) Object.assign(next, this.scheduleTiming(patch));
+    if (patch.action === 'pause') { next.enabled = false; next.nextRunAt = undefined; }
+    if (patch.action === 'close') { next.enabled = false; next.closedAt = Date.now(); next.nextRunAt = undefined; }
+    if (patch.action === 'resume') {
+      Object.assign(next, this.scheduleTiming(next.kind === 'once' ? { runAt: next.runAt } : { cron: next.cron }));
+      next.enabled = true;
+    }
+    if (!next.enabled) next.nextRunAt = undefined;
+    return this.upsertSchedule(next);
   }
 
   upsertSchedule(schedule: Schedule): Schedule {
     const index = this.scheduleList.findIndex((item) => item.id === schedule.id);
-    if (index >= 0) this.scheduleList[index] = schedule;
-    else this.scheduleList.push(schedule);
-    writeJsonAtomic(path.join(this.dataDir, 'schedules.json'), this.scheduleList);
-    return schedule;
+    const next = this.listSchedules();
+    if (index >= 0) next[index] = { ...schedule };
+    else next.push({ ...schedule });
+    this.persistSchedules(next);
+    return { ...schedule };
   }
 
   removeSchedule(id: string): void {
-    this.scheduleList = this.scheduleList.filter((item) => item.id !== id);
-    writeJsonAtomic(path.join(this.dataDir, 'schedules.json'), this.scheduleList);
+    this.persistSchedules(this.scheduleList.filter((item) => item.id !== id));
   }
 }

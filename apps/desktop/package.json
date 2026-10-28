@@ -2,7 +2,7 @@
   "name": "@moyu/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "MoyuBot Windows desktop client (Electron + React, liquid glass)",
+  "description": "MoyuBot Windows desktop workspace (Electron + React)",
   "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -39,7 +39,12 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      { "from": "build/icon.png", "to": "icon.png" },
+      { "from": "build/icon.ico", "to": "icon.ico" }
+    ],
     "win": {
+      "icon": "build/icon.ico",
       "target": ["nsis"]
     }
   }

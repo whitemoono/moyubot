@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
+import { useDialogFocus } from '../lib/use-dialog-focus';
 
 type DivProps = HTMLAttributes<HTMLDivElement> & { children?: ReactNode };
 
@@ -139,6 +141,7 @@ export function Sheet({
   children,
   footer,
   wide,
+  className = '',
 }: {
   open: boolean;
   title: string;
@@ -147,20 +150,15 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const dialog = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialog, onClose, open);
 
   if (!open) return null;
   return (
-    <div className="sheet-backdrop" role="dialog" aria-modal="true" onMouseDown={onClose}>
-      <div className={`sheet glass ${wide ? 'sheet--wide' : ''}`.trim()} onMouseDown={(event) => event.stopPropagation()}>
+    createPortal(<div ref={dialog} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={title} onMouseDown={onClose}>
+      <div className={`sheet glass ${wide ? 'sheet--wide' : ''} ${className}`.trim()} onMouseDown={(event) => event.stopPropagation()}>
         <header className="sheet__head">
           <div>
             <h2>{title}</h2>
@@ -171,7 +169,7 @@ export function Sheet({
         <div className="sheet__body">{children}</div>
         {footer ? <footer className="sheet__foot">{footer}</footer> : null}
       </div>
-    </div>
+    </div>, document.querySelector('.app') ?? document.body)
   );
 }
 

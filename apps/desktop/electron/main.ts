@@ -39,9 +39,11 @@ function createWindow(): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 18, y: 18 },
-    backgroundColor: '#05060a',
+    backgroundColor: '#111111',
     roundedCorners: true,
-    icon: path.join(app.getAppPath(), 'build', 'icon.png'),
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : path.join(app.getAppPath(), 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

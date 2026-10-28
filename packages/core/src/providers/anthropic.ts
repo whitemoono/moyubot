@@ -99,7 +99,10 @@ export class AnthropicProvider implements ChatProvider {
       switch (payload.type) {
         case 'message_start':
           if (payload.message?.usage) {
-            usage = { promptTokens: payload.message.usage.input_tokens, completionTokens: 0 };
+            const input = payload.message.usage;
+            usage = { promptTokens: (input.input_tokens ?? 0) + (input.cache_read_input_tokens ?? 0) + (input.cache_creation_input_tokens ?? 0), completionTokens: input.output_tokens,
+              cachedTokens: input.cache_read_input_tokens };
+            handlers.onUsage?.(usage);
           }
           break;
         case 'content_block_start': {
@@ -127,7 +130,10 @@ export class AnthropicProvider implements ChatProvider {
         }
         case 'message_delta':
           if (payload.delta?.stop_reason) finishReason = payload.delta.stop_reason;
-          if (payload.usage?.output_tokens && usage) usage = { ...usage, completionTokens: payload.usage.output_tokens };
+          if (typeof payload.usage?.output_tokens === 'number') {
+            usage = { ...usage, completionTokens: payload.usage.output_tokens };
+            handlers.onUsage?.(usage);
+          }
           break;
         case 'error':
           throw new ProviderError(payload.error?.message ?? 'Anthropic stream error', 500);

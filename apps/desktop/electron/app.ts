@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { BrowserWindow, app, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, ScheduleRunner, Store, TelegramGateway, resolveArtifact } from '@moyu/core';
+import { BrowserWindow, app, clipboard, ipcMain, safeStorage, shell } from 'electron';
+import { AgentRuntime, CloudHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
+import { checkForUpdates } from './updates';
 import type {
   AgentEvent,
   AppSettings,
   ApprovalDecision,
   ApprovalRequest,
   Bot,
+  BotMetadataPatch,
+  BotGroupAction,
   BootstrapPayload,
   CloudStatus,
   Conversation,
@@ -18,6 +21,8 @@ import type {
   SecretBox,
   SendMessageInput,
   SendMessageResult,
+  ScheduleUpdate,
+  UsageQuery,
 } from '@moyu/core';
 import { createChatProvider } from '@moyu/core';
 
@@ -83,15 +88,16 @@ export class MoyuApp {
   readonly cloud: CloudHost;
   readonly runtime: AgentRuntime;
   readonly scheduler: ScheduleRunner;
-  private telegram: TelegramGateway | undefined;
   private win: BrowserWindow | undefined;
   private approvals = new Map<string, PendingApproval>();
   private version: string;
+  private offSchedules: () => void;
 
   constructor(dataDir: string, version: string) {
     this.version = version;
     const secrets = new SafeSecretBox(dataDir);
     this.store = new Store(dataDir, secrets);
+    this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
 
@@ -124,7 +130,6 @@ export class MoyuApp {
   start(): void {
     this.registerIpc();
     this.scheduler.start();
-    void this.restartTelegram();
     void this.cloud.refresh();
   }
 
@@ -149,6 +154,7 @@ export class MoyuApp {
   }
 
   private registerIpc(): void {
+    ipcMain.handle('moyu:app:check-updates', () => checkForUpdates(this.version));
     ipcMain.handle('moyu:bootstrap', (): BootstrapPayload => {
       const settings = this.store.getSettings();
       const providerKeys: Record<string, boolean> = {};
@@ -159,6 +165,7 @@ export class MoyuApp {
         settings,
         cloud: this.cloud.status(),
         conversations: this.store.listConversations(),
+        runningConversations: this.store.listConversations().filter((item) => this.runtime.isRunning(item.id)).map((item) => item.id),
         schedules: this.store.listSchedules(),
         memories: this.store.listMemories(),
         secrets: {
@@ -175,7 +182,6 @@ export class MoyuApp {
     ipcMain.handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
       const next = this.store.updateSettings(patch);
       if (patch.cloud) this.cloud.updateSettings(next.cloud);
-      if (patch.telegram) void this.restartTelegram();
       return next;
     });
 
@@ -183,15 +189,11 @@ export class MoyuApp {
       this.store.secrets.set(this.store.providerSecretKey(input.providerId), input.key.trim());
     });
 
-    ipcMain.handle('moyu:telegram:token', (_event, token: string) => {
-      this.store.secrets.set('telegram:token', token.trim());
-      void this.restartTelegram();
-    });
 
-    ipcMain.handle('moyu:provider:test', async (_event, providerId: string): Promise<ProviderTestResult> => {
-      const config = this.store.getProvider(providerId);
+    ipcMain.handle('moyu:provider:test', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<ProviderTestResult> => {
+      const config = draft ? { ...draft, id: providerId } : this.store.getProvider(providerId);
       if (!config) return { ok: false, latencyMs: 0, message: '供应商不存在' };
-      const key = this.store.secrets.get(this.store.providerSecretKey(providerId)) ?? '';
+      const key = draftKey?.trim() || this.store.secrets.get(this.store.providerSecretKey(providerId)) || '';
       const provider = createChatProvider(config, key);
       const startedAt = Date.now();
       try {
@@ -202,10 +204,10 @@ export class MoyuApp {
       }
     });
 
-    ipcMain.handle('moyu:provider:models', async (_event, providerId: string): Promise<string[]> => {
-      const config = this.store.getProvider(providerId);
+    ipcMain.handle('moyu:provider:models', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<string[]> => {
+      const config = draft ? { ...draft, id: providerId } : this.store.getProvider(providerId);
       if (!config) return [];
-      const key = this.store.secrets.get(this.store.providerSecretKey(providerId)) ?? '';
+      const key = draftKey?.trim() || this.store.secrets.get(this.store.providerSecretKey(providerId)) || '';
       return createChatProvider(config, key).listModels();
     });
 
@@ -215,6 +217,15 @@ export class MoyuApp {
       return next;
     });
 
+    ipcMain.handle('moyu:bot:metadata', (_event, botId: string, patch: BotMetadataPatch) => this.store.updateBotMetadata(botId, patch));
+    ipcMain.handle('moyu:bot-group:update', (_event, name: string, action: BotGroupAction) => this.store.updateBotGroup(name, action));
+    ipcMain.handle('moyu:bot:copy-conversation', (_event, botId: string) => {
+      if (!this.store.getBot(botId)) throw new Error('Bot 不存在');
+      const id = this.store.botConversation(botId).id;
+      clipboard.writeText(id);
+      return id;
+    });
+
     ipcMain.handle('moyu:bot:delete', (_event, botId: string) => {
       this.store.removeBot(botId);
     });
@@ -222,6 +233,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {
       return this.runtime.send(input);
     });
+    ipcMain.handle('moyu:group:create', (_event, title: string, memberBotIds: string[]) => this.store.createGroup(title, memberBotIds));
 
     ipcMain.handle('moyu:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
 
@@ -234,10 +246,10 @@ export class MoyuApp {
       this.send('moyu:event', { type: 'approval_done', requestId: decision.requestId, approved: decision.approved } satisfies AgentEvent);
     });
 
+    ipcMain.handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
     ipcMain.handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
     ipcMain.handle('moyu:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
-    ipcMain.handle('moyu:conversation:new', (_event, botId: string): Conversation => this.store.createConversation(botId));
-    ipcMain.handle('moyu:conversation:delete', (_event, id: string) => this.store.deleteConversation(id));
+    ipcMain.handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
 
     ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
@@ -279,9 +291,11 @@ export class MoyuApp {
     ipcMain.handle('moyu:schedule:delete', (_event, id: string) => this.store.removeSchedule(id));
     ipcMain.handle('moyu:schedule:toggle', (_event, id: string): Schedule[] => {
       const schedule = this.store.listSchedules().find((item) => item.id === id);
-      if (schedule) this.store.upsertSchedule({ ...schedule, enabled: !schedule.enabled });
+      if (!schedule) throw new Error('任务不存在');
+      this.store.updateSchedule(schedule.botId, id, { action: schedule.enabled ? 'pause' : 'resume' });
       return this.store.listSchedules();
     });
+    ipcMain.handle('moyu:schedule:update', (_event, botId: string, id: string, patch: ScheduleUpdate): Schedule => this.store.updateSchedule(botId, id, patch));
 
     ipcMain.handle('moyu:memories', (_event, botId?: string): MemoryFact[] => this.store.listMemories(botId));
     ipcMain.handle('moyu:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
@@ -309,23 +323,9 @@ export class MoyuApp {
     });
   }
 
-  private async restartTelegram(): Promise<void> {
-    this.telegram?.stop();
-    this.telegram = undefined;
-    const settings = this.store.getSettings().telegram;
-    const token = this.store.secrets.get('telegram:token') ?? settings.token;
-    if (!settings.enabled || !token) return;
-    this.telegram = new TelegramGateway({
-      store: this.store,
-      runtime: this.runtime,
-      token,
-      onLog: (level, text) => this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent),
-    });
-    await this.telegram.start();
-  }
 
   dispose(): void {
-    this.telegram?.stop();
+    this.offSchedules();
     this.scheduler.stop();
     this.cloud.dispose();
     for (const pending of this.approvals.values()) {

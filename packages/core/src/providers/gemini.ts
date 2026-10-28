@@ -102,8 +102,10 @@ export class GeminiProvider implements ChatProvider {
       if (payload.usageMetadata) {
         usage = {
           promptTokens: payload.usageMetadata.promptTokenCount,
-          completionTokens: payload.usageMetadata.candidatesTokenCount,
+          completionTokens: typeof payload.usageMetadata.candidatesTokenCount === 'number' ? payload.usageMetadata.candidatesTokenCount + (payload.usageMetadata.thoughtsTokenCount ?? 0) : undefined,
+          cachedTokens: payload.usageMetadata.cachedContentTokenCount,
         };
+        handlers.onUsage?.(usage);
       }
       const candidate = payload.candidates?.[0];
       if (!candidate) continue;

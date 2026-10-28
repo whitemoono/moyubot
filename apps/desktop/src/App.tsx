@@ -1,5 +1,5 @@
 import logoUrl from './assets/brand/logo.png';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMoyu } from './state';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
@@ -7,10 +7,9 @@ import { TitleBar } from './components/TitleBar';
 import { Button, Sheet } from './components/Glass';
 import { Icon } from './components/Icon';
 import { ChatView } from './views/ChatView';
-import { BotsView } from './views/BotsView';
-import { CloudView } from './views/CloudView';
 import { TasksView } from './views/TasksView';
 import { SettingsView } from './views/SettingsView';
+import { CreateBotDialog } from './components/CreateBotDialog';
 
 function Backdrop() {
   return <div className="wallpaper" aria-hidden="true" />;
@@ -67,7 +66,10 @@ function Toasts() {
 }
 
 export function App() {
-  const { ready, view, settings } = useMoyu();
+  const { ready, view, settings, settingsOpen, conversation } = useMoyu();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [creatingBot, setCreatingBot] = useState(false);
 
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -75,6 +77,17 @@ export function App() {
     const root = document.documentElement;
     root.classList.toggle('reduce-motion', settings.ui.reduceMotion);
   }, [settings.ui.reduceMotion]);
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) setInspectorOpen(false);
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, []);
+
+  useEffect(() => setInspectorOpen(false), [view]);
+  useEffect(() => { if (conversation?.group) setInspectorOpen(false); }, [conversation?.id]);
 
   useEffect(() => {
     // Views remount on switch; make sure a restored scroll position never hides the header.
@@ -96,26 +109,25 @@ export function App() {
   return (
     <div className="app">
       <Backdrop />
-      <TitleBar />
+      <TitleBar collapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} />
       {!ready ? (
         <div className="splash">
           <img className="splash-logo" src={logoUrl} alt="" />
           <p>正在启动 MoyuBot…</p>
         </div>
       ) : (
-        <div className={`window-body ${view === 'cloud' || view === 'settings' ? 'window-body--wide' : ''}`.trim()}>
-          <Sidebar />
+        <div inert={settingsOpen} className={`window-body ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${inspectorOpen && view === 'chat' ? 'is-inspector-open' : ''}`}>
+          <Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} onCreateBot={() => setCreatingBot(true)} />
           <main className="main-view" key={view} ref={mainRef}>
-            {view === 'chat' ? <ChatView /> : null}
-            {view === 'bots' ? <BotsView /> : null}
-            {view === 'cloud' ? <CloudView /> : null}
+            {view === 'chat' ? <ChatView inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen((value) => !value)} /> : null}
             {view === 'tasks' ? <TasksView /> : null}
-            {view === 'settings' ? <SettingsView /> : null}
           </main>
-          <Inspector />
+          {inspectorOpen && view === 'chat' && !conversation?.group ? <Inspector onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
         </div>
       )}
       <ApprovalSheet />
+      {ready && settingsOpen ? <SettingsView onCreateBot={() => setCreatingBot(true)} /> : null}
+      {creatingBot ? <CreateBotDialog onClose={() => setCreatingBot(false)} /> : null}
       <Toasts />
     </div>
   );

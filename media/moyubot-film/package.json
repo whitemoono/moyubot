@@ -1,0 +1,11 @@
+{
+  "name": "moyubot-film",
+  "private": true,
+  "version": "1.0.0",
+  "description": "112-second deterministic Canvas product film with Chinese narration and original music",
+  "devDependencies": {"playwright": "^1.56.0"},
+  "scripts": {
+    "preview": "node serve.cjs",
+    "render": "node render.cjs"
+  }
+}

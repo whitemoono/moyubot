@@ -17,7 +17,6 @@ const dataDir = path.join(root, '.work', 'smoke-data');
 fs.rmSync(dataDir, { recursive: true, force: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
-const PORT = 8791;
 let call = 0;
 
 const server = http.createServer(async (req, res) => {
@@ -85,7 +84,9 @@ const server = http.createServer(async (req, res) => {
   res.end();
 });
 
-await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+const port = server.address().port;
 
 const store = new core.Store(dataDir);
 store.updateSettings({
@@ -93,7 +94,7 @@ store.updateSettings({
 });
 const provider = store.getSettings().providers[0];
 store.updateSettings({
-  providers: [{ ...provider, baseUrl: `http://127.0.0.1:${PORT}/v1`, defaultModel: 'moyu-demo' }],
+  providers: [{ ...provider, baseUrl: `http://127.0.0.1:${port}/v1`, defaultModel: 'moyu-demo' }],
   bots: store.getSettings().bots.map((bot) => ({
     ...bot,
     model: 'moyu-demo',

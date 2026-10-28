@@ -1,6 +1,20 @@
 import type { SVGProps } from 'react';
 
 const PATHS: Record<string, React.ReactNode> = {
+  external: <><path d="M14 4h6v6M20 4l-9 9M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /></>,
+  github: <><path d="M9 19c-4 1.2-4-2-5-2m10 4v-3.2c0-1 .1-1.5-.5-2 3-.3 6-1.5 6-5.5a4.3 4.3 0 0 0-1.2-3c.1-.7.5-2-.2-3.3 0 0-1-.3-3.2 1.2a11 11 0 0 0-5.8 0C6.9 3.7 5.9 4 5.9 4c-.7 1.3-.3 2.6-.2 3.3a4.3 4.3 0 0 0-1.2 3c0 4 3 5.2 6 5.5-.5.4-.5 1.1-.5 2V21" /></>,
+  usage: <><path d="M4 20h16M6 16v-4M12 16V5M18 16V9" /></>,
+  plug: <><path d="m8 3 3 3M16 3l-3 3M8 6h8v5a4 4 0 0 1-8 0V6ZM12 15v3a3 3 0 0 1-3 3H6" /></>,
+  users: <><circle cx="9" cy="8" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" /></>,
+  back: <path d="m11 5-7 7 7 7M4 12h16" />,
+  grid: <><rect x="4" y="4" width="6" height="6" rx="1.4" /><rect x="14" y="4" width="6" height="6" rx="1.4" /><rect x="4" y="14" width="6" height="6" rx="1.4" /><path d="M17 14v6M14 17h6" /></>,
+  search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
+  sidebar: <><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9 4.5v15" /></>,
+  pin: <><path d="m15 3 6 6-3 1-4 4-1 4-7-7 4-1 4-4 1-3ZM4 20l5-5" /></>,
+  unread: <><path d="M18 12v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h7M7 19l-3 3" /><circle cx="19" cy="5" r="3" /></>,
+  hide: <><path d="m3 3 18 18M10.5 5.2 12 5c5.5 0 9 7 9 7a18 18 0 0 1-3.3 4.3M6.3 6.3A19 19 0 0 0 3 12s3.5 7 9 7a9 9 0 0 0 4.2-1.2M10 10a3 3 0 0 0 4 4" /></>,
+  sliders: <><path d="M5 7h14M5 17h14" /><circle cx="9" cy="7" r="2" fill="var(--surface)" /><circle cx="15" cy="17" r="2" fill="var(--surface)" /></>,
+  edit: <><path d="m15 4 5 5-10.5 10.5-6 1 1-6L15 4Z" /><path d="m12 7 5 5" /></>,
   chat: (
     <>
       <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9l-4.2 3.1c-.5.4-.8.1-.8-.4V6.5Z" />
@@ -94,13 +108,13 @@ const PATHS: Record<string, React.ReactNode> = {
   minimize: <path d="M6 12h12" />,
   maximize: <rect x="6" y="6" width="12" height="12" rx="2" />,
   close: <path d="M7 7l10 10M17 7 7 17" />,
+  reply: <path d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1" />,
   copy: (
     <>
       <rect x="9" y="9" width="10" height="10" rx="2.4" />
       <path d="M15 6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15" />
     </>
   ),
-  telegram: <path d="M21 4.5 2.8 11.3c-.8.3-.8 1.1 0 1.4l4.1 1.4 1.6 4.8c.2.7 1 .9 1.5.3l2.3-2.6 4.4 3.2c.6.4 1.4.1 1.6-.7L22 5.5c.2-.7-.4-1.3-1-1Z" />,
   globe: (
     <>
       <circle cx="12" cy="12" r="8.4" />

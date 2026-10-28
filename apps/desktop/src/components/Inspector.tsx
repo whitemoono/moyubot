@@ -1,130 +1,110 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CLOUD_META, formatDuration, formatRelative } from '../lib/format';
+import { assetUrl, moyu } from '../lib/bridge';
 import { useMoyu } from '../state';
-import { Button, IconButton, Panel } from './Glass';
+import { BotAvatar } from './BotAvatar';
+import { BotAvatarDialog } from './BotAvatarDialog';
+import { Button, IconButton } from './Glass';
 import { Icon } from './Icon';
+import { BotTasks } from './BotTasks';
 
-export function Inspector() {
-  const { cloud, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast } = useMoyu();
+const TABS = [{ id: 'details', label: '详情' }, { id: 'library', label: '资料库' }, { id: 'computer', label: '电脑' }] as const;
+type Tab = typeof TABS[number]['id'];
+
+export function Inspector({ onClose, onCreateBot }: { onClose: () => void; onCreateBot: () => void }) {
+  const { cloud, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast, conversation, compacting, setView } = useMoyu();
+  const [tab, setTab] = useState<Tab>('computer');
   const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [avatarBotId, setAvatarBotId] = useState<string | null>(null);
+  useEffect(() => { setTab('computer'); setDraft(''); }, [bot?.id]);
   const meta = CLOUD_META[cloud.state];
   const provider = settings.providers.find((item) => item.id === bot?.providerId);
   const awake = cloud.state === 'ready' || cloud.state === 'busy';
+  const transitioning = pending || cloud.state === 'waking' || cloud.state === 'sleeping';
+  const resting = ['suspended', 'off', 'stopped'].includes(cloud.state);
+  const files = [...new Map((conversation?.messages.flatMap((message) => message.attachments ?? []) ?? []).map((file) => [file.path ?? file.id, file])).values()];
+  const computerLabel = resting ? '电脑正在休眠' : cloud.state === 'ready' ? '电脑已就绪' : cloud.state === 'busy' ? '电脑正在工作' : cloud.state === 'error' ? '电脑连接异常' : meta.hint;
+
+  const remember = async () => {
+    if (!draft.trim() || saving) return;
+    setSaving(true);
+    try { await addMemory(draft.trim()); setDraft(''); toast('已写入长期记忆'); }
+    catch (error) { toast((error as Error).message, 'error'); }
+    finally { setSaving(false); }
+  };
+  const controlComputer = async (action: 'wake' | 'sleep' | 'refresh') => {
+    setPending(true);
+    try { await cloudAction(action); } finally { setPending(false); }
+  };
 
   return (
-    <aside className="rail">
-      <Panel className="rail-card rail-card--cloud">
-        <div className="rail-card__head">
-          <span className="rail-card__label">共享云电脑</span>
-          <span className={`badge badge--${meta.tone}`}>{meta.label}</span>
-        </div>
-        <div className={`state-orb state-orb--${meta.tone}`}>
-          <span className="state-orb__core" />
-          <span className="state-orb__shine" />
-        </div>
-        <h3 className="rail-card__title">{cloud.machine?.name ?? settings.cloud.machineName}</h3>
-        <p className="rail-card__sub">{meta.hint}</p>
-        <div className="rail-stats">
-          <div>
-            <span>本次在线</span>
-            <strong>{awake ? formatDuration(cloud.awakeMs || Date.now() - (cloud.lastWakeAt ?? Date.now())) : '0s'}</strong>
-          </div>
-          <div>
-            <span>累计唤醒</span>
-            <strong>{cloud.wakeCount}</strong>
-          </div>
-        </div>
-        <div className="rail-actions">
-          {awake ? (
-            <Button size="sm" variant="glass" icon="moon" onClick={() => void cloudAction('sleep')}>
-              休眠
-            </Button>
-          ) : (
-            <Button size="sm" variant="primary" icon="power" onClick={() => void cloudAction('wake')}>
-              唤醒
-            </Button>
-          )}
-          <IconButton name="refresh" label="刷新状态" onClick={() => void cloudAction('refresh')} />
-        </div>
-      </Panel>
-
-      <Panel className="rail-card">
-        <div className="rail-card__head">
-          <span className="rail-card__label">当前 Bot</span>
-          <span className="badge badge--muted">{provider?.name ?? '供应商未绑定'}</span>
-        </div>
-        <dl className="rail-facts">
-          <div>
-            <dt>模型</dt>
-            <dd className="mono">{bot?.model || '—'}</dd>
-          </div>
-          <div>
-            <dt>权限</dt>
-            <dd>{bot?.approvalPolicy === 'ask' ? '执行前确认' : bot?.approvalPolicy === 'always' ? '全部允许' : '自动执行'}</dd>
-          </div>
-          <div>
-            <dt>绘图</dt>
-            <dd>{bot?.image.backend === 'cloud' ? '云主机出图' : '供应商 API'}{bot?.image.wakeHost ? ' · 先唤醒' : ''}</dd>
-          </div>
-          <div>
-            <dt>工具</dt>
-            <dd>{bot?.tools.length ?? 0} 个已启用</dd>
-          </div>
-        </dl>
-      </Panel>
-
-      <Panel className="rail-card rail-card--grow">
-        <div className="rail-card__head">
-          <span className="rail-card__label">长期记忆</span>
-          <span className="badge badge--muted">{memories.length}</span>
-        </div>
-        <div className="memory-list">
-          {memories.length === 0 ? <p className="memory-empty">还没有记忆。让 Bot 记住偏好，或在下面手动添加。</p> : null}
-          {memories.slice(0, 8).map((memory) => (
-            <div key={memory.id} className="memory-item">
-              <span className="memory-item__text">{memory.text}</span>
-              <button type="button" className="memory-item__remove" aria-label="删除" onClick={() => void deleteMemory(memory.id)}>
-                <Icon name="close" size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="memory-add">
-          <input
-            className="input input--sm"
-            value={draft}
-            placeholder="记一条事实…"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && draft.trim()) {
-                void addMemory(draft.trim()).then(() => {
-                  setDraft('');
-                  toast('已写入长期记忆');
-                });
-              }
-            }}
-          />
-          <IconButton
-            name="plus"
-            label="添加记忆"
-            onClick={() => {
-              if (!draft.trim()) return;
-              void addMemory(draft.trim()).then(() => {
-                setDraft('');
-                toast('已写入长期记忆');
-              });
-            }}
-          />
-        </div>
-      </Panel>
-
-      <div className="rail-foot">
-        <span className={`dot dot--${settings.telegram.enabled ? 'ok' : 'muted'}`} />
-        Telegram 网关{settings.telegram.enabled ? '已启用' : '未启用'}
-        <span className="rail-foot__sep" />
-        数据 v{settings.version}
+    <aside className="rail inspector" aria-label="对话详情">
+      <div className="rail-heading inspector-toolbar"><IconButton name="plus" label="创建新 Bot" onClick={onCreateBot} /><IconButton name="close" label="关闭详情" onClick={onClose} /></div>
+      <div className="inspector-profile">
+        {bot ? <button type="button" className="inspector-avatar-button" aria-label={`修改 ${bot.name} 的头像`} aria-haspopup="dialog" title="修改 Bot 头像" onClick={() => setAvatarBotId(bot.id)}><BotAvatar bot={bot} size="xl" /><span className="inspector-avatar-button__edit" aria-hidden="true"><Icon name="edit" size={13} /></span></button> : null}
+        <h2>{bot?.name ?? 'Bot'}</h2>
       </div>
-      <span className="rail-hint">上次同步 {formatRelative(cloud.lastTransitionAt)}</span>
+      <div className="inspector-tabs" role="tablist" aria-label="Bot 信息" onKeyDown={(event) => {
+        const index = TABS.findIndex((item) => item.id === tab);
+        let next = -1;
+        if (event.key === 'ArrowRight') next = (index + 1) % TABS.length;
+        if (event.key === 'ArrowLeft') next = (index + TABS.length - 1) % TABS.length;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = TABS.length - 1;
+        if (next < 0) return;
+        event.preventDefault(); setTab(TABS[next]!.id);
+        event.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next]?.focus();
+      }}>
+        {TABS.map((item) => <button type="button" key={item.id} id={`inspector-tab-${item.id}`} role="tab" aria-selected={tab === item.id} aria-controls={`inspector-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => setTab(item.id)}>{item.label}</button>)}
+      </div>
+      <div className="inspector-content" key={tab} id={`inspector-panel-${tab}`} role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={0}>
+        {tab === 'computer' ? <div className="inspector-computer">
+          <div className={`computer-preview ${resting ? 'is-resting' : ''} ${transitioning ? 'is-transitioning' : ''}`} role="status" aria-live="polite">
+            <div className="computer-character" aria-hidden="true"><span className="computer-character__eyes" />{resting ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}</div>
+            <strong>{computerLabel}</strong>
+          </div>
+          <p className="computer-caption">{bot?.name} 的电脑</p>
+          <div className="computer-controls">
+            <Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button>
+            <IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} />
+          </div>
+          {awake ? <div className="computer-session"><span>本次在线 {formatDuration(cloud.awakeMs || Date.now() - (cloud.lastWakeAt ?? Date.now()))}</span><Button variant="ghost" size="sm" onClick={() => setView('cloud')}>管理电脑</Button></div> : null}
+          {cloud.state === 'error' || cloud.state === 'unconfigured' ? <p className="inspector-note">{cloud.lastError ?? meta.hint}<button type="button" onClick={() => setView('cloud')}>检查云电脑配置</button></p> : null}
+        </div> : null}
+
+        {tab === 'details' ? <>
+          {bot ? <BotTasks key={bot.id} botId={bot.id} /> : null}
+          <section className="inspector-section"><h3>关于这个 Bot</h3><dl className="inspector-facts">
+            <div><dt>供应商</dt><dd>{provider?.name ?? '未绑定'}</dd></div>
+            <div><dt>模型</dt><dd>{bot?.model || '未选择'}</dd></div>
+            <div><dt>权限</dt><dd>{bot?.approvalPolicy === 'ask' ? '执行前确认' : bot?.approvalPolicy === 'always' ? '全部允许' : '自动执行'}</dd></div>
+            <div><dt>工具</dt><dd>{bot?.tools.length ?? 0} 个已启用</dd></div>
+          </dl></section>
+          <section className="inspector-section context-card"><h3>持续对话</h3>
+            <p>{compacting ? '正在整理上下文与长期记忆…' : '每个 Bot 一个对话，较早的内容会自动整理。'}</p>
+            {conversation?.context ? <details><summary>已整理 {conversation.context.compactedMessages} 条消息</summary><p>{conversation.context.summary}</p></details> : null}
+            <p className="inspector-note">完整聊天记录保留在本地。</p>
+          </section>
+          {bot?.systemPrompt ? <section className="inspector-section"><h3>角色设定</h3><p className="inspector-prompt">{bot.systemPrompt}</p></section> : null}
+        </> : null}
+
+        {tab === 'library' ? <>
+          <section className="inspector-section"><div className="inspector-section__head"><h3>长期记忆</h3><span>{memories.length}</span></div>
+            <div className="memory-list">
+              {!memories.length ? <p className="inspector-note">偏好与重要事项会在对话整理时记在这里。</p> : null}
+              {memories.map((memory) => <div key={memory.id} className="memory-item"><span className="memory-item__text">{memory.text}</span><button type="button" className="memory-item__remove" aria-label="删除记忆" onClick={() => void deleteMemory(memory.id).catch((error: Error) => toast(error.message, 'error'))}><Icon name="close" size={12} /></button></div>)}
+            </div>
+            <form className="memory-add" onSubmit={(event) => { event.preventDefault(); void remember(); }}><input className="input input--sm" value={draft} placeholder="记住一件事…" aria-label="记忆内容" disabled={saving} onChange={(event) => setDraft(event.target.value)} /><IconButton type="submit" name="plus" label="添加记忆" disabled={!draft.trim() || saving} /></form>
+          </section>
+          <section className="inspector-section"><div className="inspector-section__head"><h3>对话文件</h3><span>{files.length}</span></div>
+            {!files.length ? <div className="library-empty"><Icon name="folder" size={26} /><p>对话中的图片和文件会收在这里</p></div> : <div className="library-files">{files.map((file) => <div className="library-file" key={file.path ?? file.id}>{file.kind === 'image' && (assetUrl(file.path) ?? file.dataUrl) ? <img src={assetUrl(file.path) ?? file.dataUrl} alt={file.name} /> : <Icon name="folder" size={20} />}<span>{file.name}</span>{file.path ? <IconButton name="arrowUp" label={`打开 ${file.name}`} onClick={() => void moyu().openArtifact(file.path!).catch((error: Error) => toast(error.message, 'error'))} /> : null}</div>)}</div>}
+          </section>
+        </> : null}
+      </div>
+      {tab === 'computer' && awake ? <span className="inspector-sync">上次同步 {formatRelative(cloud.lastTransitionAt)}</span> : null}
+      {bot && avatarBotId === bot.id ? <BotAvatarDialog key={bot.id} bot={bot} onClose={() => setAvatarBotId(null)} /> : null}
     </aside>
   );
 }

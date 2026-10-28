@@ -1,31 +1,42 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AppUpdateResult,
   AgentEvent,
   AppSettings,
   ApprovalDecision,
   Bot,
+  BotMetadataPatch,
+  BotGroupAction,
   BootstrapPayload,
   CloudStatus,
   Conversation,
   ExecResult,
   MemoryFact,
   ProviderTestResult,
+  ProviderConfig,
   Schedule,
+  ScheduleUpdate,
   SendMessageInput,
   SendMessageResult,
+  UsageQuery,
+  UsageReport,
 } from '@moyu/core';
 import type { ConversationSummary } from '@moyu/core';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
 const api = {
+  checkForUpdates: () => invoke<AppUpdateResult>('moyu:app:check-updates'),
   bootstrap: () => invoke<BootstrapPayload>('moyu:bootstrap'),
+  usage: (query: UsageQuery) => invoke<UsageReport>('moyu:usage', query),
   saveSettings: (patch: Partial<AppSettings>) => invoke<AppSettings>('moyu:settings:save', patch),
   setProviderKey: (providerId: string, key: string) => invoke<void>('moyu:provider:key', { providerId, key }),
-  setTelegramToken: (token: string) => invoke<void>('moyu:telegram:token', token),
-  testProvider: (providerId: string) => invoke<ProviderTestResult>('moyu:provider:test', providerId),
-  listModels: (providerId: string) => invoke<string[]>('moyu:provider:models', providerId),
+  testProvider: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<ProviderTestResult>('moyu:provider:test', providerId, draft, key),
+  listModels: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<string[]>('moyu:provider:models', providerId, draft, key),
   saveBot: (bot: Bot) => invoke<Bot>('moyu:bot:save', bot),
+  updateBotMetadata: (botId: string, patch: BotMetadataPatch) => invoke<Bot>('moyu:bot:metadata', botId, patch),
+  updateBotGroup: (name: string, action: BotGroupAction) => invoke<AppSettings>('moyu:bot-group:update', name, action),
+  copyConversationId: (botId: string) => invoke<string>('moyu:bot:copy-conversation', botId),
   deleteBot: (botId: string) => invoke<void>('moyu:bot:delete', botId),
 
   send: (input: SendMessageInput) => invoke<SendMessageResult>('moyu:send', input),
@@ -33,8 +44,8 @@ const api = {
   approve: (decision: ApprovalDecision) => invoke<void>('moyu:approve', decision),
   conversations: (botId?: string) => invoke<ConversationSummary[]>('moyu:conversations', botId),
   conversation: (id: string) => invoke<Conversation | undefined>('moyu:conversation', id),
-  newConversation: (botId: string) => invoke<Conversation>('moyu:conversation:new', botId),
-  deleteConversation: (id: string) => invoke<void>('moyu:conversation:delete', id),
+  botConversation: (botId: string) => invoke<Conversation>('moyu:conversation:bot', botId),
+  createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
 
   cloud: () => invoke<CloudStatus>('moyu:cloud'),
   cloudAction: (action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop') => invoke<CloudStatus>('moyu:cloud:action', action),
@@ -43,6 +54,7 @@ const api = {
     invoke<CloudStatus>('moyu:cloud:save', { patch, apiKey }),
 
   schedules: () => invoke<Schedule[]>('moyu:schedules'),
+  updateSchedule: (botId: string, id: string, patch: ScheduleUpdate) => invoke<Schedule>('moyu:schedule:update', botId, id, patch),
   addSchedule: (input: { botId: string; cron: string; prompt: string }) => invoke<Schedule>('moyu:schedule:add', input),
   deleteSchedule: (id: string) => invoke<void>('moyu:schedule:delete', id),
   toggleSchedule: (id: string) => invoke<Schedule[]>('moyu:schedule:toggle', id),

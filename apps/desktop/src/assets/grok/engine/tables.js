@@ -72,6 +72,7 @@
     shape: [10, 1],
     overlayTurn: [14, 1],
     spinTurn: [6.2, 1],
+    manualMix: [7, 1],
   };
 
   const FACE_TUNE = { size: 0.86, gap: 1.18, height: 1, eyeWidth: 0.96, eyeHeight: 0.92 };
@@ -81,11 +82,11 @@
   const V_T = new Set(["happy", "excited", "proud"]);
   const B_T = new Set(["playful"]);
   const WINK_STATES = new Set(["idle", "happy", "excited", "curious", "playful"]);
-  const SHAPE_ZOOM = { blob: 0.92, pebble: 0.96, squircle: 0.84, tablet: 1, wedge: 0.94, hex: 0.94, cloud: 1, teardrop: 1 };
+  const SHAPE_ZOOM = { zeta: 0.92, nemu: 0.92, tsuki: 0.92, neko: 0.92, mikan: 0.92, shiro: 0.92, chibi: 0.92 };
   const VIEW_SCALE = 259 / 229;
   const shapeZoom = (name) => SHAPE_ZOOM[name] ?? 1;
   const poseScale = (name) => shapeZoom(name) * VIEW_SCALE;
-  const shapeEyeScale = (name) => SHAPE_ZOOM.blob / shapeZoom(name);
+  const shapeEyeScale = (name) => 0.92 / shapeZoom(name);
   const VIEW = { minX: -15, minY: -15, width: 259, height: 259 };
   const VIEW_HALF = VIEW.width / 2;
   const VIEW_MID = VIEW.minX + VIEW_HALF;
@@ -109,6 +110,13 @@
     violet: { lightFrom: "#B792FE", lightTo: "#804EE0", darkFrom: "#9159FE", darkTo: "#5C39A1" },
     magenta: { lightFrom: "#FF77BE", lightTo: "#E02A88", darkFrom: "#FF47A6", darkTo: "#A21E62" },
     gray: { lightFrom: "#A6A6A6", lightTo: "#696969", darkFrom: "#B7B7B7", darkTo: "#777777" },
+    zeta: { lightFrom: "#4A4C5E", lightTo: "#343542", darkFrom: "#343542", darkTo: "#22232C" },
+    nemu: { lightFrom: "#C9D4FE", lightTo: "#A8B8FD", darkFrom: "#A8B8FD", darkTo: "#8498F4" },
+    tsuki: { lightFrom: "#FBE6CC", lightTo: "#F0CFA6", darkFrom: "#F6D7B4", darkTo: "#E0BC90" },
+    neko: { lightFrom: "#A9BAF8", lightTo: "#7E94F0", darkFrom: "#91A7F7", darkTo: "#6A82E0" },
+    mikan: { lightFrom: "#FB8C56", lightTo: "#F07840", darkFrom: "#F07840", darkTo: "#D45A28" },
+    shiro: { lightFrom: "#DDD4F8", lightTo: "#C2B2EA", darkFrom: "#D2C6F4", darkTo: "#A898D8" },
+    chibi: { lightFrom: "#6BA0F6", lightTo: "#5890F0", darkFrom: "#5890F0", darkTo: "#3E74D4" },
   };
   const INK_ANGLE = 135;
   const inkFg = (id) => {

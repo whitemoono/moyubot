@@ -838,12 +838,13 @@
     }
 
     resetInk() { this.ink = []; }
+    resetRecv() { this.recvTick = -1; this.recvDir = -0.7; }
   }
 
   const turnAtCache = new Map();
-  function turnAtOf(name, path, R) {
+  function turnAtOf(name, path, R, solids) {
     if (turnAtCache.has(name)) return turnAtCache.get(name);
-    const solid = global.GROK_GEO.solids?.[name];
+    const solid = (solids || global.GROK_GEO.solids)?.[name];
     if (!solid || !global.GROK_MATH?.makeTurnAt) {
       turnAtCache.set(name, null);
       return null;

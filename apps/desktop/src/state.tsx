@@ -5,6 +5,8 @@ import type {
   AppSettings,
   ApprovalRequest,
   Bot,
+  BotMetadataPatch,
+  BotGroupAction,
   CloudStatus,
   Conversation,
   MemoryFact,
@@ -13,8 +15,11 @@ import type {
 } from '@moyu/core';
 import { moyu } from './lib/bridge';
 import type { ConversationSummary } from './lib/bridge';
+import { inferMessageActivity, updateActivities } from './lib/bot-activity';
+import type { BotActivity, ConversationActivities } from './lib/bot-activity';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
+export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage';
 
 export interface Toast {
   id: string;
@@ -29,12 +34,20 @@ interface MoyuContextValue {
   secrets: { providerKeys: Record<string, boolean>; cloudKey: boolean; telegramToken: boolean; encrypted: boolean };
   view: View;
   setView: (view: View) => void;
+  settingsSection: SettingsSection;
+  settingsOpen: boolean;
+  closeSettings: () => void;
+  openSettings: (section: SettingsSection) => void;
+  setSettingsSection: (section: SettingsSection) => void;
   bot: Bot | undefined;
   selectBot: (botId: string) => void;
+  createGroup: (title: string, memberBotIds: string[]) => Promise<void>;
   conversation: Conversation | null;
   conversations: ConversationSummary[];
   running: boolean;
-  agentPhase: string | null;
+  runningBotIds: Set<string>;
+  compacting: boolean;
+  botActivities: Record<string, BotActivity>;
   approval: ApprovalRequest | null;
   schedules: Schedule[];
   memories: MemoryFact[];
@@ -42,12 +55,11 @@ interface MoyuContextValue {
   logs: { level: string; text: string; ts: number }[];
   platform: string;
   version: string;
-  sendMessage: (text: string, images: { name?: string; mimeType: string; dataUrl: string }[]) => Promise<void>;
+  sendMessage: (text: string, images: { name?: string; mimeType: string; dataUrl: string }[], replyTo?: Message['replyTo']) => Promise<boolean>;
   stop: () => void;
-  selectConversation: (id: string) => Promise<void>;
-  newConversation: () => Promise<void>;
-  deleteConversation: (id: string) => Promise<void>;
-  saveBot: (bot: Bot) => Promise<void>;
+  saveBot: (bot: Bot, options?: { stayInSettings?: boolean }) => Promise<void>;
+  updateBotMetadata: (botId: string, patch: BotMetadataPatch) => Promise<void>;
+  updateBotGroup: (name: string, action: BotGroupAction) => Promise<void>;
   deleteBot: (botId: string) => Promise<void>;
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
   saveCloud: (patch: Partial<AppSettings['cloud']>, apiKey?: string) => Promise<void>;
@@ -93,34 +105,6 @@ function readableAccent(hex: string): string {
   return luminance > 0.55 ? '#111111' : hex;
 }
 
-/**
- * AgentEvent → vendored Grok 引擎的状态名（见 assets/grok/engine/tables.js 播放表）。
- * undefined 表示这个事件不改变表情。
- */
-function agentPhaseForEvent(event: AgentEvent): string | undefined {
-  switch (event.type) {
-    case 'run_start':
-    case 'reasoning':
-    case 'tool_end':
-    case 'message_end':
-      return 'thinking';
-    case 'delta':
-      return 'writing';
-    case 'tool_start': {
-      const name = event.call.name;
-      if (name === 'web_fetch' || name === 'recall') return 'searching';
-      if (name === 'cloud_write' || name === 'remember') return 'writing';
-      if (name === 'generate_image') return 'loading';
-      if (name === 'schedule_task') return 'dictating';
-      return 'working';
-    }
-    case 'run_end':
-      return event.ok ? 'happy' : 'alerting';
-    default:
-      return undefined;
-  }
-}
-
 const MoyuContext = createContext<MoyuContextValue | null>(null);
 
 export function useMoyu(): MoyuContextValue {
@@ -147,12 +131,16 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     encrypted: false,
   });
   const [view, setView] = useState<View>('chat');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [activeBotId, setActiveBotId] = useState<string>('');
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
-  const [agentPhase, setAgentPhase] = useState<string | null>(null);
-  const phaseTimer = useRef<number>(0);
+  const [compactingConversations, setCompacting] = useState<Set<string>>(new Set());
+  const [activities, setActivities] = useState<ConversationActivities>({});
+  const activityTimers = useRef(new Map<string, number>());
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [memories, setMemories] = useState<MemoryFact[]>([]);
@@ -163,7 +151,12 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   const conversationRef = useRef<Conversation | null>(null);
   conversationRef.current = conversation;
-  const activeRunRef = useRef<string | null>(null);
+  const selectedBotRef = useRef(activeBotId);
+  selectedBotRef.current = activeBotId;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const runningRef = useRef<Set<string>>(new Set());
 
   const toast = useCallback((text: string, level: Toast['level'] = 'info') => {
@@ -172,12 +165,25 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((prev) => prev.filter((item) => item.id !== id)), level === 'error' ? 7000 : 4200);
   }, []);
 
-  const bot = useMemo(() => settings.bots.find((item) => item.id === activeBotId) ?? settings.bots[0], [settings.bots, activeBotId]);
+  const bot = useMemo(() => settings.bots.find((item) => item.id === activeBotId) ?? settings.bots.find((item) => conversations.find((conv) => conv.id === activeBotId)?.group?.memberBotIds.includes(item.id)) ?? settings.bots[0], [settings.bots, activeBotId, conversations]);
 
-  const loadConversations = useCallback(async (botId?: string) => {
-    const list = await moyu().conversations(botId);
+  const loadConversations = useCallback(async () => {
+    const list = await moyu().conversations();
     setConversations(list);
     return list;
+  }, []);
+
+  const updateBotMetadata = useCallback(async (botId: string, patch: BotMetadataPatch) => {
+    const saved = await moyu().updateBotMetadata(botId, patch);
+    setSettings((previous) => {
+      const groups = previous.ui.botGroups ?? [];
+      const name = saved.sidebar?.group;
+      return { ...previous, ui: { ...previous.ui, botGroups: name && !groups.some((item) => item.name === name) ? [...groups, { name, collapsed: false }] : groups }, bots: previous.bots.map((item) => item.id === saved.id ? saved : item) };
+    });
+  }, []);
+
+  const updateBotGroup = useCallback(async (name: string, action: BotGroupAction) => {
+    setSettings(await moyu().updateBotGroup(name, action));
   }, []);
 
   const patchMessage = useCallback((messageId: string, patch: (message: Message) => Message) => {
@@ -206,15 +212,15 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         setMemories(boot.memories);
         setPlatform(boot.platform);
         setVersion(boot.version);
-        setView((boot.settings.activeView as View) || 'chat');
-        const initialBot = boot.settings.activeBotId || boot.settings.bots[0]?.id;
+        const restoredSettings = ['settings', 'bots', 'cloud'].includes(boot.settings.activeView ?? '');
+        setView(restoredSettings ? 'chat' : (boot.settings.activeView as View) || 'chat');
+        setSettingsOpen(restoredSettings);
+        if (boot.settings.activeView === 'bots' || boot.settings.activeView === 'cloud') setSettingsSection(boot.settings.activeView);
+        const initialBot = boot.settings.bots.some((item) => item.id === boot.settings.activeBotId) || boot.conversations.some((item) => item.group && item.id === boot.settings.activeBotId) ? boot.settings.activeBotId : boot.settings.bots[0]?.id;
         setActiveBotId(initialBot ?? '');
         setConversations(boot.conversations);
-        const latest = boot.conversations.find((item) => item.botId === initialBot);
-        if (latest) {
-          const conv = await moyu().conversation(latest.id);
-          if (!cancelled) setConversation(conv ?? null);
-        }
+        runningRef.current = new Set(boot.runningConversations);
+        setRunning(new Set(boot.runningConversations));
         setReady(true);
       } catch (error) {
         toast((error as Error).message, 'error');
@@ -228,14 +234,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const off = moyu().onEvent((event: AgentEvent) => {
-      const phase = agentPhaseForEvent(event);
-      if (phase !== undefined) {
-        if (phaseTimer.current) window.clearTimeout(phaseTimer.current);
-        setAgentPhase(phase);
-        if (event.type === 'run_end') phaseTimer.current = window.setTimeout(() => setAgentPhase(null), 2400);
+      setActivities((previous) => updateActivities(previous, event));
+      if (event.type === 'run_start' || event.type === 'run_end') {
+        window.clearTimeout(activityTimers.current.get(event.conversationId));
+        activityTimers.current.delete(event.conversationId);
+        if (event.type === 'run_end') {
+          activityTimers.current.set(event.conversationId, window.setTimeout(() => {
+            activityTimers.current.delete(event.conversationId);
+            setActivities((previous) => previous[event.conversationId]?.runId === event.runId ? { ...previous, [event.conversationId]: { kind: 'idle' } } : previous);
+          }, event.ok ? 2400 : 4000));
+        }
       }
       if (event.type === 'run_start') {
-        activeRunRef.current = event.conversationId;
         runningRef.current = new Set(runningRef.current).add(event.conversationId);
         setRunning(new Set(runningRef.current));
         return;
@@ -250,7 +260,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       }
       if (event.type === 'message_start') {
         const current = conversationRef.current;
-        if (!current) return;
+        if (!current || current.id !== event.conversationId) return;
         if (current.messages.some((message) => message.id === event.message.id)) return;
         setConversation({ ...current, messages: [...current.messages, event.message] });
         return;
@@ -269,20 +279,38 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         }));
         return;
       }
+      if (event.type === 'schedules') { setSchedules(event.schedules); return; }
       if (event.type === 'message_end') {
         patchMessage(event.message.id, () => event.message);
         return;
       }
       if (event.type === 'run_end') {
-        const id = activeRunRef.current;
-        if (id) {
-          const next = new Set(runningRef.current);
-          next.delete(id);
-          runningRef.current = next;
-          setRunning(next);
-        }
-        if (!event.ok && event.error) toast(event.error, 'error');
+        const next = new Set(runningRef.current);
+        next.delete(event.conversationId);
+        runningRef.current = next;
+        setRunning(next);
+        if (!event.ok && event.error && event.error !== '已停止') toast(event.error, 'error');
         void loadConversations();
+        void moyu().conversation(event.conversationId).then((conv) => {
+          if (conv && settingsRef.current.bots.some((item) => item.id === conv.botId) && (conv.botId !== selectedBotRef.current || viewRef.current !== 'chat')) {
+            void updateBotMetadata(conv.botId, { sidebar: { unread: true } }).catch((error: Error) => toast(error.message, 'error'));
+          }
+          if (conv && conv.botId === selectedBotRef.current && !runningRef.current.has(conv.id)) {
+            setConversation((prev) => prev?.messages.some((message) => message.id.startsWith('tmp_')) ? prev : conv);
+          }
+        });
+        const selectedId = selectedBotRef.current;
+        void moyu().memories(selectedId).then((facts) => { if (selectedId === selectedBotRef.current) setMemories(facts); });
+        return;
+      }
+      if (event.type === 'context_compaction') {
+        setCompacting((prev) => {
+          const next = new Set(prev);
+          if (event.phase === 'start') next.add(event.conversationId);
+          else next.delete(event.conversationId);
+          return next;
+        });
+        if (event.context) setConversation((prev) => prev?.id === event.conversationId ? { ...prev, context: event.context } : prev);
         return;
       }
       if (event.type === 'approval') {
@@ -302,14 +330,20 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     return () => {
       off();
       offCloud();
+      activityTimers.current.forEach((timer) => window.clearTimeout(timer));
+      activityTimers.current.clear();
     };
-  }, [patchMessage, toast, loadConversations]);
+  }, [patchMessage, toast, loadConversations, updateBotMetadata]);
 
   useEffect(() => {
     if (!activeBotId) return;
+    let cancelled = false;
     void loadConversations();
-    void moyu().memories(activeBotId).then(setMemories).catch(() => undefined);
-  }, [activeBotId, loadConversations]);
+    void Promise.all([settingsRef.current.bots.some((item) => item.id === activeBotId) ? moyu().botConversation(activeBotId) : moyu().conversation(activeBotId), moyu().memories(activeBotId)]).then(([conv, facts]) => {
+      if (conv && !cancelled && selectedBotRef.current === activeBotId) { setConversation(conv); setMemories(facts); }
+    }).catch((error: Error) => { if (!cancelled) toast(error.message, 'error'); });
+    return () => { cancelled = true; };
+  }, [activeBotId, loadConversations, toast]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -328,62 +362,33 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   }, [settings.ui.accent, settings.ui.appearance, settings.ui.density, settings.ui.glassIntensity]);
 
   const selectBot = useCallback(
-    (botId: string) => {
+    (botId: string, preserveSettings = false) => {
+      if (!preserveSettings) setSettingsOpen(false);
+      const target = settingsRef.current.bots.find((item) => item.id === botId);
+      if (target?.sidebar?.unread) void updateBotMetadata(botId, { sidebar: { unread: false } }).catch((error: Error) => toast(error.message, 'error'));
+      selectedBotRef.current = botId;
+      if (conversationRef.current?.botId !== botId) { setConversation(null); setMemories([]); }
       setActiveBotId(botId);
-      void (async () => {
-        const list = await loadConversations(botId);
-        const latest = list.find((item) => item.botId === botId);
-        if (latest) setConversation((await moyu().conversation(latest.id)) ?? null);
-        else setConversation(null);
-        void moyu().memories(botId).then(setMemories);
-      })();
+      void moyu().saveSettings({ activeBotId: botId, activeView: 'chat' });
       setView('chat');
     },
-    [loadConversations],
-  );
-
-  const selectConversation = useCallback(
-    async (id: string) => {
-      const conv = await moyu().conversation(id);
-      if (conv) {
-        setConversation(conv);
-        setActiveBotId(conv.botId);
-        setView('chat');
-      }
-    },
-    [],
-  );
-
-  const newConversation = useCallback(async () => {
-    if (!bot) return;
-    const conv = await moyu().newConversation(bot.id);
-    setConversation(conv);
-    await loadConversations(bot.id);
-    setView('chat');
-  }, [bot, loadConversations]);
-
-  const deleteConversation = useCallback(
-    async (id: string) => {
-      await moyu().deleteConversation(id);
-      if (conversationRef.current?.id === id) setConversation(null);
-      await loadConversations();
-    },
-    [loadConversations],
+    [updateBotMetadata, toast],
   );
 
   const sendMessage = useCallback(
-    async (text: string, images: { name?: string; mimeType: string; dataUrl: string }[]) => {
-      if (!bot) {
+    async (text: string, images: { name?: string; mimeType: string; dataUrl: string }[], replyTo?: Message['replyTo']) => {
+      if (!bot || !conversation || (!conversation.group && conversation.botId !== bot.id)) {
         toast('先创建一个 Bot', 'warn');
-        return;
+        return false;
       }
       const trimmed = text.trim();
-      if (!trimmed && images.length === 0) return;
+      if (!trimmed && images.length === 0) return false;
       const optimisticUserId = `tmp_${Date.now()}`;
+      setActivities((previous) => ({ ...previous, [conversation.id]: { kind: 'sending' } }));
       const optimistic: Conversation = conversation ?? {
         id: 'pending',
         botId: bot.id,
-        title: '新对话',
+        title: bot.name,
         messages: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -396,6 +401,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
             id: optimisticUserId,
             role: 'user',
             content: trimmed,
+            replyTo,
             createdAt: Date.now(),
             attachments: images.map((image, index) => ({
               id: `att_tmp_${index}`,
@@ -413,32 +419,21 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
           botId: bot.id,
           text: trimmed,
           images,
+          replyTo: replyTo ? { messageId: replyTo.messageId, selectedText: conversation.messages.find((message) => message.id === replyTo.messageId)?.content ? replyTo.content : undefined } : undefined,
         });
         setConversation((prev) => {
-          if (!prev) return prev;
-          const withoutTemp = prev.messages.filter((message) => message.id !== optimisticUserId);
-          if (withoutTemp.some((message) => message.id === result.assistantMessageId)) return { ...prev, id: result.conversationId };
+          if (!prev || prev.id !== conversation.id) return prev;
+          const messages = prev.messages.map((message) => message.id === optimisticUserId ? { ...message, id: result.userMessageId } : message);
+          if (messages.some((message) => message.id === result.assistantMessageId)) return { ...prev, id: result.conversationId, messages };
           return {
             ...prev,
             id: result.conversationId,
             messages: [
-              ...withoutTemp,
-              {
-                id: result.userMessageId,
-                role: 'user',
-                content: trimmed,
-                createdAt: Date.now(),
-                attachments: images.map((image, index) => ({
-                  id: `att_${index}`,
-                  kind: 'image' as const,
-                  name: image.name ?? '图片',
-                  mimeType: image.mimeType,
-                  dataUrl: image.dataUrl,
-                })),
-              },
+              ...messages,
               {
                 id: result.assistantMessageId,
                 role: 'assistant',
+                botId: conversation.group ? conversation.group.memberBotIds.find((id) => settingsRef.current.bots.some((item) => item.id === id)) : undefined,
                 content: '',
                 createdAt: Date.now(),
                 model: bot.model,
@@ -449,17 +444,24 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        runningRef.current = new Set(runningRef.current).add(result.conversationId);
-        setRunning(new Set(runningRef.current));
+        return true;
       } catch (error) {
+        setActivities((previous) => ({ ...previous, [conversation.id]: { kind: 'error' } }));
         toast((error as Error).message, 'error');
         setConversation((prev) =>
-          prev ? { ...prev, messages: prev.messages.filter((message) => message.id !== optimisticUserId) } : prev,
+          prev?.id === conversation.id ? { ...prev, messages: prev.messages.filter((message) => message.id !== optimisticUserId) } : prev,
         );
+        return false;
       }
     },
     [bot, conversation, toast],
   );
+
+  const createGroup = useCallback(async (title: string, memberBotIds: string[]) => {
+    const group = await moyu().createGroup(title, memberBotIds);
+    await loadConversations();
+    selectBot(group.id);
+  }, [loadConversations, selectBot]);
 
   const stop = useCallback(() => {
     if (!conversation) return;
@@ -467,25 +469,30 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   }, [conversation]);
 
   const saveBot = useCallback(
-    async (nextBot: Bot) => {
+    async (nextBot: Bot, options?: { stayInSettings?: boolean }) => {
       const saved = await moyu().saveBot(nextBot);
       setSettings((prev) => {
         const exists = prev.bots.some((item) => item.id === saved.id);
         return { ...prev, bots: exists ? prev.bots.map((item) => (item.id === saved.id ? saved : item)) : [...prev.bots, saved] };
       });
-      setActiveBotId(saved.id);
+      if (!options?.stayInSettings) selectBot(saved.id);
       toast(`已保存 ${saved.name}`);
     },
-    [toast],
+    [toast, selectBot],
   );
 
   const deleteBot = useCallback(
     async (botId: string) => {
       await moyu().deleteBot(botId);
       setSettings((prev) => ({ ...prev, bots: prev.bots.filter((item) => item.id !== botId) }));
+      if (selectedBotRef.current === botId) {
+        const next = settings.bots.find((item) => item.id !== botId);
+        if (next) selectBot(next.id, true);
+        else { setActiveBotId(''); setConversation(null); setMemories([]); setView('chat'); setSettingsSection('bots'); setSettingsOpen(true); }
+      }
       toast('Bot 已删除');
     },
-    [toast],
+    [toast, settings.bots, selectBot],
   );
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
@@ -568,22 +575,54 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     [approval],
   );
 
+  const botActivities = useMemo(() => {
+    const result: Record<string, BotActivity> = {};
+    for (const item of settings.bots) {
+      const thread = conversations.find((entry) => entry.botId === item.id);
+      const id = conversation?.botId === item.id ? conversation.id : thread?.id;
+      const latest = conversation?.botId === item.id ? conversation.messages.at(-1) : undefined;
+      let activity: BotActivity = id && activities[id] ? activities[id]! : { kind: id && runningConversations.has(id) ? latest ? inferMessageActivity(latest) : 'thinking' : 'idle' };
+      const groupReply = conversation?.group ? [...conversation.messages].reverse().find((message) => message.role === 'assistant') : undefined;
+      if (groupReply?.botId === item.id && (groupReply.streaming || activities[conversation!.id]?.messageId === groupReply.id)) activity = activities[conversation!.id] ?? { kind: inferMessageActivity(groupReply), messageId: groupReply.id };
+      if (id && compactingConversations.has(id)) activity = { ...activity, kind: 'organizing' };
+      const needsComputer = activity.toolName?.startsWith('cloud_') || (activity.toolName === 'generate_image' && item.image.backend === 'cloud');
+      if (needsComputer && cloud.state === 'waking') activity = { ...activity, kind: 'waking' };
+      if (approval?.botId === item.id) activity = { ...activity, kind: 'waiting' };
+      result[item.id] = activity;
+    }
+    return result;
+  }, [settings.bots, conversations, conversation, activities, runningConversations, compactingConversations, cloud.state, approval]);
+
   const value: MoyuContextValue = {
     ready,
     settings,
     cloud,
     secrets,
     view,
+    settingsSection,
+    settingsOpen,
+    closeSettings,
+    setSettingsSection,
+    openSettings: (section) => {
+      setSettingsSection(section);
+      setSettingsOpen(true);
+    },
     setView: (next) => {
+      if (next === 'settings') { setSettingsOpen(true); return; }
+      if (next === 'bots' || next === 'cloud') { setSettingsSection(next); setSettingsOpen(true); return; }
+      setSettingsOpen(false);
       setView(next);
       void moyu().saveSettings({ activeView: next });
     },
     bot,
     selectBot,
+    createGroup,
     conversation,
     conversations,
     running: conversation ? runningConversations.has(conversation.id) : false,
-    agentPhase,
+    runningBotIds: new Set(conversations.filter((item) => runningConversations.has(item.id)).map((item) => item.botId)),
+    compacting: conversation ? compactingConversations.has(conversation.id) : false,
+    botActivities,
     approval,
     schedules,
     memories,
@@ -593,10 +632,9 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     version,
     sendMessage,
     stop,
-    selectConversation,
-    newConversation,
-    deleteConversation,
     saveBot,
+    updateBotMetadata,
+    updateBotGroup,
     deleteBot,
     saveSettings,
     saveCloud,

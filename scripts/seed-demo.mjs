@@ -99,7 +99,7 @@ for (const item of schedules) {
 }
 
 // A scripted conversation so an empty install still shows what a finished run looks like.
-if (!store.listConversations(first.id).length) {
+if (!store.botConversation(first.id).messages.length) {
   // The thumbnail has to exist on disk, otherwise the artifact grid shows a broken image.
   const workspace = store.getSettings().cloud.workspaceDir;
   const posterPath = path.join(workspace, 'images', 'poster-169.svg');

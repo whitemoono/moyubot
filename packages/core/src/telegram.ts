@@ -109,7 +109,7 @@ export class TelegramGateway {
     if (text === '/help' || text === '/start') {
       await this.reply(
         chatId,
-        `MoyuBot · ${bot.name}\n直接发消息即可对话。命令：\n/new 新会话\n/status 云主机状态\n/account 当前绑定\n/help 帮助`,
+        `MoyuBot · ${bot.name}\n直接发消息，继续这个 Bot 的固定对话。较早内容会自动压缩并整理记忆。\n/status 云主机状态\n/account 当前绑定\n/help 帮助`,
       );
       return;
     }
@@ -123,8 +123,7 @@ export class TelegramGateway {
       return;
     }
     if (text === '/new') {
-      const conv = this.deps.store.createConversation(bot.id);
-      await this.reply(chatId, `已新建会话 ${conv.id}`);
+      await this.reply(chatId, '每个 Bot 只有一个持续对话，无需新建。直接发送消息即可继续，上下文会自动整理。');
       return;
     }
 

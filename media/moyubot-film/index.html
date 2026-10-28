@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MoyuBot — Product Film</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#101b30;color:#f8f9fc;font-family:"Microsoft YaHei",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:28px}
+    .top{width:min(1280px,100%);display:flex;justify-content:space-between;align-items:center;color:#aab5c8;font-size:12px;letter-spacing:2px}.brand{font-size:18px;font-weight:700;color:white;letter-spacing:0}
+    .frame{width:min(1280px,100%);aspect-ratio:16/9;box-shadow:0 30px 100px #0005;border-radius:12px;overflow:hidden;background:#f6f6f1}canvas{width:100%;height:100%;display:block}
+    .controls{width:min(1280px,100%);display:flex;align-items:center;gap:18px}button,a{color:inherit;font:inherit}button{background:#2d64ed;border:0;border-radius:22px;padding:10px 24px;cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #a4c4ff;outline-offset:4px}input{flex:1;accent-color:#7daaff}#clock{font:13px Consolas,monospace;min-width:98px}.links{font-size:12px;color:#aab5c8;display:flex;gap:22px}.links a{text-decoration:none}.hint{font-size:11px;color:#8191aa}
+    body.render{padding:0;display:block;background:transparent}body.render .top,body.render .controls,body.render .links,body.render .hint{display:none}body.render .frame{width:1920px;height:1080px;border-radius:0;box-shadow:none}
+  </style>
+</head>
+<body>
+  <div class="top"><span class="brand">MoyuBot</span><span>PRODUCT FILM / 01:52 / 1080P</span></div>
+  <div class="frame"><canvas id="film" width="1920" height="1080" aria-label="MoyuBot 产品介绍动画"></canvas></div>
+  <div class="controls"><button id="play" aria-label="播放视频">播放</button><input id="seek" type="range" min="0" max="112" value="0" step="0.01" aria-label="视频进度"><span id="clock">00:00 / 01:52</span><button id="mute">静音</button></div>
+  <div class="links"><a href="https://moyubot.net" target="_blank" rel="noopener">moyubot.net ↗</a><a href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">GitHub ↗</a><a href="STORYBOARD.md">脚本与分镜 ↗</a><a href="output/MoyuBot-Introduction-1080p.mp4">MP4 成片 ↗</a></div>
+  <div class="hint">空格播放 / 暂停 · ← → 跳转 5 秒 · 点击进度条查看任意分镜</div>
+  <audio id="audio" preload="auto" src="output/master.wav"></audio>
+  <script src="../../apps/desktop/src/assets/grok/engine/geometry-data.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/chibi-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/shiro-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/mikan-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/neko-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/tsuki-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/nemu-shape.js"></script>
+  <script src="../../apps/desktop/src/assets/grok/engine/zeta-shape.js"></script>
+  <script src="film.js"></script>
+</body>
+</html>

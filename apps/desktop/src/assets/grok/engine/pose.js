@@ -5,9 +5,10 @@
 
   function applyPose(state, mt, dtState, now, ctx, extra = {}) {
     const pt = 0;
+    const prev = extra.prev || { spin: pt, tx: 0, ty: 0, squash: 1 };
+    let { spin, tx, ty, squash } = prev;
     let lid = 1;
     let eyeBoost = 1;
-    let spin = pt, tx = 0, ty = 0, squash = 1;
 
     switch (state) {
       case "sleeping": {
@@ -17,7 +18,8 @@
         tx = -2 * En;
         ty = 8 * En + Math.sin(mt * 0.55) * 3 - Zt * 5;
         squash = 1 + Math.sin(mt * 0.55) * 0.016 + Zt * 0.05;
-        if (EYE_PLAYLIST.sleeping.includes(extra.eyeTo)) {
+        const sleepEyes = extra.playlist?.sleeping || EYE_PLAYLIST.sleeping;
+        if (sleepEyes.includes(extra.eyeTo)) {
           lid = extra.eyeMorphX > 0.85 ? 1 : 0.08;
         } else if (dtState < 1.2) {
           const dn = Math.min(1, dtState / 1);
@@ -93,6 +95,7 @@
         }
         break;
       }
+      case "writing":
       case "working": {
         const Et = Math.sin(mt * Math.PI * 2 * 1.6);
         spin = pt + 4 + Et * 2.5;
@@ -326,12 +329,15 @@
         squash = 1;
         break;
       }
+      case "progress":
+      case "dictating":
       case "humming":
         spin = pt + Math.sin(mt * 0.4) * 2;
         tx = Math.sin(mt * 0.3) * 1.5;
         ty = Math.sin(mt * 0.7) * 1.5;
         squash = 1;
         break;
+      case "sending":
       case "notifying":
         if (!ctx.notifyPop && dtState > 0.12) {
           ctx.notifyPop = true;
@@ -343,6 +349,19 @@
         tx = 2;
         ty = -1;
         squash = 1;
+        break;
+      case "loading":
+        spin = pt + Math.sin(mt * 1.1) * 8;
+        tx = Math.sin(mt * 1.1) * 3;
+        ty = -Math.abs(Math.sin(mt * 1.6)) * 4;
+        squash = 1 + Math.sin(mt * 1.6) * 0.012;
+        break;
+      case "alerting":
+        spin = pt + Math.sin(mt * 2.8) * 4 * Math.exp(-dtState * 0.8);
+        tx = 0;
+        ty = -2 * Math.exp(-dtState);
+        squash = 1;
+        eyeBoost = 1.08;
         break;
       default:
         spin = pt;
@@ -364,6 +383,7 @@
         return { x: sign() * rand(0.5, 1) * 15, y: -rand(0.4, 1) * 9, hold: [1500, 2800] };
       case "searching":
         return { x: sign() * rand(0.7, 1) * 15, y: rand(-1, 1) * 9, hold: [550, 1150] };
+      case "writing":
       case "working":
         return { x: rand(-0.4, 0.4) * 15, y: rand(0.4, 1) * 9, hold: [1200, 2400] };
       case "excited":

@@ -62,6 +62,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
       model: args.model,
       temperature: args.temperature,
       stream: true,
+      stream_options: { include_usage: true },
       messages: this.toOpenAiMessages(args.system, args.messages),
       ...(tools.length
         ? {
@@ -103,7 +104,9 @@ export class OpenAICompatibleProvider implements ChatProvider {
         usage = {
           promptTokens: chunk.usage.prompt_tokens,
           completionTokens: chunk.usage.completion_tokens,
+          cachedTokens: chunk.usage.prompt_tokens_details?.cached_tokens ?? chunk.usage.prompt_cache_hit_tokens,
         };
+        handlers.onUsage?.(usage);
       }
       const choice = chunk.choices?.[0];
       if (!choice) continue;

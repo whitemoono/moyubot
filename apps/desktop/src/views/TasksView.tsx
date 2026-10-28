@@ -3,6 +3,7 @@ import { cronLabel } from '../lib/format';
 import { useMoyu } from '../state';
 import { Button, Field, Panel, Sheet, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
+import { Select } from '../components/Select';
 
 const PRESETS = [
   { label: '每天 09:00', cron: '0 9 * * *' },
@@ -112,13 +113,7 @@ export function TasksView() {
       >
         <div className="editor-grid">
           <Field label="执行的 Bot">
-            <select className="select" value={botId} onChange={(event) => setBotId(event.target.value)}>
-              {settings.bots.map((bot) => (
-                <option key={bot.id} value={bot.id}>
-                  {bot.name} · {bot.model}
-                </option>
-              ))}
-            </select>
+            <Select label="执行的 Bot" value={botId} onChange={setBotId} options={settings.bots.map((bot) => ({ value: bot.id, label: bot.name, hint: bot.model }))} />
           </Field>
           <Field label="频率">
             <div className="chips">
