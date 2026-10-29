@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
@@ -349,7 +350,7 @@ export class MoyuApp {
     return resolveArtifact(this.store.getSettings().cloud.workspaceDir, relative);
   }
 
-  private async runTerminalCommand(kind: 'local' | 'cloud', cmd: string, requestId = crypto.randomUUID()): Promise<ExecResult> {
+  private async runTerminalCommand(kind: 'local' | 'cloud', cmd: string, requestId = randomUUID()): Promise<ExecResult> {
     if (typeof cmd !== 'string' || !cmd.trim() || cmd.length > 64000 || typeof requestId !== 'string' || requestId.length > 100) throw new Error('无效的终端命令');
     if (this.terminalRuns.has(requestId)) throw new Error('命令正在执行，请勿重复提交');
     const computer = kind === 'local' ? this.local : this.cloud;
