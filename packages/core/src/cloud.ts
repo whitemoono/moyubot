@@ -234,7 +234,7 @@ export interface CloudHostDeps {
   onLog?: (level: 'info' | 'warn' | 'error', text: string) => void;
 }
 
-export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'> & { control?: ComputerControl };
+export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'> & { control?: ComputerControl; desktopAction?: CloudHost['desktopAction'] };
 
 /** Local Windows execution environment. It deliberately exposes the same narrow
  * computer surface as CloudHost so the agent cannot care where a workspace runs. */
@@ -657,6 +657,69 @@ export class CloudHost {
     const machine = await this.ensureAwake('读取云主机文件');
     const bytes = await this.driver.readFile(machine.id, remotePath);
     return new TextDecoder().decode(bytes);
+  }
+
+  async desktopAction(args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; screenshot?: Uint8Array }> {
+    const machine = await this.ensureAwake('Bot 操作桌面');
+    const driver = this.driver;
+    if (!driver.desktopStart) throw new Error('当前工作区不提供真实远程桌面');
+    signal?.throwIfAborted();
+    const status = await driver.desktopStart(machine.id);
+    if (!status.running) throw new Error('云电脑桌面未运行，请使用 agent-browser 模板');
+    const coordinate = (key: string) => {
+      const value = args[key];
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 2560) throw new Error(`${key} 必须为有效的屏幕像素坐标`);
+      return value;
+    };
+    const run = async (cmd: string) => {
+      signal?.throwIfAborted();
+      const result = await driver.exec(machine.id, { cmd: `export DISPLAY=:1; ${cmd}`, timeoutSeconds: 30 }, { signal });
+      if (result.exitCode || result.timedOut) throw new Error(result.stderr || '桌面操作失败');
+      return result;
+    };
+    switch (args.action) {
+      case 'open': {
+        const url = new URL(String(args.url ?? ''));
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('只支持 http/https 网页');
+        await run(`b=$(command -v chromium || command -v chromium-browser || command -v google-chrome); test -n "$b" || exit 127; setsid nohup "$b" --no-first-run --no-default-browser-check --password-store=basic ${shellQuote(url.href)} >/dev/null 2>&1 </dev/null &`);
+        break;
+      }
+      case 'click': {
+        const button = { left: 1, middle: 2, right: 3 }[String(args.button ?? 'left')];
+        if (!button) throw new Error('鼠标按钮无效');
+        await run(`xdotool mousemove ${coordinate('x')} ${coordinate('y')} click${args.double === true ? ' --repeat 2 --delay 80' : ''} ${button}`);
+        break;
+      }
+      case 'type': {
+        if (typeof args.text !== 'string' || args.text.length > 8000) throw new Error('输入文本过长或无效');
+        await run(`xdotool type --clearmodifiers --delay 1 -- ${shellQuote(args.text)}`);
+        break;
+      }
+      case 'press': {
+        const keys = Array.isArray(args.keys) ? args.keys : [args.keys];
+        if (!keys.length || keys.length > 6 || !keys.every((key) => typeof key === 'string' && /^[a-zA-Z0-9_]+$/.test(key))) throw new Error('按键名称无效，使用 Return、Escape、ctrl、l 等 X11 键名');
+        await run(`xdotool key --clearmodifiers -- ${shellQuote(keys.join('+'))}`);
+        break;
+      }
+      case 'scroll': {
+        const button = { up: 4, down: 5, left: 6, right: 7 }[String(args.direction)];
+        const amount = args.amount ?? 3;
+        if (!button || typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1 || amount > 100) throw new Error('滚动参数无效');
+        await run(`xdotool click --repeat ${amount} --delay 30 ${button}`);
+        break;
+      }
+      case 'screenshot': {
+        const file = shellQuote(`/tmp/${newId('moyu-screen')}.png`);
+        const result = await run(`scrot -o ${file} && base64 -w0 ${file}; result=$?; rm -f -- ${file}; exit "$result"`);
+        if (result.truncated) throw new Error('截图超过命令输出上限，请缩小桌面后重试');
+        const screenshot = Buffer.from(result.stdout.trim(), 'base64');
+        if (screenshot.length < 8 || screenshot.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('桌面截图无效');
+        return { text: '当前桌面截图（坐标以图片左上角为原点）', screenshot };
+      }
+      default: throw new Error('不支持的桌面操作');
+    }
+    this.touch();
+    return { text: `桌面操作已完成：${args.action}。操作后先截图确认结果，再决定下一步。` };
   }
 
   async readBytes(remotePath: string): Promise<{ bytes: Uint8Array; machineId: string }> {
