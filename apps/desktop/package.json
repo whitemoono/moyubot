@@ -46,6 +46,16 @@
     "win": {
       "icon": "build/icon.ico",
       "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MoyuBot",
+      "installerLanguages": ["zh_CN", "en_US"],
+      "language": "2052"
     }
   }
 }

@@ -117,6 +117,8 @@ xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里�
 
 ## 快速开始
 
+Windows 用户可从 [发行版页面](https://github.com/whitemoono/moyubot/releases/latest)下载安装包。安装向导支持选择安装目录，按步骤完成安装。
+
 ```bash
 pnpm install
 pnpm dev          # 自动先编译 core，再启动 Vite + Electron
