@@ -273,36 +273,39 @@ export class Store {
     return next;
   }
 
-  listBotGroups(): SidebarBotGroup[] {
+  listBotGroups(workspaceId?: string): SidebarBotGroup[] {
     const groups = new Map<string, SidebarBotGroup>();
-    for (const group of this.settings.ui.botGroups ?? []) {
+    const workspace = this.settings.workspaces.find((item) => item.id === workspaceId);
+    for (const group of (workspaceId ? workspace?.botGroups ?? (workspaceId === 'workspace_cloud' ? this.settings.ui.botGroups : []) : this.settings.ui.botGroups) ?? []) {
       if (group.name && !groups.has(group.name)) groups.set(group.name, { name: group.name, collapsed: !!group.collapsed });
     }
     for (const bot of this.settings.bots) {
+      if (workspaceId && (bot.workspaceId ?? 'workspace_cloud') !== workspaceId) continue;
       const name = bot.sidebar?.group;
       if (name && !groups.has(name)) groups.set(name, { name, collapsed: false });
     }
     return [...groups.values()];
   }
 
-  updateBotGroup(name: string, action: BotGroupAction): AppSettings {
-    const groups = this.listBotGroups();
+  updateBotGroup(name: string, action: BotGroupAction, workspaceId = 'workspace_cloud'): AppSettings {
+    const groups = this.listBotGroups(workspaceId);
     const index = groups.findIndex((group) => group.name === name);
-    const hasUngrouped = groups.length > 0 && this.settings.bots.some((bot) => !bot.sidebar?.group && !bot.sidebar?.hidden && !bot.sidebar?.pinned);
+    const inWorkspace = (bot: AppSettings['bots'][number]) => (bot.workspaceId ?? 'workspace_cloud') === workspaceId;
+    const hasUngrouped = groups.length > 0 && this.settings.bots.some((bot) => inWorkspace(bot) && !bot.sidebar?.group && !bot.sidebar?.hidden && !bot.sidebar?.pinned);
     if (name === '' && action.type !== 'move') throw new Error('未分组仅支持上移和下移');
     if (index < 0 && !(name === '' && hasUngrouped)) throw new Error('分组不存在');
-    let ungroupedGroupIndex = this.settings.ui.ungroupedGroupIndex;
+    let ungroupedGroupIndex = this.settings.workspaces.find((item) => item.id === workspaceId)?.ungroupedGroupIndex ?? (workspaceId === 'workspace_cloud' ? this.settings.ui.ungroupedGroupIndex : undefined);
     let bots = this.settings.bots;
     if (action.type === 'rename') {
       const nextName = action.name.trim();
       if (!nextName || nextName.length > 60) throw new Error('分组名称需要 1–60 个字符');
       if (groups.some((group, i) => i !== index && group.name === nextName)) throw new Error('已存在同名分组，请换一个名字');
       groups[index] = { ...groups[index]!, name: nextName };
-      bots = bots.map((bot) => bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: nextName }, updatedAt: Date.now() } : bot);
+      bots = bots.map((bot) => inWorkspace(bot) && bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: nextName }, updatedAt: Date.now() } : bot);
     } else if (action.type === 'delete') {
       groups.splice(index, 1);
       if (ungroupedGroupIndex !== undefined && index < ungroupedGroupIndex) ungroupedGroupIndex = Math.max(0, ungroupedGroupIndex - 1);
-      bots = bots.map((bot) => bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: '' }, updatedAt: Date.now() } : bot);
+      bots = bots.map((bot) => inWorkspace(bot) && bot.sidebar?.group === name ? { ...bot, sidebar: { ...bot.sidebar, group: '' }, updatedAt: Date.now() } : bot);
     } else if (action.type === 'collapse') {
       groups[index] = { ...groups[index]!, collapsed: action.collapsed };
     } else if (action.type === 'move') {
@@ -318,7 +321,7 @@ export class Store {
       groups.splice(0, groups.length, ...ordered.filter((group) => group.name !== ''));
     } else throw new Error('不支持的分组操作');
     const previous = this.settings;
-    try { return this.updateSettings({ bots, ui: { botGroups: groups, ungroupedGroupIndex } }); }
+    try { return this.updateSettings({ bots, ...(workspaceId === 'workspace_cloud' ? { ui: { botGroups: groups, ungroupedGroupIndex } } : {}), workspaces: this.settings.workspaces.map((item) => item.id === workspaceId ? { ...item, botGroups: groups, ungroupedGroupIndex } : item) }); }
     catch (error) { this.settings = previous; throw error; }
   }
 

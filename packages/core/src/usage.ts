@@ -70,7 +70,7 @@ export class UsageLedger {
         this.append({ id: `historical:${message.id}`, messageId: message.id, createdAt: message.createdAt, botId,
           botName: message.botName ?? bots.find((bot) => bot.id === botId)?.name ?? '已移除的 Bot',
           providerId: 'historical', providerName: '历史记录 · 供应商未记录', model: message.model ?? '未知模型',
-          conversationId: conversation.id, purpose: 'historical', status: message.error ? 'error' : 'complete', usage: message.usage });
+          workspaceId: bots.find((bot) => bot.id === botId)?.workspaceId ?? 'workspace_cloud', conversationId: conversation.id, purpose: 'historical', status: message.error ? 'error' : 'complete', usage: message.usage });
         tracked.add(message.id);
       }
     }
@@ -92,6 +92,7 @@ export class UsageLedger {
     const botOptions = new Map<string, string>(), modelOptions = new Map<string, string>();
     const totals = emptyTotals();
     for (const record of this.records) {
+      if (query.workspaceId && (record.workspaceId ?? 'workspace_cloud') !== query.workspaceId) continue;
       if (record.createdAt < query.start || record.createdAt >= query.end) continue;
       const modelKey = modelUsageKey(record.providerId, record.model);
       botOptions.set(record.botId, record.botName); modelOptions.set(modelKey, `${record.model} · ${record.providerName}`);
@@ -117,7 +118,7 @@ export class UsageLedger {
 /** Each stream reports cumulative snapshots; persist exactly once, including failed streams. */
 export async function trackedChat(store: Store, bot: Bot, conversationId: string, purpose: 'chat' | 'compaction', provider: ChatProvider, args: ChatArgs, handlers: StreamHandlers, messageId?: string): Promise<ChatOutcome> {
   const providerConfig = store.settings.providers.find((item) => item.id === bot.providerId);
-  const record: UsageRecord = { id: newId('usage'), createdAt: Date.now(), botId: bot.id, botName: bot.name, providerId: bot.providerId, providerName: providerConfig?.name ?? '已移除的供应商', model: args.model, conversationId, messageId, purpose, status: 'error' };
+  const record: UsageRecord = { id: newId('usage'), workspaceId: bot.workspaceId ?? 'workspace_cloud', createdAt: Date.now(), botId: bot.id, botName: bot.name, providerId: bot.providerId, providerName: providerConfig?.name ?? '已移除的供应商', model: args.model, conversationId, messageId, purpose, status: 'error' };
   try {
     const result = await provider.chat(args, { ...handlers, onUsage: (usage) => { record.usage = { ...record.usage, ...usage }; handlers.onUsage?.(usage); } });
     record.usage = { ...record.usage, ...result.usage }; record.status = 'complete';

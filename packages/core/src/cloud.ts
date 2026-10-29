@@ -2,11 +2,9 @@ import { InstaBoxClient, InstaBoxError } from './instabox';
 import type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 import type { CloudHostSettings, CloudState, CloudStatus, InstaBoxMachineState } from './types';
 import { newId, sleep } from './util';
-import { exec as execProcess } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-const execLocal = promisify(execProcess);
 
 export interface CloudDriver {
   readonly kind: 'instabox' | 'mock';
@@ -236,6 +234,8 @@ export class LocalHost {
   private settings: CloudHostSettings;
   private statusValue: CloudStatus;
   private onStatus?: (status: CloudStatus) => void;
+  private activeTasks = 0;
+  private processes = new Set<() => void>();
   constructor(settings: CloudHostSettings, onStatus?: (status: CloudStatus) => void) {
     this.settings = settings;
     this.onStatus = onStatus;
@@ -244,28 +244,56 @@ export class LocalHost {
   getSettings(): CloudHostSettings { return this.settings; }
   status(): CloudStatus { return this.statusValue; }
   updateSettings(settings: CloudHostSettings): void { this.settings = settings; }
-  beginTask(reason: string): void { this.statusValue = { ...this.statusValue, state: 'busy', pendingReason: reason }; this.onStatus?.(this.statusValue); }
-  endTask(): void { this.statusValue = { ...this.statusValue, state: 'ready', pendingReason: undefined }; this.onStatus?.(this.statusValue); }
+  beginTask(reason: string): void { this.activeTasks++; this.statusValue = { ...this.statusValue, state: 'busy', pendingReason: reason, lastTransitionAt: Date.now() }; this.onStatus?.(this.statusValue); }
+  endTask(): void { this.activeTasks = Math.max(0, this.activeTasks - 1); this.statusValue = { ...this.statusValue, state: this.activeTasks ? 'busy' : 'ready', pendingReason: this.activeTasks ? this.statusValue.pendingReason : undefined, lastTransitionAt: Date.now() }; this.onStatus?.(this.statusValue); }
   touch(): void { /* local hosts never auto-suspend */ }
   armIdleIfNeeded(): void { /* local hosts stay available */ }
   async ensureAwake(_reason: string): Promise<MachineSummary> { return { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null }; }
   async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
+    if (options.signal?.aborted) throw new Error('任务已停止');
+    await fs.mkdir(this.settings.workspaceDir, { recursive: true });
     this.beginTask('在本机执行命令');
     try {
-      const result = await execLocal(command, { cwd: this.settings.workspaceDir, timeout: (options.timeoutSeconds ?? 120) * 1000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
-      options.onStdout?.(result.stdout);
-      return { stdout: result.stdout, stderr: result.stderr, exitCode: 0, timedOut: false, truncated: false };
-    } catch (error) {
-      const failure = error as { stdout?: string; stderr?: string; code?: number | string; killed?: boolean };
-      return { stdout: failure.stdout ?? '', stderr: failure.stderr ?? (error as Error).message, exitCode: typeof failure.code === 'number' ? failure.code : 1, timedOut: !!failure.killed, truncated: false };
+      return await new Promise<ExecResult>((resolve, reject) => {
+        const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $OutputEncoding=[Console]::OutputEncoding;\n${command}`;
+        const child = process.platform === 'win32'
+          ? spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { cwd: this.settings.workspaceDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+          : spawn('/bin/sh', ['-c', command], { cwd: this.settings.workspaceDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        let stdout = '', stderr = '', timedOut = false, truncated = false;
+        const stop = () => {
+          if (!child.pid) return;
+          if (process.platform === 'win32') {
+            const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }); killer.on('error', () => child.kill());
+          } else { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } }
+        };
+        this.processes.add(stop);
+        const timeout = setTimeout(() => { timedOut = true; stop(); }, Math.max(1, Math.min(900, options.timeoutSeconds ?? 120)) * 1000);
+        options.signal?.addEventListener('abort', stop, { once: true });
+        const cleanup = () => { clearTimeout(timeout); options.signal?.removeEventListener('abort', stop); this.processes.delete(stop); };
+        child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+        child.stdout.on('data', (chunk: string) => { if (stdout.length < 1024 * 1024) { stdout += chunk.slice(0, 1024 * 1024 - stdout.length); options.onStdout?.(chunk); } else truncated = true; });
+        child.stderr.on('data', (chunk: string) => { if (stderr.length < 1024 * 1024) stderr += chunk.slice(0, 1024 * 1024 - stderr.length); else truncated = true; });
+        child.on('error', (error) => { cleanup(); reject(error); });
+        child.on('close', (code) => { cleanup(); if (options.signal?.aborted) reject(new Error('任务已停止')); else resolve({ stdout, stderr, exitCode: code ?? 1, timedOut, truncated }); });
+      });
     } finally { this.endTask(); }
   }
-  async readText(file: string): Promise<string> { return fs.readFile(this.safePath(file), 'utf8'); }
-  async readBytes(file: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(this.safePath(file))), machineId: 'local-windows' }; }
-  async writeText(file: string, content: string): Promise<void> { const target = this.safePath(file); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
+  async readText(file: string): Promise<string> { return fs.readFile(await this.safePath(file), 'utf8'); }
+  async readBytes(file: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(await this.safePath(file))), machineId: 'local-windows' }; }
+  async writeText(file: string, content: string): Promise<void> { const target = await this.safePath(file); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
   async suspend(_reason: string): Promise<void> { /* no-op for local */ }
-  dispose(): void { }
-  private safePath(file: string): string { const root = path.resolve(this.settings.workspaceDir); const target = path.resolve(root, file); if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径必须位于本地工作区内'); return target; }
+  dispose(): void { this.processes.forEach((stop) => stop()); }
+  private async safePath(file: string): Promise<string> {
+    const root = await fs.realpath(this.settings.workspaceDir); const target = path.resolve(root, file);
+    const inside = (candidate: string) => { const relative = path.relative(root, candidate); return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative); };
+    if (!inside(target)) throw new Error('路径必须位于本地工作区内');
+    let existing = target;
+    for (;;) {
+      try { if (!inside(await fs.realpath(existing))) throw new Error('路径链接指向工作区外'); break; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; existing = path.dirname(existing); }
+    }
+    return target;
+  }
 }
 
 export function resolveCloudState(machine: MachineSummary | undefined, busy: boolean): CloudState {
