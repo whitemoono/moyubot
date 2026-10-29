@@ -340,6 +340,12 @@
     .product-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 6px 18px -8px rgba(23,36,74,.4); }
     .product-panel { text-align: left; }
     .product-panel[hidden] { display: none; }
+    .product-summary { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 18px 28px; margin-bottom: 24px; padding: 24px 28px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.6); }
+    .product-summary > div { flex: 1 1 360px; }
+    .product-summary h3 { font-size: 20px; line-height: 1.5; }
+    .product-summary p { margin-top: 8px; font-size: 14px; line-height: 1.85; color: var(--ink-soft); }
+    .product-points { display: flex; flex-wrap: wrap; gap: 8px; align-self: center; max-width: 330px; }
+    .product-points li { padding: 6px 11px; border-radius: 999px; background: rgba(61,109,242,.07); color: var(--blue-deep); font-size: 12px; line-height: 1.7; }
     .product-shot { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: #fff; box-shadow: var(--shadow); }
     .product-shot img { display: block; width: 100%; height: auto; }
     .product-caption { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
@@ -478,6 +484,9 @@
       .product { padding-bottom: 0; }
       .product-caption { flex-direction: column; gap: 4px; }
       .product-tab { padding: 10px 16px; font-size: 13px; }
+      .product-summary { padding: 20px; }
+      .product-summary h3 { font-size: 18px; }
+      .product-points { max-width: none; }
       .card { padding: 24px; }
       .environments { grid-template-columns: 1fr; }
       .environment { padding: 18px; }
@@ -621,28 +630,55 @@
     <section class="section product center" id="workspace" aria-labelledby="workspace-title">
       <div class="reveal"><span class="eyebrow">YOUR WORKSPACE</span></div>
       <h2 id="workspace-title" class="reveal" style="--d:.08s">聊得来，也能<span class="grad">一起把事做完</span></h2>
-      <p class="lead reveal" style="--d:.16s">一个 Bot，一段持续的对话。把不同模型请进群聊，把重复事项交给定时任务，在熟悉的聊天窗口里继续工作。</p>
+      <p class="lead reveal" style="--d:.16s">从聊天到云电脑，从长期记忆到定时执行。切换下方界面，看看 Bot 怎样把日常工作接起来。</p>
       <div class="product-tabs" role="tablist" aria-label="查看客户端界面">
         <button class="product-tab" type="button" id="tab-chat" role="tab" aria-selected="true" aria-controls="panel-chat" tabindex="0">专属 Bot</button>
         <button class="product-tab" type="button" id="tab-group" role="tab" aria-selected="false" aria-controls="panel-group" tabindex="-1">多 Bot 群聊</button>
         <button class="product-tab" type="button" id="tab-tasks" role="tab" aria-selected="false" aria-controls="panel-tasks" tabindex="-1">例行任务</button>
+        <button class="product-tab" type="button" id="tab-cloud" role="tab" aria-selected="false" aria-controls="panel-cloud" tabindex="-1">共享云电脑</button>
+        <button class="product-tab" type="button" id="tab-library" role="tab" aria-selected="false" aria-controls="panel-library" tabindex="-1">记忆与资料库</button>
+        <button class="product-tab" type="button" id="tab-usage" role="tab" aria-selected="false" aria-controls="panel-usage" tabindex="-1">用量统计</button>
       </div>
       <div class="product-panel" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" tabindex="0">
+        <div class="product-summary"><div><h3>有自己的角色，也有自己的上下文</h3><p>为 Bot 分别设置模型、角色和工具权限。置顶常用伙伴，按项目分组；切换回来，继续同一段对话。</p></div><ul class="product-points" aria-label="专属 Bot 功能"><li>自定义名字与头像</li><li>独立模型与权限</li><li>置顶、分组与隐藏</li><li>持续对话</li></ul></div>
         <figure>
           <div class="product-shot"><img src="screenshots/chat.png?v=2" alt="MoyuBot 浅色客户端：大肥鱼、千金、小龙娘、大小姐、小猫娘、雌小鬼和夜猫，使用对应角色头像" width="1460" height="950" loading="lazy" decoding="async" /></div>
           <figcaption class="product-caption"><span>选好模型和角色，随时回到它的对话；历史记录与长期记忆会留在本地。</span><small>客户端实拍 · 示例内容</small></figcaption>
         </figure>
       </div>
       <div class="product-panel" id="panel-group" role="tabpanel" aria-labelledby="tab-group" tabindex="0" hidden>
+        <div class="product-summary"><div><h3>同一个问题，让不同模型一起想</h3><p>邀请 2–12 个 Bot 依次回复，后面的成员可以参考前面的意见。每个成员沿用自己的工具和审批配置，群聊记录与私聊分开保存。</p></div><ul class="product-points" aria-label="群聊功能"><li>多模型讨论</li><li>按成员顺序发言</li><li>独立群聊上下文</li><li>随时停止回复</li></ul></div>
         <figure>
           <div class="product-shot"><img src="screenshots/group.png?v=2" alt="MoyuBot 群聊界面：大肥鱼和小龙娘按顺序回复同一条用户消息" width="1460" height="950" loading="lazy" decoding="async" /></div>
           <figcaption class="product-caption"><span>邀请 2–12 个 Bot 按顺序发言，后发言的成员可以参考前面的讨论，各自保留模型与工具配置。</span><small>客户端实拍 · 示例内容</small></figcaption>
         </figure>
       </div>
       <div class="product-panel" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0" hidden>
+        <div class="product-summary"><div><h3>提醒、晨报、定期回顾，在聊天里安排</h3><p>用自然语言创建一次性或重复任务，再查询、改期、暂停或恢复。右侧查看计划与最近结果，任务需要云环境时按需唤醒云电脑。</p></div><ul class="product-points" aria-label="任务功能"><li>一次性与重复任务</li><li>聊天中修改计划</li><li>暂停与恢复</li><li>结果回到对话</li></ul></div>
         <figure>
           <div class="product-shot"><img src="screenshots/tasks.png?v=2" alt="MoyuBot 例行任务界面：与千金聊天管理任务，右侧查看一次性提醒、重复任务和历史记录" width="1460" height="950" loading="lazy" decoding="async" /></div>
           <figcaption class="product-caption"><span>直接在聊天中安排、修改或暂停任务，在右侧查看计划和最近结果；执行时需保持应用运行。</span><small>客户端实拍 · 示例内容</small></figcaption>
+        </figure>
+      </div>
+      <div class="product-panel" id="panel-cloud" role="tabpanel" aria-labelledby="tab-cloud" tabindex="0" hidden>
+        <div class="product-summary"><div><h3>云电脑已接通，让 Bot 真正动手</h3><p>连接 InstaBox 后，同一工作区的 Bot 共用云端环境，运行命令、读写文件和操作桌面。支持实时观看、放大与全屏；需要自己操作时可接管电脑，完成后交还 Bot。</p></div><ul class="product-points" aria-label="云电脑功能"><li>实时桌面与手动接管</li><li>云终端与文件读写</li><li>按需唤醒与休眠</li><li>共享工作目录</li></ul></div>
+        <figure>
+          <div class="product-shot"><img src="screenshots/cloud.png" alt="MoyuBot 云电脑管理界面：查看运行状态与配置，在云终端输入命令并查看结果" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>云电脑已支持真实连接；接管时会等待当前操作结束，暂停同工作区的自动电脑操作，交还后恢复。实时桌面需使用 agent-browser 模板。</span><small>客户端界面示例 · 演示环境</small></figcaption>
+        </figure>
+      </div>
+      <div class="product-panel" id="panel-library" role="tabpanel" aria-labelledby="tab-library" tabindex="0" hidden>
+        <div class="product-summary"><div><h3>重要的事记下来，聊过的资料找得到</h3><p>在资料库查看、添加或删除长期记忆，集中查看当前对话中的文件与图片。接近上下文上限时，Bot 会整理早期内容，把稳定偏好提炼成记忆。</p></div><ul class="product-points" aria-label="资料库功能"><li>长期记忆管理</li><li>自动上下文摘要</li><li>对话图片与文件</li><li>按 Bot 独立保存</li></ul></div>
+        <figure>
+          <div class="product-shot"><img src="screenshots/library.png" alt="千金的资料库界面：右侧管理长期记忆，查看对话文件与图片" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>记忆可手动增删，自动整理后的摘要和完整聊天记录会保留在本地，方便回来继续工作。</span><small>客户端界面示例</small></figcaption>
+        </figure>
+      </div>
+      <div class="product-panel" id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" tabindex="0" hidden>
+        <div class="product-summary"><div><h3>谁用了多少 Token，一眼看清</h3><p>按日期、Bot 或供应商模型筛选，查看输入／输出 Token、缓存命中率和调用次数。切换趋势与排行，了解日常聊天、工具链和上下文整理的用量。</p></div><ul class="product-points" aria-label="用量功能"><li>Token 趋势</li><li>Bot 与模型排行</li><li>缓存命中率</li><li>自定义日期范围</li></ul></div>
+        <figure>
+          <div class="product-shot"><img src="screenshots/usage.png" alt="MoyuBot 用量仪表盘：日期筛选、Token 统计、趋势柱图以及 Bot 与模型排行" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>用量在本地记录，以模型供应商实际报告为准；未报告的数据会注明，不把 Token 数量换算成未经核实的费用。</span><small>客户端界面示例 · 示例数据</small></figcaption>
         </figure>
       </div>
     </section>
@@ -659,7 +695,7 @@
           <p>本地与云电脑各有独立工作区，同一工作区的 Bot 共用执行环境与文件。Bot、对话、记忆和任务按工作区分别保存。</p>
           <div class="environments">
             <div class="environment"><svg width="26" height="26" aria-hidden="true"><use href="#i-terminal"/></svg><b>本地 Windows</b><span>选择工作目录，用 PowerShell 执行命令，直接读写本机工作文件。</span></div>
-            <div class="environment"><svg width="26" height="26" aria-hidden="true"><use href="#i-cloud"/></svg><b>InstaBox 云电脑</b><span>配置云主机后按需唤醒，空闲自动休眠，工作文件持久保留。</span></div>
+            <div class="environment"><svg width="26" height="26" aria-hidden="true"><use href="#i-cloud"/></svg><b>InstaBox 云电脑</b><span>已支持真实连接、命令执行与文件读写。按需唤醒，空闲自动休眠，工作文件持久保留。</span></div>
           </div>
           <div class="cloud-cycle"><span class="cycle-label">云电脑的工作节奏</span><div class="cycle-track"><span>纯聊天 · 休眠</span><svg width="20" height="20" aria-hidden="true"><use href="#i-arrow"/></svg><b>需要执行 · 唤醒</b><svg width="20" height="20" aria-hidden="true"><use href="#i-arrow"/></svg><span>空闲 · 再休眠</span></div></div>
           <p class="card-note">共享文件不等于共享私聊；每个 Bot 的私聊记忆独立保存。</p>
@@ -688,6 +724,21 @@
           <div class="feature-icon"><svg width="24" height="24"><use href="#i-chart"/></svg></div>
           <h3>每次模型调用，都有数</h3>
           <p>按日期、Bot 和供应商模型查看 Token 趋势、调用次数与缓存命中。用量在本地记录，以供应商实际报告为准。</p>
+        </article>
+        <article class="card reveal">
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-cloud"/></svg></div>
+          <h3>看着它做，随时接手</h3>
+          <p>云电脑实时桌面支持放大与全屏。点击接管，等待当前操作完成后自己操作；交还 Bot 后恢复自动操作。</p>
+        </article>
+        <article class="card reveal" style="--d:.08s">
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-terminal"/></svg></div>
+          <h3>终端与工作文件，都在手边</h3>
+          <p>从顶部或电脑面板打开终端，在对应工作区运行命令、查看输出与停止当前命令。自定义本地目录和云端工作路径。</p>
+        </article>
+        <article class="card reveal" style="--d:.16s">
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-memory"/></svg></div>
+          <h3>偏好和资料，集中整理</h3>
+          <p>资料库集中展示当前 Bot 的长期记忆和对话文件。重要偏好可以手动补充，不再每次聊天都从头交代。</p>
         </article>
       </div>
     </section>
