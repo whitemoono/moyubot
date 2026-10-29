@@ -341,6 +341,10 @@ ${memoryBlock}${scheduleGuide}`;
             name: call.name,
             content: truncate(result.ok ? result.detail ?? result.summary : `错误：${result.summary}\n${result.detail ?? ''}`, 8000),
           });
+          if (result.ok && call.name === 'desktop_action' && result.artifactPath) {
+            const screenshot = resolveArtifact(this.computerFor(bot).getSettings().workspaceDir, result.artifactPath);
+            if (screenshot) history.push({ role: 'user', content: '这是 desktop_action 返回的桌面截图。请根据可辨识内容继续；无法识别画面时不要猜测坐标。', images: [{ mimeType: 'image/png', dataUrl: `data:image/png;base64,${fs.readFileSync(screenshot).toString('base64')}` }] });
+          }
         }
       }
     } catch (error) {

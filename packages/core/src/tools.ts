@@ -14,6 +14,17 @@ export interface ToolSchema {
 
 export const TOOL_SCHEMAS: ToolSchema[] = [
   {
+    name: 'desktop_action',
+    description: '操作共享云电脑的真实桌面。支持打开网页、截图、点击、输入、按键和滚动。先截图确认位置，不猜坐标；手动接管期间自动等待。截图若模型不能识别，请使用 cloud_exec 配合浏览器 DOM 自动化，不声称看到了画面。',
+    parameters: { type: 'object', properties: {
+      action: { type: 'string', enum: ['open', 'screenshot', 'click', 'type', 'press', 'scroll'] },
+      url: { type: 'string' }, x: { type: 'integer' }, y: { type: 'integer' },
+      button: { type: 'string', enum: ['left', 'middle', 'right'] }, double: { type: 'boolean' },
+      text: { type: 'string' }, keys: { type: 'array', items: { type: 'string' }, description: 'X11 按键，例如 ["ctrl", "l"]、["Return"]' },
+      direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] }, amount: { type: 'integer' },
+    }, required: ['action'] },
+  },
+  {
     name: 'cloud_exec',
     description:
       '在共享云电脑（Linux, 4 vCPU / 8 GB）里执行 shell 命令。云电脑平时休眠，调用这个工具会自动唤醒它。用于安装依赖、运行脚本、处理文件、长任务。',
@@ -141,7 +152,9 @@ export interface ToolContext {
 
 export function toolNamesFor(bot: Bot): string[] {
   const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
-  return names.includes('schedule_task') ? [...new Set([...names, 'list_tasks', 'update_task'])] : names;
+  const expanded = names.includes('schedule_task') ? [...names, 'list_tasks', 'update_task'] : [...names];
+  if (bot.workspaceId !== 'workspace_local' && names.includes('cloud_exec')) expanded.push('desktop_action');
+  return [...new Set(expanded)].filter((name) => bot.workspaceId !== 'workspace_local' || name !== 'desktop_action');
 }
 
 export function schemasFor(bot: Bot): ToolSchema[] {
@@ -249,6 +262,20 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'desktop_action': {
+        if (ctx.bot.workspaceId === 'workspace_local' || !ctx.cloud.desktopAction || !toolNamesFor(ctx.bot).includes(call.name)) throw new Error('此 Bot 未启用云电脑桌面操作');
+        if (ctx.requestApproval) {
+          const approved = await ctx.requestApproval(call, `操作云电脑桌面：${String(args.action)}`);
+          if (!approved) return finish({ ok: false, summary: '已拒绝桌面操作' });
+        }
+        await acquireComputer();
+        ctx.cloud.beginTask('Bot 操作桌面');
+        try {
+          const result = await ctx.cloud.desktopAction(args, ctx.signal);
+          const saved = result.screenshot ? await saveImage(ctx.workspaceDir, { bytes: result.screenshot, mimeType: 'image/png' }) : undefined;
+          return finish({ ok: true, summary: result.text, artifactPath: saved?.relPath });
+        } finally { ctx.cloud.endTask(); }
+      }
       case 'cloud_exec': {
         const cmd = requireString(args, 'cmd');
         const timeoutSeconds = Math.min(Math.max(Number(args.timeoutSeconds ?? 120) || 120, 5), 900);
