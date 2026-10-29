@@ -1,4 +1,61 @@
 /* Shared compact controls and the workspace settings dialog. */
+.feedback-page { max-width: 760px; margin: 0 auto; animation: setting-page-in 220ms var(--ease-out) both; }
+.feedback-intro { display: flex; align-items: center; gap: 13px; margin: 0 0 22px; }
+.feedback-intro__icon { display: grid; place-items: center; width: 46px; height: 46px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
+.feedback-intro h3 { margin: 0 0 6px; font-size: 17px; font-weight: 550; letter-spacing: -.3px; }
+.feedback-intro p, .feedback-card__heading p { margin: 0; color: var(--text-faint); font-size: 11px; line-height: 1.7; }
+.feedback-channels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
+.feedback-channel { display: flex; align-items: flex-start; flex-direction: column; text-align: left; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); transition: transform 180ms var(--ease-out), border-color 180ms, background 180ms; }
+.feedback-channel:hover { transform: translateY(-3px); border-color: var(--line-strong); background: var(--selected); }
+.feedback-channel:active { transform: translateY(-1px) scale(.985); }
+.feedback-channel__icon { color: var(--text-dim); margin-bottom: 13px; }
+.feedback-channel strong { font-size: 12px; font-weight: 550; }
+.feedback-channel small { margin-top: 5px; font-size: 10px; color: var(--text-faint); overflow-wrap: anywhere; }
+.feedback-channel__action { display: flex; align-items: center; gap: 6px; margin-top: 15px; font-size: 10px; color: var(--text-dim); }
+.feedback-card { padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
+.feedback-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 19px; }
+.feedback-card h3 { font-size: 13px; font-weight: 550; margin: 0 0 5px; }
+.feedback-local { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 4px 7px; border-radius: 6px; background: var(--selected); color: var(--text-faint); font-size: 9px; }
+.feedback-field { display: grid; gap: 8px; margin-bottom: 15px; }
+.feedback-field > span { color: var(--text-dim); font-size: 11px; }
+.feedback-field .input, .feedback-field .textarea { width: 100%; font-size: 11px; }
+.feedback-field .textarea { resize: vertical; min-height: 88px; }
+.feedback-diagnostics { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
+.feedback-diagnostics__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.feedback-diagnostics__heading > label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; }
+.feedback-diagnostics__heading small { color: var(--text-faint); font-size: 9px; margin-left: 9px; }
+.feedback-diagnostics__heading > div { display: flex; gap: 2px; }
+.feedback-diagnostics__heading .icon-btn { width: 26px; height: 26px; }
+.feedback-page input[type=checkbox] { width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; margin: 0; }
+.feedback-privacy { margin: 6px 0 1px 21px; font-size: 10px; color: var(--text-faint); line-height: 1.7; }
+.feedback-diagnostics__expanded { animation: setting-page-in 180ms var(--ease-out); }
+.feedback-command-option { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 12px 0; margin-top: 10px; border-top: 1px solid var(--line); font-size: 10px; cursor: pointer; }
+.feedback-command-option span { color: var(--text-faint); font-size: 9px; }
+.feedback-records { max-height: 230px; overflow-y: auto; overscroll-behavior: contain; }
+.feedback-record { display: flex; align-items: flex-start; gap: 9px; padding: 10px 6px; border-top: 1px solid var(--line); cursor: pointer; border-radius: 5px; transition: background 150ms; }
+.feedback-record:hover { background: var(--selected); }
+.feedback-record > input { margin-top: 2px !important; }
+.feedback-record > span { flex: 1; min-width: 0; }
+.feedback-record__meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 9px; color: var(--text-faint); margin-bottom: 5px; }
+.feedback-record__meta strong { color: var(--text-dim); font-weight: 500; }
+.feedback-record__meta time { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.feedback-record__message { display: block; font-size: 10px; line-height: 1.6; color: var(--text-dim); overflow-wrap: anywhere; }
+.feedback-record code { display: block; font-size: 9px; color: var(--text-faint); margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-selection { margin: 9px 0 1px; font-size: 9px; color: var(--text-faint); }
+.feedback-empty { display: flex; align-items: center; gap: 7px; padding: 10px 0; color: var(--text-faint); font-size: 10px; }
+.feedback-error { color: var(--text-dim); font-size: 10px; line-height: 1.7; }
+.feedback-preview { margin-top: 15px; }
+.feedback-preview summary { display: flex; align-items: center; justify-content: space-between; padding: 5px 0 10px; font-size: 11px; cursor: pointer; }
+.feedback-preview summary span { color: var(--text-faint); font-size: 9px; }
+.feedback-preview .textarea { width: 100%; height: 190px; min-height: 100px; resize: vertical; font-size: 10px; line-height: 1.8; color: var(--text-dim); white-space: pre-wrap; }
+.feedback-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 15px; }
+.feedback-footer > span { flex: 1; min-width: 150px; font-size: 9px; color: var(--text-faint); line-height: 1.7; }
+.feedback-footer .btn { min-height: 31px; font-size: 10px; padding: 6px 10px; }
+.reduce-motion .feedback-page, .reduce-motion .feedback-diagnostics__expanded { animation: none; }
+.reduce-motion .feedback-channel { transition: none; }
+.reduce-motion .feedback-channel:hover { transform: none; }
+@media (prefers-reduced-motion: reduce) { .feedback-page, .feedback-diagnostics__expanded { animation: none; } .feedback-channel { transition: none; } .feedback-channel:hover { transform: none; } }
+@media (max-width: 850px) { .feedback-channel { padding: 12px; } .feedback-intro p { max-width: 330px; } }
 .about-page { max-width: 580px; margin: 0 auto; animation: setting-page-in 240ms var(--ease-out) both; }
 .about-page[hidden] { display: none; }
 .about-brand { display: flex; flex-direction: column; align-items: center; padding: 10px 0 25px; text-align: center; }
