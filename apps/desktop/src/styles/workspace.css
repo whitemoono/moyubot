@@ -535,7 +535,8 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .messenger-no-results { text-align: center; font-size: 11px; color: var(--text-faint); padding: 10px; }
 .messenger-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 3px 0; flex-shrink: 0; }
 .messenger-profile { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; border-radius: 10px; }
-.messenger-profile:hover, .messenger-profile.is-active { background: var(--selected); }
+.messenger-profile > .user-avatar { border-radius: 50%; }
+.messenger-profile:hover > .user-avatar, .messenger-profile.is-active > .user-avatar { background: var(--selected); }
 .user-avatar { display: inline-grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; }
 .user-avatar--uploaded { overflow: hidden; border-radius: 50%; }
 .user-avatar--uploaded img { width: 100%; height: 100%; object-fit: cover; }
