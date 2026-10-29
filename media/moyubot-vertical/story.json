@@ -1,0 +1,31 @@
+{
+  "title":"MoyuBot v0.1.0 · 90 秒竖屏产品介绍",
+  "duration":90,"width":1080,"height":1920,"fps":30,
+  "website":"https://moyubot.net","github":"https://github.com/whitemoono/moyubot",
+  "telegram":"https://t.me/moyubotnya","qq":"2162036353",
+  "scenes":[
+    {"id":"hook","start":0,"end":5,"note":"竖向巨型 Grok？钩子，七角色围绕共享电脑入场。"},
+    {"id":"brand","start":5,"end":17,"note":"Logo、品牌句、角色四加三排列，官网与完整仓库固定展示。"},
+    {"id":"product","start":17,"end":27,"note":"工作区切换放大演示，群聊、记忆、任务和用量纵向展示。"},
+    {"id":"conversation","start":27,"end":35,"note":"用户输入、模型回复、命令工具和文件结果自上而下出现。"},
+    {"id":"connect","start":35,"end":47,"note":"分三屏聚焦创建云电脑、获取 Key、设置保存和刷新，注明注册需邀请码。"},
+    {"id":"bot","start":47,"end":57,"note":"供应商、模型、执行权限、工具按纵向表单依次操作。"},
+    {"id":"operation","start":57,"end":70,"note":"云端命令逐条执行与读回，切到桌面预览及接管、交还操作。"},
+    {"id":"roadmap","start":70,"end":74,"note":"规划开发区：PWA、MCP、MoyuChain；更多云服务商视需求评估。"},
+    {"id":"terms","start":74,"end":84,"note":"说明 InstaBox 邀请码限制、无账户不能使用云电脑、试用费用官方规则、模型另配。"},
+    {"id":"end","start":84,"end":90,"note":"角色集合，官网完整仓库、两个群及 Star 邀请固定至末帧。"}
+  ],
+  "cues":[
+    {"start":0.3,"end":4.8,"text":"Grok？开源复刻项目，摸鱼 Bot 零点一零版上线。","subtitle":"Grok？开源复刻项目\nMoyuBot v0.1.0 上线。"},
+    {"start":5.3,"end":11.5,"text":"摸鱼 Bot，让 AI 上班，你负责摸鱼。七个伙伴，把想法变成行动。","subtitle":"MoyuBot，让 AI 上班，你负责摸鱼。\n七个伙伴，把想法变成行动。"},
+    {"start":11.7,"end":16.8,"text":"访问官网，或屏幕上的完整仓库地址，一起参与开源。"},
+    {"start":17.3,"end":26.7,"text":"本地 Windows，或 InstaBox 云电脑。工作区独立，各自的 Bot 共用电脑。群聊、记忆、定时任务，一并安排。"},
+    {"start":27.3,"end":34.7,"text":"接入你选择的模型，让智能体运行命令，整理文件，推进实际工作。"},
+    {"start":35.3,"end":46.7,"text":"接入 InstaBox：注册并创建云电脑，获取 API Key；在摸鱼 Bot 设置的云电脑中填入，保存后刷新机器列表。","subtitle":"接入 InstaBox：创建云电脑、获取 API Key；\n在设置中填入，保存后刷新机器列表。"},
+    {"start":47.3,"end":56.7,"text":"再到 Bot 管理配置模型、权限和工具，就可以开始对话。模型供应商需要单独配置。"},
+    {"start":57.3,"end":69.7,"text":"唤醒云电脑，执行命令，写入并读回文件。桌面默认只读预览；接管后由你操作，交还后恢复自动化。"},
+    {"start":70.2,"end":73.8,"text":"更多工具与协作能力，持续开发中。"},
+    {"start":74.2,"end":83.7,"text":"InstaBox 需邀请码注册，没账户暂不能用云电脑。免费试用、费用以官方为准，模型另配。","subtitle":"InstaBox 需邀请码注册，无账户暂不能用云电脑。\n模型另配；费用、试用规则以账户及官方说明为准。"},
+    {"start":84.25,"end":89.7,"text":"摸鱼 Bot，开源共创。官网、仓库、反馈群，等你加入。","subtitle":"MoyuBot，开源共创。\n官网、完整仓库、反馈群，等你加入。"}
+  ]
+}
