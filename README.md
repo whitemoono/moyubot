@@ -1,7 +1,28 @@
-# MoyuBot
+<p align="center">
+  <img src="apps/desktop/src/assets/brand/logo.png" width="112" height="112" alt="MoyuBot Logo" />
+</p>
 
-> 多个 Bot 共用一台「睡着了」的云电脑 —— 需要时唤醒，干完活继续睡。
-> Multi-provider bot workforce on one on-demand cloud computer. A quiet, Grok-inspired desktop workspace.
+<h1 align="center">MoyuBot</h1>
+
+<p align="center">
+  你的摸鱼 AI 工作空间<br />
+  多个 Bot，一台共享电脑。需要时唤醒，干完活继续睡。
+</p>
+
+<p align="center">
+  <a href="https://github.com/whitemoono/moyubot/releases/latest">下载 Windows 版</a> ·
+  <a href="#截图">界面预览</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#开发者">认识开发者</a>
+</p>
+
+<p align="center">
+  <a href="https://x.com/sora_to21">X / Twitter · @sora_to21</a> &nbsp; / &nbsp;
+  <a href="https://space.bilibili.com/131577226">bilibili</a> &nbsp; / &nbsp;
+  <a href="https://t.me/chisakuu">Telegram · @chisakuu</a>
+</p>
+
+---
 
 MoyuBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本地运行的 Agent 循环、可自定义接入任意大模型供应商、长期记忆、定时任务、工具审批。
 区别在于它把「执行环境」交给一台按需唤醒的云主机（默认接入 [InstaBox](https://instabox.sh)）：平时挂起不烧钱，只有真正要跑命令或画图时才开机，任务结束自动休眠。
@@ -178,6 +199,18 @@ MoyuBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
 因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MoyuBot 自研的代码与文档适用 MIT，角色造型与引擎版权归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它）见 [docs/ASSETS.md](docs/ASSETS.md)。
 
 想去掉这套角色素材：把 [grok-engine.ts](apps/desktop/src/assets/grok/grok-engine.ts) 里的 `GROK_ENGINE_ENABLED` 改成 `false`，头像自动回落到「单色底 + 首字母」，其余代码无需改动。
+
+## 开发者
+
+MoyuBot 由 [@sora_to21](https://x.com/sora_to21) 开发与维护。欢迎关注开发进展、交流想法，或分享你的使用体验。
+
+| 平台 | 开发者主页 |
+| --- | --- |
+| X / Twitter | [@sora_to21](https://x.com/sora_to21) |
+| bilibili | [个人空间](https://space.bilibili.com/131577226) |
+| Telegram | [@chisakuu](https://t.me/chisakuu) |
+
+功能建议和问题反馈也可以提交到 [GitHub Issues](https://github.com/whitemoono/moyubot/issues)。
 
 ## License
 
