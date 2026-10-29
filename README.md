@@ -24,19 +24,21 @@ MoyuBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本�
 
 ## 截图
 
-![新版桌面首页](docs/screenshots/home.png)
+以下为 v0.1.0 当前界面实拍，统一使用演示账号与示例对话；Token 用量为演示数据，云桌面为实际 InstaBox 连接。
 
-| 对话 | 共享云电脑 |
+![首页：角色头像、Bot 分组与本地／云电脑工作区](docs/screenshots/home.png)
+
+| 持续对话 · 悬浮输入框 | 云电脑 · 实时桌面预览 |
 | --- | --- |
-| ![对话](docs/screenshots/chat.png) | ![云电脑](docs/screenshots/cloud.png) |
+| ![对话：Markdown 回复与悬浮胶囊输入框](docs/screenshots/chat.png) | ![云电脑：右侧实时桌面，可放大并手动接管](docs/screenshots/cloud-desktop.png) |
 
-| Bot 管理 | Token 用量 |
+| 模型供应商 · 官方服务与自定义中转 | Token 用量 · 按 Bot 和模型统计 |
 | --- | --- |
-| ![Bot 管理](docs/screenshots/bots.png) | ![Token 用量（测试数据）](docs/screenshots/usage.png) |
+| ![模型供应商：紧凑配置、协议与模型管理](docs/screenshots/settings-providers.png) | ![Token 用量：时间筛选、趋势与排行，图中为演示数据](docs/screenshots/usage.png) |
 
-![设置](docs/screenshots/settings.png)
+![通用设置：明暗主题、界面密度、本地及云电脑工作区路径](docs/screenshots/settings.png)
 
-[浅色界面](docs/screenshots/home-light.png) · [自动整理后的摘要与记忆](docs/screenshots/context.png)
+更多界面：[浅色主题](docs/screenshots/home-light.png) · [Bot 管理](docs/screenshots/bots.png) · [长期记忆资料库](docs/screenshots/library.png) · [云电脑连接与休眠策略](docs/screenshots/cloud.png) · [放大远程桌面与接管入口](docs/screenshots/cloud-desktop-expanded.png)
 
 右侧面板以 Bot 头像和名称为中心，分为「详情 / 资料库 / 电脑」三个页签：分别查看角色设定与上下文摘要、管理长期记忆与对话文件，以及查看电脑状态并唤醒或休眠。
 
