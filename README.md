@@ -119,6 +119,8 @@ xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里�
 
 Windows 用户可从 [发行版页面](https://github.com/whitemoono/moyubot/releases/latest)下载安装包。安装向导支持选择安装目录，按步骤完成安装。
 
+卸载向导默认勾选「同时删除用户数据」，清理聊天记录、个人设置、已保存的密钥、用量记录和缓存；取消勾选即可保留，重新安装后继续使用。覆盖安装与版本升级会保留数据。工作区项目文件及云电脑上的文件不会随卸载删除。
+
 ```bash
 pnpm install
 pnpm dev          # 自动先编译 core，再启动 Vite + Electron
