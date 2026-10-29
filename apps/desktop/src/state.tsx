@@ -532,7 +532,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   );
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const next = await moyu().saveSettings(patch);
+    const scoped = patch.bots ? { ...patch, bots: [...settingsRef.current.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') !== settingsRef.current.activeWorkspaceId), ...patch.bots] } : patch;
+    const next = await moyu().saveSettings(scoped);
     setSettings(next);
   }, []);
 
@@ -631,7 +632,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   const value: MoyuContextValue = {
     ready,
-    settings: { ...settings, bots: workspaceBots, ui: { ...settings.ui, botGroups: [...new Map([...(activeWorkspace?.botGroups ?? []), ...workspaceBots.flatMap((item) => item.sidebar?.group ? [{ name: item.sidebar.group }] : [])].map((item) => [item.name, item])).values()], ungroupedGroupIndex: activeWorkspace?.ungroupedGroupIndex } },
+    settings: { ...settings, bots: workspaceBots, ui: { ...settings.ui, botGroups: [...new Map([...workspaceBots.flatMap((item) => item.sidebar?.group ? [{ name: item.sidebar.group }] : []), ...(activeWorkspace?.botGroups ?? [])].map((item) => [item.name, item])).values()], ungroupedGroupIndex: activeWorkspace?.ungroupedGroupIndex } },
     cloud,
     secrets,
     view,

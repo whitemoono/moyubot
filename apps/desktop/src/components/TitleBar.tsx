@@ -12,7 +12,8 @@ const TITLES: Record<string, string> = {
 };
 
 export function TitleBar({ collapsed, onToggleSidebar }: { collapsed: boolean; onToggleSidebar: () => void }) {
-  const { view, cloud, platform, setView } = useMoyu();
+  const { view, cloud: cloudStatus, local, activeWorkspace, platform, setView } = useMoyu();
+  const cloud = activeWorkspace?.kind === 'local' ? local : cloudStatus;
   const isMac = platform === 'darwin';
   const stateLabel = CLOUD_META[cloud.state].label;
 
@@ -23,8 +24,8 @@ export function TitleBar({ collapsed, onToggleSidebar }: { collapsed: boolean; o
         <span className="titlebar__workspace-dot" /><span>MoyuBot Desktop</span>
       </div>
       <div className="titlebar__center">
-        <span className="crumb">{TITLES[view] ?? '对话'}</span>
-        <button type="button" title="查看云电脑" onClick={() => setView('cloud')} className={`cloud-pill cloud-pill--${cloud.state}`}>
+        <span className="crumb">{activeWorkspace?.name ?? TITLES[view] ?? '对话'}</span>
+        <button type="button" title="查看工作区电脑" onClick={() => setView('cloud')} className={`cloud-pill cloud-pill--${cloud.state}`}>
           <span className="cloud-pill__dot" />
           {stateLabel}
         </button>

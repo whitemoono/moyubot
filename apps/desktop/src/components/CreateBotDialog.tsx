@@ -7,8 +7,8 @@ import { Button, Sheet } from './Glass';
 
 export function CreateBotDialog({ onClose }: { onClose: () => void }) {
   const { settings, saveSettings, saveBot, toast, activeWorkspace } = useMoyu();
-  const [provider] = useState(() => deepSeekProvider(settings.providers));
-  const [draft, setDraft] = useState(() => ({ ...newBot(provider), name: '' }));
+  const [provider] = useState(() => settings.providers.find((item) => item.id === 'rightai') ?? settings.providers[0] ?? deepSeekProvider(settings.providers));
+  const [draft, setDraft] = useState(() => { const bot = newBot(provider); return { ...bot, name: '', ...(activeWorkspace?.kind === 'local' ? { approvalPolicy: 'ask' as const, systemPrompt: '你是 {bot_name}，在 MoyuBot 本机 Windows 工作区工作。使用 PowerShell 命令，cloud_* 为兼容工具名，实际操作本机工作目录。先说明任务再调用工具，不编造执行结果。', image: { ...bot.image, wakeHost: false } } : {}) }; });
   const [saving, setSaving] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -41,7 +41,7 @@ export function CreateBotDialog({ onClose }: { onClose: () => void }) {
       <div className="create-bot-preview" style={{ backgroundColor: `${draft.avatar.from}0b` }}><BotAvatar bot={draft} size="xl" /></div>
       <input ref={nameRef} className="input create-bot-name" placeholder="给你的 Bot 起个名字" aria-label="Bot 名字" maxLength={60} value={draft.name} disabled={saving} onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))} />
       <AvatarPicker value={draft.avatar} onChange={(avatar) => setDraft((prev) => ({ ...prev, avatar }))} />
-      <p className="create-bot-provider">DeepSeek · {provider.defaultModel}<span>创建后可在 Bot 管理中配置模型与 API Key</span></p>
+      <p className="create-bot-provider">{provider.name} · {provider.defaultModel}<span>{activeWorkspace?.name} · 创建后可在 Bot 管理中配置模型与 API Key</span></p>
     </form>
   </Sheet>;
 }
