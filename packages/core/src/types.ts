@@ -423,7 +423,7 @@ export interface UsageReport {
 export interface BootstrapPayload {
   settings: AppSettings;
   cloud: CloudStatus;
-  conversations: { id: string; botId: string; title: string; updatedAt: number; group?: Conversation['group']; preview?: string }[];
+  conversations: { id: string; botId: string; workspaceId?: string; title: string; updatedAt: number; group?: Conversation['group']; preview?: string }[];
   runningConversations: string[];
   schedules: Schedule[];
   memories: MemoryFact[];

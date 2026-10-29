@@ -255,7 +255,7 @@ export class LocalHost {
     this.beginTask('在本机执行命令');
     try {
       return await new Promise<ExecResult>((resolve, reject) => {
-        const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $OutputEncoding=[Console]::OutputEncoding;\n${command}`;
+        const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $OutputEncoding=[Console]::OutputEncoding;\n${command}\nif ($LASTEXITCODE) { exit $LASTEXITCODE }`;
         const child = process.platform === 'win32'
           ? spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { cwd: this.settings.workspaceDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
           : spawn('/bin/sh', ['-c', command], { cwd: this.settings.workspaceDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });

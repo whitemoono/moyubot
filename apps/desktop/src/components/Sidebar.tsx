@@ -113,7 +113,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
       </div>
       {workspaces.length > 1 ? <div className="workspace-switcher" role="group" aria-label="工作区">
         {workspaces.map((workspace) => <button type="button" key={workspace.id} className={workspace.id === activeWorkspace?.id ? 'is-active' : ''} aria-pressed={workspace.id === activeWorkspace?.id} onClick={() => selectWorkspace(workspace.id)}>
-          <Icon name={workspace.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{workspace.name}</span><small>{workspace.kind === 'local' ? '本机' : '云端'}</small>
+          <Icon name={workspace.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{workspace.kind === 'local' ? '本地' : '云电脑'}</span><small>{workspace.kind === 'local' ? 'Windows' : 'Linux'}</small>
         </button>)}
       </div> : null}
       {pinnedBots.length ? <div className="messenger-pins" aria-label="置顶 Bot">
