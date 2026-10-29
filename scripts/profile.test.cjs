@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const { Store, CloudHost, LocalHost, AgentRuntime } = require('../packages/core/dist');
 const temporary = (t) => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-profile-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
+const completed = async (runtime, result) => { const end = Date.now() + 5000; while (runtime.isRunning(result.conversationId) && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 10)); assert.equal(runtime.isRunning(result.conversationId), false); };
 
 test('fresh setup uses requested installation workspace; partial setup survives restart and names are validated', (t) => {
   const dir = temporary(t), localDirectory = path.join(dir, 'install', 'workspace');
@@ -44,13 +45,13 @@ test('all cloud, local and group participants receive current shared name on eac
   runtime.providerFor = () => ({ provider: { chat: async (args, handlers) => { seen.push(args.system); handlers.onText?.('收到'); return {}; } }, imageGenerator: async () => { throw Error('unused'); } });
   for (const bot of [base, other, localBot]) {
     const result = await runtime.send({ botId: bot.id, text: '我的名字是什么？' });
-    await runtime.waitForRun(result.runId);
+    await completed(runtime, result);
   }
   const group = store.createGroup('群聊', [base.id, other.id]);
   const result = await runtime.send({ botId: base.id, conversationId: group.id, text: '我的名字是什么？' });
-  await runtime.waitForRun(result.runId);
+  await completed(runtime, result);
   assert.equal(seen.length, 5); assert.ok(seen.every((system) => system.includes('"userName":"白月"')));
   store.updateSettings({ userName: '新名字' });
-  const changed = await runtime.send({ botId: localBot.id, text: '现在叫什么？' }); await runtime.waitForRun(changed.runId);
+  const changed = await runtime.send({ botId: localBot.id, text: '现在叫什么？' }); await completed(runtime, changed);
   assert.ok(seen.at(-1).includes('"userName":"新名字"')); assert.ok(!seen.at(-1).includes('"userName":"白月"'));
 });
