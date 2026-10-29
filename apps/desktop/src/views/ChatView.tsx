@@ -7,7 +7,7 @@ import { useMoyu } from '../state';
 import { BotAvatar } from '../components/BotAvatar';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
-import { Button, IconButton, Sheet, Spinner, useAutoScroll } from '../components/Glass';
+import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
 import type { IconName } from '../components/Icon';
 import { BOT_ACTIVITY, inferMessageActivity } from '../lib/bot-activity';
 import type { BotActivityKind } from '../lib/bot-activity';
@@ -387,10 +387,8 @@ function EmptyState({ bot }: { bot: Bot }) {
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
   const { bot, conversation, settings, setView, activeWorkspace } = useMoyu();
-  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   useEffect(() => setReply(undefined), [conversation?.id]);
-  useEffect(() => setGroupInfoOpen(false), [conversation?.id]);
   const members = conversation?.group?.memberBotIds.map((id) => settings.bots.find((item) => item.id === id)).filter((item): item is Bot => !!item) ?? [];
   const messages = conversation?.messages ?? [];
   const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
@@ -413,7 +411,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
     <section className={`chat ${messages.length === 0 ? 'chat--home' : ''}`} data-context-summarized={!!conversation.context}>
       <header className="chat__head">
         <h2 className="chat__title">
-          <button type="button" className={`chat__who ${inspectorOpen || groupInfoOpen ? 'is-active' : ''}`} aria-label={conversation.group ? '群聊成员与详情' : '对话详情与记忆'} aria-expanded={conversation.group ? groupInfoOpen : inspectorOpen} title={conversation.group ? conversation.title : `${bot.name} · 对话详情与记忆`} onClick={conversation.group ? () => setGroupInfoOpen(true) : onToggleInspector}>
+          <button type="button" className={`chat__who ${inspectorOpen ? 'is-active' : ''}`} aria-label={conversation.group ? '群聊成员与详情' : '对话详情与记忆'} aria-expanded={inspectorOpen} title={conversation.group ? conversation.title : `${bot.name} · 对话详情与记忆`} onClick={onToggleInspector}>
             {conversation.group ? <span className="group-chat-icon"><Icon name="users" size={21} /></span> : <BotAvatar bot={bot} size="lg" />}
             <span className="chat__name">{conversation.group ? conversation.title : bot.name}</span>
           </button>
@@ -430,7 +428,6 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} />
       </div>
       {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}
-      {groupInfoOpen && conversation.group ? <Sheet open title={conversation.title} subtitle="成员按以下顺序回复，共享本群的消息与记忆。" onClose={() => setGroupInfoOpen(false)}><div className="group-member-list">{conversation.group.memberBotIds.map((id, index) => { const member = settings.bots.find((item) => item.id === id); return <div className="group-member" key={id}>{member ? <BotAvatar bot={member} animated={false} /> : <Icon name="bots" />}<span><strong>{member?.name ?? '已移除的 Bot'}</strong><small>{member?.model ?? '不再参与回复'}</small></span><small>{index + 1}</small></div>; })}</div></Sheet> : null}
     </section>
   );
 }

@@ -6,6 +6,7 @@ import type {
   Bot,
   BotMetadataPatch,
   BotGroupAction,
+  GroupChatAction,
   BootstrapPayload,
   CloudStatus,
   DesktopSession,
@@ -58,6 +59,8 @@ export interface MoyuBridge {
   conversation(id: string): Promise<Conversation | undefined>;
   botConversation(botId: string): Promise<Conversation>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
+  updateGroupChat(id: string, action: GroupChatAction): Promise<{ group: Conversation; settings: AppSettings }>;
+  setGroupChatsCollapsed(workspaceId: string, collapsed: boolean): Promise<AppSettings>;
   cloud(): Promise<CloudStatus>;
   desktopOpen(): Promise<DesktopSession>;
   desktopTake(): Promise<DesktopSession>;

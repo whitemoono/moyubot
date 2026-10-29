@@ -23,6 +23,55 @@ test('legacy migration backs up original data and keeps conversation identities'
   assert.equal(new Store(directory).getSettings().workspaces.length, 2);
 });
 
+test('legacy cloud image settings migrate to API while preserving Bot data and ratio', (t) => {
+  const directory = temporary(t), original = new Store(directory);
+  const bot = original.getSettings().bots[0], conversation = original.botConversation(bot.id);
+  original.appendMessage(conversation.id, { id: 'image-history', role: 'user', content: '保留历史', createdAt: Date.now() });
+  original.addMemory(bot.id, '喜欢宽幅图片');
+  const settingsFile = path.join(directory, 'settings.json');
+  const legacy = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  const legacyImage = { backend: 'cloud', aspect: '16:9', wakeHost: true, cloudCommand: 'old-draw-command', cloudOutputPath: '/old/image.png' };
+  legacy.bots[0].image = legacyImage;
+  fs.writeFileSync(settingsFile, JSON.stringify(legacy));
+
+  const migrated = new Store(directory);
+  assert.deepEqual(migrated.getBot(bot.id).image, { aspect: '16:9' });
+  assert.equal(migrated.botConversation(bot.id).id, conversation.id);
+  assert.equal(migrated.botConversation(bot.id).messages[0].content, '保留历史');
+  assert.equal(migrated.listMemories(bot.id)[0].text, '喜欢宽幅图片');
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).bots[0].image, { aspect: '16:9' });
+
+  migrated.upsertBot({ ...migrated.getBot(bot.id), image: legacyImage });
+  assert.deepEqual(migrated.getBot(bot.id).image, { aspect: '16:9' });
+  migrated.updateSettings({ bots: [{ ...migrated.getBot(bot.id), image: legacyImage }] });
+  assert.deepEqual(new Store(directory).getBot(bot.id).image, { aspect: '16:9' });
+});
+
+test('cloud Bot images use API despite legacy script settings and report API failures without placeholders', async (t) => {
+  const directory = temporary(t), store = new Store(directory);
+  const bot = { ...store.getSettings().bots[0], image: { aspect: '16:9', backend: 'cloud', wakeHost: true, cloudCommand: 'old-draw-command' } };
+  const cloud = new Proxy({}, { get() { throw new Error('API image generation must not access the cloud computer'); } });
+  const bytes = Buffer.from('provider-image-bytes');
+  let calls = 0;
+  const context = { bot, cloud, workspaceDir: directory, imageGenerator: async (request) => {
+    assert.deepEqual(request, { prompt: '画一张海报', aspect: '16:9' });
+    calls++;
+    return { bytes, mimeType: 'image/png' };
+  } };
+  const image = await runTool({ id: 'api-image', name: 'generate_image', arguments: { prompt: '画一张海报' } }, context);
+  assert.equal(image.ok, true);
+  assert.equal(calls, 1);
+  assert.deepEqual(fs.readFileSync(path.join(directory, image.artifactPath)), bytes);
+  const artifactsBefore = fs.readdirSync(path.join(directory, 'images'));
+  const failed = await runTool({ id: 'failed-image', name: 'generate_image', arguments: { prompt: '画一张海报' } }, {
+    ...context, imageGenerator: async () => { throw new Error('图像 API 不可用'); },
+  });
+  assert.equal(failed.ok, false);
+  assert.match(failed.summary, /图像 API 不可用/);
+  assert.equal(failed.artifactPath, undefined);
+  assert.deepEqual(fs.readdirSync(path.join(directory, 'images')), artifactsBefore);
+});
+
 test('Bot groups, conversations, usage and memberships stay in their workspace', (t) => {
   const store = new Store(temporary(t)), cloud = store.getSettings().bots[0];
   const local = store.upsertBot({ ...cloud, id: 'local', workspaceId: 'workspace_local', name: '本地', sidebar: { group: '项目' } });

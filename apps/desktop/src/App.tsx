@@ -68,7 +68,7 @@ function Toasts() {
 }
 
 export function App() {
-  const { ready, view, settings, settingsOpen, conversation, activeWorkspace } = useMoyu();
+  const { ready, view, settings, settingsOpen, activeWorkspace } = useMoyu();
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -91,7 +91,7 @@ export function App() {
   }, []);
 
   useEffect(() => setInspectorOpen(false), [view]);
-  useEffect(() => { if (conversation?.group) setInspectorOpen(false); }, [conversation?.id]);
+  useEffect(() => setInspectorOpen(false), [activeWorkspace?.id]);
 
   useEffect(() => {
     // Views remount on switch; make sure a restored scroll position never hides the header.
@@ -129,7 +129,7 @@ export function App() {
             </div>
             <WorkspaceTerminal open={terminalOpen} onClose={() => setTerminalOpen(false)} />
           </main>
-          {inspectorOpen && view === 'chat' && !conversation?.group ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
+          {inspectorOpen && view === 'chat' ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
         </div>
       )}
       {settingUp ? <Onboarding /> : <ApprovalSheet />}

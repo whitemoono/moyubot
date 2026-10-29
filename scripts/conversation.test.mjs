@@ -109,6 +109,47 @@ test('group storage validates members and stays separate from each Bot fixed con
   assert.equal(reopened.listConversations().filter((item) => item.group).length, 1);
 });
 
+test('group editing, ordering, collapse and soft deletion persist independently per workspace', () => {
+  const f = fixture();
+  const second = { ...f.bot, id: 'member-two', name: 'Second' };
+  const third = { ...f.bot, id: 'member-three', name: 'Third' };
+  const local = { ...f.bot, id: 'local-member', name: 'Local', workspaceId: 'workspace_local' };
+  f.store.upsertBot(second); f.store.upsertBot(third); f.store.upsertBot(local);
+  const first = f.store.createGroup('One', [f.bot.id, second.id]);
+  const other = f.store.createGroup('Two', [f.bot.id, third.id]);
+  f.store.appendMessage(first.id, { id: 'history', role: 'user', content: 'Keep history', createdAt: 1 });
+  const edited = f.store.updateGroupChat(first.id, { type: 'edit', title: ' Renamed ', memberBotIds: [third.id, second.id] });
+  assert.equal(edited.title, 'Renamed');
+  assert.deepEqual(edited.group.memberBotIds, [third.id, second.id]);
+  assert.equal(edited.messages[0].content, 'Keep history');
+  assert.throws(() => f.store.updateGroupChat(first.id, { type: 'edit', title: 'bad', memberBotIds: [third.id] }), /2–12/);
+  assert.throws(() => f.store.updateGroupChat(first.id, { type: 'edit', title: 'bad', memberBotIds: [third.id, local.id] }), /跨工作区/);
+  assert.throws(() => f.store.updateGroupChat(first.id, { type: 'edit', title: ' ', memberBotIds: [third.id, second.id] }), /1–60/);
+  f.store.updateGroupChat(first.id, { type: 'move', direction: 'down' });
+  assert.deepEqual(f.store.getSettings().workspaces[0].groupChatOrder, [other.id, first.id]);
+  f.store.setGroupChatsCollapsed('workspace_cloud', true);
+  const reopened = new Store(f.dataDir);
+  assert.equal(reopened.getSettings().workspaces[0].groupChatsCollapsed, true);
+  assert.equal(reopened.getSettings().workspaces[1].groupChatsCollapsed, undefined);
+  assert.deepEqual(reopened.getSettings().workspaces[0].groupChatOrder, [other.id, first.id]);
+  assert.deepEqual(reopened.getConversation(first.id).group.memberBotIds, [third.id, second.id]);
+  const original = reopened.getConversation(first.id);
+  const persist = reopened.saveConversation;
+  reopened.saveConversation = () => { throw new Error('disk unavailable'); };
+  assert.throws(() => reopened.updateGroupChat(first.id, { type: 'delete' }), /disk unavailable/);
+  assert.equal(reopened.getConversation(first.id), original);
+  reopened.saveConversation = persist;
+  reopened.updateGroupChat(first.id, { type: 'delete' });
+  const deleted = new Store(f.dataDir);
+  assert.equal(deleted.getConversation(first.id), undefined);
+  assert.ok(!deleted.listConversations().some(item => item.id === first.id));
+  const retained = JSON.parse(fs.readFileSync(path.join(f.dataDir, 'conversations', first.id + '.json'), 'utf8'));
+  assert.ok(retained.deletedAt);
+  assert.equal(retained.messages[0].content, 'Keep history');
+  assert.ok(deleted.getBot(second.id));
+  assert.equal(deleted.botConversation(second.id).messages.length, 0);
+});
+
 test('sidebar groups persist folding and order; rename and deletion update every member without touching conversations', () => {
   const f = fixture();
   const second = { ...f.bot, id: 'sidebar-hidden', name: 'Hidden', sidebar: { group: '工作', hidden: true } };

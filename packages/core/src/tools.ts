@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult } from './types';
-import { DEFAULT_CLOUD_COMMAND } from './types';
 import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
-import { newId, shellQuote, summarize, truncate } from './util';
+import { newId, summarize, truncate } from './util';
 
 export interface ToolSchema {
   name: string;
@@ -60,7 +59,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'generate_image',
-    description: '生成图片。按 Bot 配置走云主机上的绘图流程或供应商图像 API；云主机未唤醒时会自动唤醒。',
+    description: '通过当前 Bot 供应商的图像 API 生成图片，无需唤醒云电脑。',
     parameters: {
       type: 'object',
       properties: {
@@ -194,60 +193,6 @@ async function saveImage(workspaceDir: string, image: GeneratedImage): Promise<{
   return { relPath: `images/${name}`, absPath };
 }
 
-const ASPECT_SIZE: Record<string, [number, number]> = {
-  '1:1': [1200, 1200],
-  '3:2': [1500, 1000],
-  '2:3': [1000, 1500],
-  '4:3': [1440, 1080],
-  '3:4': [1080, 1440],
-  '16:9': [1600, 900],
-  '9:16': [900, 1600],
-};
-
-function placeholderSvg(prompt: string, aspect: string): Uint8Array {
-  const escape = (value: string) =>
-    value.replace(/[<>&"]/g, (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[char] ?? char);
-  const [width, height] = ASPECT_SIZE[aspect] ?? ASPECT_SIZE['1:1']!;
-  const lines: string[] = [];
-  const chars = [...prompt];
-  const perLine = aspect === '9:16' ? 16 : 30;
-  for (let i = 0; i < Math.min(chars.length, perLine * 2); i += perLine) {
-    lines.push(chars.slice(i, i + perLine).join(''));
-  }
-  const baseY = height - 96;
-  const orbX = width * 0.68;
-  const orbY = height * 0.34;
-  const orbR = Math.min(width, height) * 0.24;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0a1024"/>
-      <stop offset="0.55" stop-color="#16224a"/>
-      <stop offset="1" stop-color="#3a2158"/>
-    </linearGradient>
-    <radialGradient id="orb" cx="0.34" cy="0.28" r="0.85">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
-      <stop offset="0.35" stop-color="#9db8ff" stop-opacity="0.55"/>
-      <stop offset="0.75" stop-color="#7c5cff" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#0a1024" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7aa2ff" stop-opacity="0.9"/>
-      <stop offset="1" stop-color="#c084fc" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <circle cx="${orbX}" cy="${orbY}" r="${orbR}" fill="url(#orb)"/>
-  <circle cx="${orbX}" cy="${orbY}" r="${orbR * 1.28}" fill="none" stroke="#ffffff" stroke-opacity="0.14"/>
-  <circle cx="${orbX}" cy="${orbY}" r="${orbR * 1.62}" fill="none" stroke="#ffffff" stroke-opacity="0.06"/>
-  <rect x="64" y="${baseY - 190}" width="128" height="2" fill="url(#line)"/>
-  <text x="64" y="${baseY - 132}" fill="#eaf0ff" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="46" font-weight="600">${escape(lines[0] ?? '共享云电脑')}</text>
-  <text x="64" y="${baseY - 76}" fill="#9fb0d8" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="34">${escape(lines[1] ?? 'MoyuBot · 云主机出图预览')}</text>
-  <text x="64" y="${baseY}" fill="#6d7fa6" font-family="Segoe UI, PingFang SC, Microsoft YaHei" font-size="22">MoyuBot 演示占位图 · 接入云主机绘图模型后即为真实成图 · ${aspect}</text>
-</svg>`;
-  return new Uint8Array(Buffer.from(svg, 'utf8'));
-}
-
 export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
   const startedAt = Date.now();
   const finish = (result: Omit<ToolResult, 'id' | 'name' | 'durationMs'>): ToolResult => ({
@@ -336,60 +281,14 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       case 'generate_image': {
         const prompt = requireString(args, 'prompt');
         const aspect = (typeof args.aspect === 'string' ? args.aspect : ctx.bot.image.aspect) as BotImageAspect;
-        const usesCloud = ctx.bot.image.backend === 'cloud';
-        if (usesCloud && ctx.bot.workspaceId === 'workspace_local') throw new Error('本地工作区请使用供应商 API 绘图；现有云端绘图脚本仅适用于云电脑工作区');
-        const shouldWake = ctx.bot.workspaceId !== 'workspace_local' && (usesCloud || ctx.bot.image.wakeHost);
-        if (shouldWake) await acquireComputer();
-        if (shouldWake) ctx.cloud.beginTask('生成图片');
-        try {
-          if (shouldWake) {
-            await ctx.cloud.ensureAwake('生成图片');
-            ctx.emitStatus(ctx.cloud.status(), '云电脑已唤醒，开始绘图');
-          }
-          if (usesCloud) {
-            const remoteOut = (ctx.bot.image.cloudOutputPath || '/data/moyubot/out/{name}.png')
-              .replace('{name}', newId('draw'))
-              .replace('{prompt}', prompt)
-              .replace('{aspect}', aspect);
-            const command = (ctx.bot.image.cloudCommand || DEFAULT_CLOUD_COMMAND)
-              .replaceAll('{prompt}', shellQuote(prompt))
-              .replaceAll('{out}', shellQuote(remoteOut))
-              .replaceAll('{aspect}', aspect);
-            const exec = await ctx.cloud.exec(command, { timeoutSeconds: 600, signal: ctx.signal });
-            if (exec.exitCode !== 0) {
-              return finish({ ok: false, summary: `云主机绘图命令失败（退出码 ${exec.exitCode}）`, detail: truncate(exec.stderr || exec.stdout, 6000) });
-            }
-            let bytes: Uint8Array;
-            try {
-              const read = await ctx.cloud.readBytes(remoteOut);
-              bytes = read.bytes;
-            } catch {
-              bytes = new Uint8Array();
-            }
-            if (!bytes.length) bytes = placeholderSvg(prompt, aspect);
-            const isSvg = bytes.length > 0 && bytes[0] === 0x3c;
-            const saved = await saveImage(ctx.workspaceDir, {
-              bytes,
-              mimeType: isSvg ? 'image/svg+xml' : 'image/png',
-            });
-            return finish({
-              ok: true,
-              summary: `图片已生成（云主机 · ${aspect}）`,
-              artifactPath: saved.relPath,
-              detail: `云主机路径：${remoteOut}`,
-            });
-          }
-          const image = await ctx.imageGenerator({ prompt, aspect });
-          const saved = await saveImage(ctx.workspaceDir, image);
-          return finish({
-            ok: true,
-            summary: `图片已生成（${aspect}）`,
-            artifactPath: saved.relPath,
-            detail: image.revisedPrompt ? `改写后的提示词：${image.revisedPrompt}` : undefined,
-          });
-        } finally {
-          if (shouldWake) ctx.cloud.endTask();
-        }
+        const image = await ctx.imageGenerator({ prompt, aspect });
+        const saved = await saveImage(ctx.workspaceDir, image);
+        return finish({
+          ok: true,
+          summary: `图片已生成（${aspect}）`,
+          artifactPath: saved.relPath,
+          detail: image.revisedPrompt ? `改写后的提示词：${image.revisedPrompt}` : undefined,
+        });
       }
       case 'remember': {
         const text = requireString(args, 'text');

@@ -7,7 +7,7 @@ import path from 'node:path';
 export async function startRendererServer(root: string): Promise<{ url: string; close: () => void }> {
   const directory = path.resolve(root);
   const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.woff2': 'font/woff2' };
-  const server = http.createServer((request, response) => {
+  const server = http.createServer(async (request, response) => {
     if (!['GET', 'HEAD'].includes(request.method ?? '')) { response.writeHead(405).end(); return; }
     try {
       const address = server.address();
@@ -18,9 +18,11 @@ export async function startRendererServer(root: string): Promise<{ url: string; 
       if (file !== path.join(directory, 'index.html') && !file.startsWith(path.join(directory, 'assets') + path.sep)) { response.writeHead(404).end(); return; }
       const type = mime[path.extname(file)];
       if (!type || !fs.existsSync(file) || !fs.statSync(file).isFile()) { response.writeHead(404).end(); return; }
+      // Electron's Windows ASAR stream reader can fail on nested paths.
+      // Read the small packaged assets through the ASAR-aware file API.
+      const bytes = request.method === 'HEAD' ? undefined : await fs.promises.readFile(file);
       response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
-      if (request.method === 'HEAD') response.end();
-      else fs.createReadStream(file).pipe(response);
+      response.end(bytes);
     } catch { response.writeHead(400).end(); }
   });
   await new Promise<void>((resolve, reject) => {

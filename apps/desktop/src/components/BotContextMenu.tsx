@@ -5,11 +5,12 @@ import { useMoyu } from '../state';
 import { moyu } from '../lib/bridge';
 import { Icon } from './Icon';
 import { Button, Sheet } from './Glass';
+import { BotEditor } from './BotEditor';
 
-type ActionDialog = 'rename' | 'group' | 'delete';
+type ActionDialog = 'edit' | 'rename' | 'group' | 'delete';
 
 export function BotContextMenu({ bot, x, y, onClose, onTogglePin }: { bot: Bot; x: number; y: number; onClose: () => void; onTogglePin: () => Promise<void> }) {
-  const { settings, updateBotMetadata, deleteBot, runningBotIds, toast } = useMoyu();
+  const { settings, saveBot, updateBotMetadata, deleteBot, runningBotIds, toast } = useMoyu();
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -41,7 +42,7 @@ export function BotContextMenu({ bot, x, y, onClose, onTogglePin }: { bot: Bot; 
   }, [dialog, onClose]);
 
   useEffect(() => {
-    if (!dialog) return;
+    if (!dialog || dialog === 'edit') return;
     const root = formRef.current?.closest('[role="dialog"]');
     (root?.querySelector<HTMLInputElement>('input') ?? root?.querySelector<HTMLButtonElement>('.sheet__foot button'))?.focus();
     const trap = (event: Event) => {
@@ -72,6 +73,14 @@ export function BotContextMenu({ bot, x, y, onClose, onTogglePin }: { bot: Bot; 
   });
   const close = () => { if (!busy) onClose(); };
 
+  if (dialog === 'edit') return <BotEditor
+    initial={bot}
+    existing
+    providers={settings.providers}
+    onClose={close}
+    onSave={(next) => run(() => saveBot(next, { stayInSettings: true }))}
+  />;
+
   if (dialog) return createPortal(<Sheet open title={dialog === 'rename' ? '重命名 Bot' : dialog === 'group' ? '移至分组' : `删除 ${bot.name}？`} className="sheet--bot-action" onClose={close} footer={<><span className="spacer" /><Button variant="ghost" disabled={busy} onClick={close}>取消</Button><Button variant={dialog === 'delete' ? 'danger' : 'primary'} disabled={busy || (dialog === 'rename' && !value.trim())} loading={busy} onClick={() => void submit()}>{dialog === 'delete' ? '删除' : '保存'}</Button></>}>
     <form ref={formRef} onSubmit={(event) => { event.preventDefault(); if (dialog !== 'rename' || value.trim()) void submit(); }}>
       {dialog === 'delete' ? <p className="bot-action-hint">将移除这个 Bot，本地对话记录和记忆会保留。</p> : <>
@@ -99,6 +108,7 @@ export function BotContextMenu({ bot, x, y, onClose, onTogglePin }: { bot: Bot; 
     <button role="menuitem" type="button" disabled={busy} onClick={() => openDialog('group')}><Icon name="folder" size={16} /><span>移至新分组</span></button>
     <button role="menuitem" type="button" disabled={busy} onClick={() => void run(() => updateBotMetadata(bot.id, { sidebar: { unread: !bot.sidebar?.unread } }))}><Icon name="unread" size={16} /><span>{bot.sidebar?.unread ? '标为已读' : '标为未读'}</span></button>
     <div role="separator" />
+    <button role="menuitem" type="button" disabled={busy} onClick={() => openDialog('edit')}><Icon name="settings" size={16} /><span>编辑 Bot</span></button>
     <button role="menuitem" type="button" disabled={busy} onClick={() => openDialog('rename')}><Icon name="edit" size={16} /><span>重命名 Bot</span></button>
     <div role="separator" />
     <button role="menuitem" type="button" disabled={busy} onClick={() => void run(async () => { await moyu().copyConversationId(bot.id); toast('已复制对话 ID'); })}><Icon name="copy" size={16} /><span>复制对话 ID</span></button>

@@ -6,6 +6,7 @@ import './styles/liquid.css';
 import './styles/workspace.css';
 import './styles/settings.css';
 import './styles/usage.css';
+import './styles/terminal-command.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

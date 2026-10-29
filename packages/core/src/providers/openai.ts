@@ -1,3 +1,4 @@
+import { providerFetch } from './transport';
 import type { ChatArgs, ChatOutcome, ChatProvider, StreamHandlers, ToolSchema } from './types';
 import { ProviderError, parseToolArguments } from './types';
 import { iterSse, readErrorMessage } from './sse';
@@ -76,7 +77,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
       ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
     };
 
-    const res = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    const res = await providerFetch(this.config, `${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -145,7 +146,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
   }
 
   async listModels(): Promise<string[]> {
-    const res = await fetch(`${this.config.baseUrl}/models`, { headers: this.headers() });
+    const res = await providerFetch(this.config, `${this.config.baseUrl}/models`, { headers: this.headers() });
     if (!res.ok) throw new ProviderError(await readErrorMessage(res), res.status);
     const payload = (await res.json()) as { data?: { id: string }[]; models?: { id: string; name: string }[] };
     const ids = (payload.data ?? payload.models ?? []).map((item) => item.id ?? (item as any).name).filter(Boolean);
@@ -155,7 +156,7 @@ export class OpenAICompatibleProvider implements ChatProvider {
   async test(): Promise<{ ok: boolean; message: string; latencyMs: number }> {
     const startedAt = Date.now();
     try {
-      const res = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      const res = await providerFetch(this.config, `${this.config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({

@@ -12,6 +12,7 @@ const protocol = (kind: string) => PROTOCOLS.find((item) => item.value === kind)
 
 function validate(provider: ProviderConfig, requireModel = true) {
   if (!provider.name.trim()) throw new Error('请填写供应商名称');
+  if (provider.networkMode && !['system', 'direct'].includes(provider.networkMode)) throw new Error('请选择有效的网络连接方式');
   let url: URL;
   try { url = new URL(provider.baseUrl); } catch { throw new Error('请填写完整的 API 地址'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('API 地址须为 HTTP(S) 地址，不要包含密钥、查询参数或片段');
@@ -85,6 +86,7 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
       : <div className="provider-form" key={current.id}>
         <div className="provider-detail__head"><div className="provider-identity"><span className="provider-monogram provider-monogram--large">{current.name.slice(0, 1)}</span><div><h3>{current.name || '新供应商'}</h3><p>{protocol(current.kind)} · {botCount} 个 Bot 使用</p></div></div><span className={`badge badge--${secrets.providerKeys[current.id] ? 'ok' : 'muted'}`}>{secrets.providerKeys[current.id] ? '已配置密钥' : '待配置'}</span></div>
         <fieldset disabled={!!busy} className="provider-fields">
+          <Field label="网络连接" hint={current.networkMode === 'system' ? '使用系统代理和绕过规则；没有代理时直接连接。' : '仅此供应商直接连接，不使用系统代理。'}><Select label="供应商网络连接" value={current.networkMode ?? 'direct'} options={[{ value: 'direct', label: '直连（默认）', hint: '此供应商不使用系统代理' }, { value: 'system', label: '跟随系统', hint: '遵循系统代理和直连规则' }]} onChange={(value) => patch({ networkMode: value as ProviderConfig['networkMode'] })} /></Field>
           <div className="provider-form__grid"><Field label="供应商名称"><input className="input" aria-label="供应商名称" value={current.name} onChange={(e) => patch({ name: e.target.value })} /></Field><Field label="API 协议"><Select label="API 协议" value={current.kind} options={PROTOCOLS} onChange={(value) => patch({ kind: value as ProviderConfig['kind'] })} /></Field></div>
           <div className="provider-form__grid"><Field label="API 地址" hint="包含 /v1 等版本路径。"><input className="input mono" aria-label="API 地址" placeholder="https://your-api.example.com/v1" title={current.baseUrl} value={current.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} /></Field>
           <Field label="API Key" hint={secrets.providerKeys[current.id] ? '已安全保存，留空保留。' : '无需密钥的服务可留空。'}><input className="input mono" aria-label="供应商 API Key" type="password" autoComplete="new-password" value={keys[current.id] ?? ''} placeholder={secrets.providerKeys[current.id] ? '••••••••••••••••' : '输入 API Key'} onChange={(e) => { setKeys((prev) => ({ ...prev, [current.id]: e.target.value })); setResult(null); }} /></Field></div>

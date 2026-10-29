@@ -18,11 +18,26 @@ fs.rmSync(dataDir, { recursive: true, force: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 let call = 0;
+let imageCalls = 0;
+const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP1sAAAAASUVORK5CYII=', 'base64');
 
 const server = http.createServer(async (req, res) => {
   if (req.url === '/v1/models') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ data: [{ id: 'moyu-demo' }] }));
+    return;
+  }
+  if (req.url === '/v1/images/generations') {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    imageCalls += 1;
+    if (!body.prompt || body.size !== '1536x1024') {
+      res.writeHead(400).end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ b64_json: imageBytes.toString('base64') }] }));
     return;
   }
   if (req.url !== '/v1/chat/completions') {
@@ -43,7 +58,7 @@ const server = http.createServer(async (req, res) => {
   const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`);
 
   if (!hasToolResult && call <= 1) {
-    send({ choices: [{ index: 0, delta: { content: '好，我先唤醒共享云电脑，然后把海报画出来。\n' } }] });
+    send({ choices: [{ index: 0, delta: { content: '好，我通过图像 API 生成海报。\n' } }] });
     send({
       choices: [
         {
@@ -75,7 +90,7 @@ const server = http.createServer(async (req, res) => {
 
   const toolMessage = (body.messages ?? []).find((message) => message.role === 'tool');
   const summary = toolMessage ? String(toolMessage.content).slice(0, 120) : '（无工具结果）';
-  for (const piece of ['图片已经生成。', '\n\n', '云电脑状态：', summary]) {
+  for (const piece of ['图片已经生成。', '\n\n', '绘图结果：', summary]) {
     send({ choices: [{ index: 0, delta: { content: piece } }] });
   }
   send({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
@@ -99,7 +114,7 @@ store.updateSettings({
     ...bot,
     model: 'moyu-demo',
     approvalPolicy: 'never',
-    image: { ...bot.image, backend: 'cloud', wakeHost: true },
+    image: { aspect: '1:1' },
   })),
 });
 store.secrets.set(store.providerSecretKey(provider.id), 'demo-key');
@@ -120,11 +135,7 @@ const runtime = new core.AgentRuntime({
   requestApproval: async () => true,
 });
 
-console.log('→ 唤醒云电脑（演示驱动）');
-await cloud.ensureAwake('smoke test');
-console.log('  状态:', cloud.status().state, '机器:', cloud.status().machine?.name);
-
-console.log('→ 发送绘图任务');
+console.log('→ 发送 API 绘图任务');
 const { conversationId } = await runtime.send({
   botId: store.getSettings().bots[0].id,
   text: '画一张 16:9 的液态玻璃风海报，主题是多人共用的云电脑。',
@@ -145,8 +156,13 @@ if (!assistant?.toolResults?.[0]?.ok) failures.push('工具执行失败');
 if (!assistant?.content?.includes('图片已经生成')) failures.push('模型二次回复缺失');
 const artifact = assistant?.attachments?.[0]?.path;
 if (!artifact) failures.push('没有图片附件');
-else if (!fs.existsSync(path.join(dataDir, 'workspace', artifact))) failures.push(`图片文件不存在: ${artifact}`);
-if (cloud.status().wakeCount < 1) failures.push('云电脑没有被唤醒');
+else {
+  const output = path.join(dataDir, 'workspace', artifact);
+  if (!fs.existsSync(output)) failures.push(`图片文件不存在: ${artifact}`);
+  else if (!fs.readFileSync(output).equals(imageBytes)) failures.push('落盘图片与 API 返回内容不一致');
+}
+if (imageCalls !== 1) failures.push(`图像 API 调用次数异常: ${imageCalls}`);
+if (cloud.status().wakeCount !== 0 || events.includes('cloud:waking')) failures.push('API 绘图不应唤醒云电脑');
 
 console.log('\n结果');
 console.log('  会话:', conversationId);
@@ -164,4 +180,4 @@ if (failures.length) {
   console.error('\n✗ 失败:', failures.join('；'));
   process.exit(1);
 }
-console.log('\n✓ 通过：唤云 → 工具调用 → 出图 → 落盘 → 二次回复');
+console.log('\n✓ 通过：工具调用 → 图像 API → 图片落盘 → 二次回复，全程无需唤醒云电脑');

@@ -7,6 +7,7 @@ import type {
   Bot,
   BotMetadataPatch,
   BotGroupAction,
+  GroupChatAction,
   BootstrapPayload,
   CloudStatus,
   DesktopSession,
@@ -53,6 +54,8 @@ const api = {
   conversation: (id: string) => invoke<Conversation | undefined>('moyu:conversation', id),
   botConversation: (botId: string) => invoke<Conversation>('moyu:conversation:bot', botId),
   createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
+  updateGroupChat: (id: string, action: GroupChatAction) => invoke<{ group: Conversation; settings: AppSettings }>('moyu:group:update', id, action),
+  setGroupChatsCollapsed: (workspaceId: string, collapsed: boolean) => invoke<AppSettings>('moyu:group:collapse', workspaceId, collapsed),
 
   cloud: () => invoke<CloudStatus>('moyu:cloud'),
   desktopOpen: () => invoke<DesktopSession>('moyu:desktop:open'),

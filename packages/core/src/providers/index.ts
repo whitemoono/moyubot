@@ -1,3 +1,4 @@
+import { providerFetch } from './transport';
 import type { ProviderKind, ProviderConfig } from '../types';
 import { OpenAICompatibleProvider } from './openai';
 import { AnthropicProvider } from './anthropic';
@@ -67,7 +68,7 @@ export async function generateImageWithProvider(
 
   if (config.kind === 'gemini') {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/models/${encodeURIComponent(model || 'gemini-2.5-flash-image')}:generateContent`;
-    const res = await fetch(url, {
+    const res = await providerFetch(config, url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey, ...(config.extraHeaders ?? {}) },
       body: JSON.stringify({
@@ -91,10 +92,10 @@ export async function generateImageWithProvider(
   }
 
   if (config.kind === 'anthropic') {
-    throw new ProviderError('Anthropic 目前不提供图像生成接口，请给这个 Bot 单独配置图像供应商，或改用云主机绘图。', 400, 'no_image_api');
+    throw new ProviderError('Anthropic 目前不提供图像生成接口，请为这个 Bot 选择支持图像 API 的供应商。', 400, 'no_image_api');
   }
 
-  const res = await fetch(`${config.baseUrl}/images/generations`, {
+  const res = await providerFetch(config, `${config.baseUrl}/images/generations`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -121,7 +122,7 @@ export async function generateImageWithProvider(
     };
   }
   if (item.url) {
-    const imageRes = await fetch(item.url);
+    const imageRes = await providerFetch(config, item.url);
     if (!imageRes.ok) throw new ProviderError(`下载生成的图片失败：HTTP ${imageRes.status}`, 502);
     const mimeType = imageRes.headers.get('content-type') ?? 'image/png';
     return { bytes: new Uint8Array(await imageRes.arrayBuffer()), mimeType, revisedPrompt: item.revised_prompt };

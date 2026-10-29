@@ -8,20 +8,22 @@ import { Button, IconButton } from './Glass';
 import { Icon } from './Icon';
 import { BotTasks } from './BotTasks';
 import { CloudDesktop } from './CloudDesktop';
+import { BotMemories } from './BotMemories';
+import { CreateGroupDialog } from './CreateGroupDialog';
 
 const TABS = [{ id: 'details', label: '详情' }, { id: 'library', label: '资料库' }, { id: 'computer', label: '电脑' }] as const;
 type Tab = typeof TABS[number]['id'];
 
 export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: () => void; onCreateBot: () => void; onOpenTerminal: () => void }) {
-  const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast, conversation, compacting, setView } = useMoyu();
+  const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, toast, conversation, compacting, setView, runningGroupIds } = useMoyu();
+  const isGroup = !!conversation?.group;
   const isLocal = activeWorkspace?.kind === 'local';
   const cloud = isLocal ? local : cloudStatus;
   const [tab, setTab] = useState<Tab>('computer');
-  const [draft, setDraft] = useState('');
-  const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState(false);
   const [avatarBotId, setAvatarBotId] = useState<string | null>(null);
-  useEffect(() => { setTab('computer'); setDraft(''); }, [bot?.id]);
+  const [editingGroup, setEditingGroup] = useState(false);
+  useEffect(() => { setTab('computer'); setEditingGroup(false); setAvatarBotId(null); }, [conversation?.id]);
   const meta = CLOUD_META[cloud.state];
   const provider = settings.providers.find((item) => item.id === bot?.providerId);
   const awake = cloud.state === 'ready' || cloud.state === 'busy';
@@ -34,26 +36,20 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
   const computerLabel = resting ? '电脑正在休眠' : booting ? '电脑正在开机' : cloud.state === 'ready' ? '电脑已就绪' : cloud.state === 'busy' ? '电脑正在工作' : cloud.state === 'error' ? '电脑连接异常' : meta.hint;
   const onlineLabel = isLocal ? '本地执行，无需云电脑' : `本次在线 ${formatDuration(cloud.awakeMs)}`;
 
-  const remember = async () => {
-    if (!draft.trim() || saving) return;
-    setSaving(true);
-    try { await addMemory(draft.trim()); setDraft(''); toast('已写入长期记忆'); }
-    catch (error) { toast((error as Error).message, 'error'); }
-    finally { setSaving(false); }
-  };
   const controlComputer = async (action: 'wake' | 'sleep' | 'refresh') => {
     setPending(true);
     try { await cloudAction(action); } finally { setPending(false); }
   };
 
   return (
-    <aside className="rail inspector" aria-label="对话详情">
-      <div className="rail-heading inspector-toolbar"><IconButton name="plus" label="创建新 Bot" onClick={onCreateBot} /><IconButton name="close" label="关闭详情" onClick={onClose} /></div>
+    <aside className={`rail inspector ${isGroup ? 'inspector--group' : ''}`} aria-label={isGroup ? '群聊详情' : '对话详情'}>
+      <div className="rail-heading inspector-toolbar">{isGroup ? <IconButton name="edit" label="编辑群聊" disabled={runningGroupIds.has(conversation!.id)} title={runningGroupIds.has(conversation!.id) ? '请先停止群聊任务' : '编辑群聊'} onClick={() => setEditingGroup(true)} /> : <IconButton name="plus" label="创建新 Bot" onClick={onCreateBot} />}<IconButton name="close" label="关闭详情" onClick={onClose} /></div>
       <div className="inspector-profile">
-        {bot ? <button type="button" className="inspector-avatar-button" aria-label={`修改 ${bot.name} 的头像`} aria-haspopup="dialog" title="修改 Bot 头像" onClick={() => setAvatarBotId(bot.id)}><BotAvatar bot={bot} size="xl" /><span className="inspector-avatar-button__edit" aria-hidden="true"><Icon name="edit" size={13} /></span></button> : null}
-        <h2>{bot?.name ?? 'Bot'}</h2>
+        {isGroup ? <span className="inspector-group-avatar" aria-hidden="true"><Icon name="users" size={32} /></span> : bot ? <button type="button" className="inspector-avatar-button" aria-label={`修改 ${bot.name} 的头像`} aria-haspopup="dialog" title="修改 Bot 头像" onClick={() => setAvatarBotId(bot.id)}><BotAvatar bot={bot} size="xl" /><span className="inspector-avatar-button__edit" aria-hidden="true"><Icon name="edit" size={13} /></span></button> : null}
+        <h2>{isGroup ? conversation!.title : bot?.name ?? 'Bot'}</h2>
+        {isGroup ? <p className="inspector-group-caption">{conversation!.group!.memberBotIds.length} 个 Bot · 共用工作区电脑</p> : null}
       </div>
-      <div className="inspector-tabs" role="tablist" aria-label="Bot 信息" onKeyDown={(event) => {
+      <div className="inspector-tabs" role="tablist" aria-label={isGroup ? '群聊信息' : 'Bot 信息'} onKeyDown={(event) => {
         const index = TABS.findIndex((item) => item.id === tab);
         let next = -1;
         if (event.key === 'ArrowRight') next = (index + 1) % TABS.length;
@@ -69,10 +65,11 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
       <div className="inspector-content" key={tab} id={`inspector-panel-${tab}`} role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={0}>
         {tab === 'computer' ? <div className="inspector-computer">
           {!isLocal && awake ? <CloudDesktop /> : <div className={`computer-preview ${dozing ? 'is-resting' : ''} ${booting ? 'is-booting' : ''}`} role="status" aria-live="polite">
-            <div className="computer-character" aria-hidden="true">{bot ? <BotAvatar bot={bot} activity={computerActivity} className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
+            <div className="computer-character" aria-hidden="true">{isGroup ? <Icon name={isLocal ? 'terminal' : 'cloud'} size={38} /> : bot ? <BotAvatar bot={bot} activity={computerActivity} className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
             <strong>{computerLabel}</strong>
           </div>}
           <p className="computer-caption">{isLocal ? '本机 Windows' : cloud.machine?.name ?? settings.cloud.machineName}<small> · 工作区内所有 Bot 共用</small></p>
+          {isGroup ? <p className="inspector-note inspector-group-computer-note">群成员按顺序使用同一台{isLocal ? '本机电脑' : '云电脑'}，共享工作目录和文件，执行时仍遵循各自的权限设置。</p> : null}
           <div className="computer-controls">
             {!isLocal ? <><Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning || cloud.state === 'busy'} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button><IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} /></> : null}
             <Button variant="glass" size="sm" icon="terminal" onClick={onOpenTerminal}>打开终端</Button>
@@ -82,36 +79,32 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
         </div> : null}
 
         {tab === 'details' ? <>
+          {isGroup ? <section className="inspector-section"><div className="inspector-section__head"><h3>群成员</h3><span>{conversation!.group!.memberBotIds.length} 个</span></div><div className="group-member-list inspector-group-members">{conversation!.group!.memberBotIds.map((id, index) => { const member = settings.bots.find((item) => item.id === id); return <div className="group-member" key={id}>{member ? <BotAvatar bot={member} animated={false} /> : <Icon name="bots" />}<span><strong>{member?.name ?? '已移除的 Bot'}</strong><small>{member?.model ?? '不再参与回复'}</small></span><small>{index + 1}</small></div>; })}</div><p className="inspector-note">按以上顺序回复，共享本群消息与记忆。</p><Button size="sm" variant="ghost" icon="edit" disabled={runningGroupIds.has(conversation!.id)} onClick={() => setEditingGroup(true)}>编辑群聊</Button></section> : <>
           {bot ? <BotTasks key={bot.id} botId={bot.id} /> : null}
           <section className="inspector-section"><h3>关于这个 Bot</h3><dl className="inspector-facts">
             <div><dt>供应商</dt><dd>{provider?.name ?? '未绑定'}</dd></div>
             <div><dt>模型</dt><dd>{bot?.model || '未选择'}</dd></div>
             <div><dt>权限</dt><dd>{bot?.approvalPolicy === 'ask' ? '执行前确认' : bot?.approvalPolicy === 'always' ? '全部允许' : '自动执行'}</dd></div>
             <div><dt>工具</dt><dd>{bot?.tools.length ?? 0} 个已启用</dd></div>
-          </dl></section>
+          </dl></section></>}
           <section className="inspector-section context-card"><h3>持续对话</h3>
-            <p>{compacting ? '正在整理上下文与长期记忆…' : '每个 Bot 一个对话，较早的内容会自动整理。'}</p>
+            <p>{compacting ? '正在整理上下文与长期记忆…' : isGroup ? '群成员共享本群对话，较早的内容会自动整理。' : '每个 Bot 一个对话，较早的内容会自动整理。'}</p>
             {conversation?.context ? <details><summary>已整理 {conversation.context.compactedMessages} 条消息</summary><p>{conversation.context.summary}</p></details> : null}
             <p className="inspector-note">完整聊天记录保留在本地。</p>
           </section>
-          {bot?.systemPrompt ? <section className="inspector-section"><h3>角色设定</h3><p className="inspector-prompt">{bot.systemPrompt}</p></section> : null}
+          {!isGroup && bot?.systemPrompt ? <section className="inspector-section"><h3>角色设定</h3><p className="inspector-prompt">{bot.systemPrompt}</p></section> : null}
         </> : null}
 
         {tab === 'library' ? <>
-          <section className="inspector-section"><div className="inspector-section__head"><h3>长期记忆</h3><span>{memories.length}</span></div>
-            <div className="memory-list">
-              {!memories.length ? <p className="inspector-note">偏好与重要事项会在对话整理时记在这里。</p> : null}
-              {memories.map((memory) => <div key={memory.id} className="memory-item"><span className="memory-item__text">{memory.text}</span><button type="button" className="memory-item__remove" aria-label="删除记忆" onClick={() => void deleteMemory(memory.id).catch((error: Error) => toast(error.message, 'error'))}><Icon name="close" size={12} /></button></div>)}
-            </div>
-            <form className="memory-add" onSubmit={(event) => { event.preventDefault(); void remember(); }}><input className="input input--sm" value={draft} placeholder="记住一件事…" aria-label="记忆内容" disabled={saving} onChange={(event) => setDraft(event.target.value)} /><IconButton type="submit" name="plus" label="添加记忆" disabled={!draft.trim() || saving} /></form>
-          </section>
+          {isGroup ? <BotMemories key={conversation!.id} bot={{ id: conversation!.id, name: conversation!.title }} group /> : bot ? <BotMemories key={bot.id} bot={bot} /> : null}
           <section className="inspector-section"><div className="inspector-section__head"><h3>对话文件</h3><span>{files.length}</span></div>
             {!files.length ? <div className="library-empty"><Icon name="folder" size={26} /><p>对话中的图片和文件会收在这里</p></div> : <div className="library-files">{files.map((file) => <div className="library-file" key={file.path ?? file.id}>{file.kind === 'image' && (assetUrl(file.path) ?? file.dataUrl) ? <img src={assetUrl(file.path) ?? file.dataUrl} alt={file.name} /> : <Icon name="folder" size={20} />}<span>{file.name}</span>{file.path ? <IconButton name="arrowUp" label={`打开 ${file.name}`} onClick={() => void moyu().openArtifact(file.path!).catch((error: Error) => toast(error.message, 'error'))} /> : null}</div>)}</div>}
           </section>
         </> : null}
       </div>
       {tab === 'computer' && awake ? <span className="inspector-sync">上次同步 {formatRelative(cloud.lastTransitionAt)}</span> : null}
-      {bot && avatarBotId === bot.id ? <BotAvatarDialog key={bot.id} bot={bot} onClose={() => setAvatarBotId(null)} /> : null}
+      {!isGroup && bot && avatarBotId === bot.id ? <BotAvatarDialog key={bot.id} bot={bot} onClose={() => setAvatarBotId(null)} /> : null}
+      {isGroup && editingGroup ? <CreateGroupDialog key={conversation!.id} initial={conversation!} onClose={() => setEditingGroup(false)} /> : null}
     </aside>
   );
 }

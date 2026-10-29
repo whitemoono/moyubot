@@ -74,7 +74,7 @@ artifact:open · open-external · win
 - `armIdleIfNeeded()`：计时器触发时若仍无任务才真正 `suspend()`，给对话留出连续多轮工具的窗口。
 - `resolveCloudState()`：把服务端状态与本地意图合并成 UI 用的 `CloudState`（含 `unconfigured` / `suspended` / `waking` / `running` / `error`）。
 
-**唤醒规则是硬约束**：纯聊天不碰云主机。只有 `cloud_exec` / `cloud_read` / `cloud_write`，以及 `generate_image` 在 `image.backend === 'cloud'` 或 `image.wakeHost` 为真时才唤醒。
+**唤醒规则是硬约束**：纯聊天和 API 绘图不唤醒云主机。`cloud_exec` / `cloud_read` / `cloud_write` 和 `desktop_action` 在使用云电脑时按需唤醒。
 
 ## 供应商适配（`providers/`）
 
@@ -88,6 +88,8 @@ artifact:open · open-external · win
 
 绘图单独一条路径 `generateImageWithProvider`：OpenAI 兼容走 `/images/generations`（兼容 b64 与 url 两种返回），Gemini 走 `generateContent` 要求 `responseModalities: ['TEXT','IMAGE']`。
 
+绘图只使用当前 Bot 供应商的图像 API，不执行云端绘图脚本，也不生成占位图。旧 Bot 的图片配置只保留比例；API 不支持或调用失败时返回工具错误。
+
 ## 工具（`tools.ts`）
 
 | 工具 | 说明 | 是否唤醒云主机 |
@@ -95,7 +97,7 @@ artifact:open · open-external · win
 | `cloud_exec` | 在云主机跑命令，SSE 流式回传 stdout/stderr/exit | 是 |
 | `cloud_read` | 读云主机文件（UTF-8 或 base64） | 是 |
 | `cloud_write` | 写文件，自动建父目录 | 是 |
-| `generate_image` | 按提示词出图并落盘到 `images/` | 取决于 `image.backend` |
+| `generate_image` | 通过供应商图像 API 出图并落盘到 `images/` | 否 |
 | `remember` / `recall` | 写入/检索长期记忆 | 否 |
 | `schedule_task` | 创建 cron 定时任务 | 否 |
 | `web_fetch` | 抓取网页正文（截断后回灌） | 否 |
@@ -125,4 +127,4 @@ artifact:open · open-external · win
 
 ## 测试策略
 
-`scripts/smoke.mjs` 在 `127.0.0.1:8791` 起一个假的 OpenAI SSE 服务，用 `MOYU_DATA_DIR=.work/demo-data` 启动主进程级流程，断言：唤醒云主机 → 触发 `generate_image` → 产物落盘 → 二次回复。它不依赖任何真实 API Key，因此 CI 里可直接跑。
+`scripts/smoke.mjs` 在本机随机端口启动假的 OpenAI SSE 与图像 API，断言：触发 `generate_image` → 调用图像 API → 响应图片字节落盘 → 二次回复，且云电脑唤醒次数为零。它不依赖任何真实 API Key，因此 CI 里可直接跑。

@@ -1,0 +1,44 @@
+.memory-preview { display: flex; flex-direction: column; width: 100%; text-align: left; min-width: 0; padding: 12px; gap: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--hover); transition: background 160ms ease, border-color 160ms ease; }
+.memory-preview:hover { background: var(--selected); border-color: var(--line-strong); }
+.memory-preview:focus-visible { outline: 2px solid var(--text-dim); outline-offset: 3px; }
+.memory-preview__caption { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-faint); }
+.memory-preview__list { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; }
+.memory-preview__item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.memory-preview__item + .memory-preview__item { border-top: 1px solid var(--line); padding-top: 10px; }
+.memory-preview__text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 11px; line-height: 1.65; color: var(--text-dim); overflow-wrap: anywhere; white-space: pre-wrap; }
+.memory-preview__meta { font-size: 9px; color: var(--text-faint); }
+.memory-preview__empty { font-size: 11px; line-height: 1.7; color: var(--text-faint); }
+.memory-preview__more { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px; color: var(--text-dim); }
+.sheet.bot-memory-dialog { width: min(480px, 100%); max-height: min(680px, calc(100dvh - 48px)); border-radius: 18px; }
+.bot-memory-dialog .sheet__head { padding: 18px 20px 14px; }
+.bot-memory-dialog .sheet__head > div { min-width: 0; }
+.bot-memory-dialog .sheet__head h2 { font-size: 15px; overflow-wrap: anywhere; }
+.bot-memory-dialog .sheet__head p { font-size: 11px; line-height: 1.65; }
+.bot-memory-dialog .sheet__body { padding: 14px 20px 18px; min-height: 0; }
+.memory-search { display: flex; align-items: center; gap: 8px; padding: 0 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; color: var(--text-faint); }
+.memory-search:focus-within { border-color: var(--line-strong); }
+.memory-search .input { min-width: 0; width: 100%; padding: 9px 0; background: transparent; border: 0; box-shadow: none; outline: 0; font-size: 12px; }
+.memory-results { margin: 13px 0 9px; font-size: 10px; color: var(--text-faint); }
+.memory-records { display: flex; flex-direction: column; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.memory-record { min-width: 0; padding: 12px 13px 7px; background: var(--hover); border: 1px solid var(--line); border-radius: 10px; }
+.memory-record > p { margin: 0 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: 12px; line-height: 1.75; }
+.memory-record__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.memory-record__foot > span { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 10px; color: var(--text-faint); }
+.memory-record__foot .icon-btn { width: 28px; height: 28px; color: var(--text-faint); }
+.memory-record__foot .icon-btn svg { width: 14px; height: 14px; }
+.memory-record__foot .icon-btn:hover { color: #d9534f; }
+.memory-record__pin { display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; }
+.bot-memory-dialog .sheet__foot { display: block; padding: 14px 20px 18px; background: transparent; }
+.memory-compose { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.memory-compose > label { font-size: 11px; color: var(--text-dim); }
+.memory-compose > div { display: flex; align-items: flex-end; gap: 8px; }
+.memory-compose textarea { flex: 1; width: 0; min-width: 0; max-height: 120px; min-height: 58px; resize: vertical; font-size: 12px; line-height: 1.6; border-radius: 9px; }
+.memory-compose .btn { flex-shrink: 0; border-radius: 9px; min-height: 32px; }
+.memory-dialog-empty { min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px 8px; color: var(--text-faint); }
+.memory-dialog-empty strong { font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.memory-dialog-empty p { margin: 0; font-size: 11px; line-height: 1.7; }
+@media (max-width: 520px) {
+  .bot-memory-dialog .sheet__head, .bot-memory-dialog .sheet__body, .bot-memory-dialog .sheet__foot { padding-left: 14px; padding-right: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .memory-preview { transition: none; } }
+.reduce-motion .memory-preview { transition: none; }

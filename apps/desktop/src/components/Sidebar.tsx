@@ -16,6 +16,7 @@ import { CreateGroupDialog } from './CreateGroupDialog';
 import { UserAvatar } from './UserAvatar';
 import { ConnectorsDialog } from './ConnectorsDialog';
 import { GroupContextMenu } from './GroupContextMenu';
+import { GroupChatContextMenu } from './GroupChatContextMenu';
 
 const FEATURES: { id: View | 'usage'; label: string; icon: IconName }[] = [
   { id: 'bots', label: 'Bot 管理', icon: 'bots' },
@@ -25,7 +26,7 @@ const FEATURES: { id: View | 'usage'; label: string; icon: IconName }[] = [
 ];
 
 export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boolean; onExpand: () => void; onCreateBot: () => void }) {
-  const { settings, bot, conversation, selectBot, conversations, view, setView, openSettings, runningBotIds, botActivities, updateBotMetadata, updateBotGroup, toast, workspaces, activeWorkspace, selectWorkspace } = useMoyu();
+  const { settings, bot, conversation, selectBot, conversations, view, setView, openSettings, runningBotIds, botActivities, updateBotMetadata, updateBotGroup, setGroupChatsCollapsed, runningGroupIds, toast, workspaces, activeWorkspace, selectWorkspace } = useMoyu();
   const [searchOpen, setSearchOpen] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
@@ -40,11 +41,20 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
   const closeContext = useCallback(() => setContext(null), []);
   const [groupContext, setGroupContext] = useState<{ name: string; x: number; y: number } | null>(null);
   const closeGroupContext = useCallback(() => setGroupContext(null), []);
+  const [chatContext, setChatContext] = useState<{ id: string; x: number; y: number } | null>(null);
+  const closeChatContext = useCallback(() => setChatContext(null), []);
+  useEffect(() => { setChatContext(null); setContext(null); setGroupContext(null); }, [activeWorkspace?.id]);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const previewFor = (id: string) => conversations.find((item) => item.botId === id)?.preview?.replace(/[#*`\n]+/g, ' ').trim() || '还没有消息，和我聊聊吧';
   const filteredBots = settings.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id);
-  const groupChats = conversations.filter((item) => item.group);
+  const chatOrder = activeWorkspace?.groupChatOrder ?? [];
+  const groupChats = conversations.filter((item) => item.group).sort((a, b) => {
+    const first = chatOrder.indexOf(a.id), second = chatOrder.indexOf(b.id);
+    return (first < 0 ? chatOrder.length : first) - (second < 0 ? chatOrder.length : second);
+  });
+  const chatsOpen = collapsed || !activeWorkspace?.groupChatsCollapsed;
+  const contextChat = groupChats.find((item) => item.id === chatContext?.id);
   const hiddenBots = filteredBots.filter((item) => item.sidebar?.hidden);
   const pinnedBots = filteredBots.filter((item) => !item.sidebar?.hidden && item.sidebar?.pinned);
   const groups = new Map<string, Bot[]>();
@@ -61,14 +71,22 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
     event.preventDefault();
     setMenuOpen(false);
     setGroupContext(null);
+    setChatContext(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setContext({ botId: item.id, x: event.clientX || rect.right - 12, y: event.clientY || rect.top + 12 });
   };
   const openGroupContext = (event: ReactMouseEvent<HTMLButtonElement>, name: string) => {
     event.preventDefault(); event.currentTarget.focus();
     setMenuOpen(false); setContext(null);
+    setChatContext(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setGroupContext({ name, x: event.clientX || rect.right - 12, y: event.clientY || rect.bottom });
+  };
+  const openChatContext = (event: ReactMouseEvent<HTMLButtonElement>, id: string) => {
+    event.preventDefault(); event.currentTarget.focus();
+    setMenuOpen(false); setContext(null); setGroupContext(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setChatContext({ id, x: event.clientX || rect.right - 12, y: event.clientY || rect.bottom });
   };
   const togglePin = async (item: Bot) => {
     const pinned = !item.sidebar?.pinned;
@@ -82,12 +100,12 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
     {item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : runningBotIds.has(item.id) ? <span className="messenger-bot__activity" aria-label="运行中" /> : null}
   </button>;
 
-  const openSearch = () => { onExpand(); setMenuOpen(false); setContext(null); setGroupContext(null); setSearchOpen(true); };
+  const openSearch = () => { onExpand(); setMenuOpen(false); setContext(null); setGroupContext(null); setChatContext(null); setSearchOpen(true); };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         if (document.querySelector('[role="dialog"]')) return;
-        event.preventDefault(); onExpand(); setMenuOpen(false); setContext(null); setGroupContext(null); setSearchOpen(true);
+        event.preventDefault(); onExpand(); setMenuOpen(false); setContext(null); setGroupContext(null); setChatContext(null); setSearchOpen(true);
       }
       if (event.key === 'Escape') { if (menuOpen) menuButtonRef.current?.focus(); setMenuOpen(false); setSearchOpen(false); }
     };
@@ -131,7 +149,10 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
           </button>
           <div id={`bot-group-${encodeURIComponent(group.name)}`} className="messenger-group__body" hidden={!open}>{open ? items.map(renderBot) : null}</div>
         </div>; })}
-        {groupChats.length ? <div className="messenger-group messenger-group--chats"><div className="messenger-group__name"><Icon name="users" size={12} /><span>群聊</span><small>{groupChats.length}</small></div>{groupChats.map((group) => <button type="button" key={group.id} className={`messenger-bot messenger-group-chat ${view === 'chat' && conversation?.id === group.id ? 'is-active' : ''}`} data-group-id={group.id} aria-current={view === 'chat' && conversation?.id === group.id ? 'page' : undefined} title={group.title} onClick={() => selectBot(group.id)}><span className="group-chat-icon"><Icon name="users" size={20} /></span><span className="messenger-bot__text"><strong>{group.title}</strong><span>{group.preview || `${group.group!.memberBotIds.length} 个 Bot · 开始群聊`}</span></span></button>)}</div> : null}
+        {groupChats.length ? <div className="messenger-group messenger-group--chats">
+          <button type="button" className="messenger-group__name messenger-group__toggle" aria-label="群聊列表" aria-expanded={chatsOpen} aria-controls="sidebar-group-chats" onClick={() => void setGroupChatsCollapsed(!activeWorkspace?.groupChatsCollapsed).catch((error: Error) => toast(error.message, 'error'))}><Icon name="users" size={12} /><span>群聊</span><small>{groupChats.length}</small><Icon name="chevron" size={12} className={`messenger-group__chevron ${chatsOpen ? 'is-open' : ''}`} /></button>
+          <div id="sidebar-group-chats" className="messenger-group__body" hidden={!chatsOpen}>{chatsOpen ? groupChats.map((group) => <button type="button" key={group.id} className={`messenger-bot messenger-group-chat ${view === 'chat' && conversation?.id === group.id ? 'is-active' : ''}`} data-group-id={group.id} aria-current={view === 'chat' && conversation?.id === group.id ? 'page' : undefined} aria-haspopup="menu" title={group.title} onClick={() => selectBot(group.id)} onContextMenu={(event) => openChatContext(event, group.id)}><span className="group-chat-icon"><Icon name="users" size={20} /></span><span className="messenger-bot__text"><strong>{group.title}</strong><span>{group.preview || `${group.group!.memberBotIds.length} 个 Bot · 开始群聊`}</span></span>{runningGroupIds.has(group.id) ? <span className="messenger-bot__activity" aria-label="运行中" /> : null}</button>) : null}</div>
+        </div> : null}
         {hiddenBots.length ? <details className="messenger-hidden" open={hiddenOpen} onToggle={(event) => setHiddenOpen(event.currentTarget.open)}>
           <summary className="messenger-hidden__title" aria-label="已隐藏的 Bot"><Icon name="hide" size={13} /><span>已隐藏的 Bot</span><small>{hiddenBots.length}</small><Icon name="chevron" size={13} className="messenger-hidden__chevron" /></summary>
           <div className="messenger-hidden__body">{hiddenBots.map(renderBot)}</div>
@@ -139,15 +160,16 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         {!filteredBots.length ? <p className="messenger-no-results">没有找到相关 Bot</p> : null}
       </nav>
       <div className="messenger-footer">
-        <button type="button" ref={menuButtonRef} className={`messenger-profile ${menuOpen ? 'is-active' : ''}`} aria-label="用户菜单" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setContext(null); setGroupContext(null); setMenuOpen((value) => !value); }} title={`${settings.userName || '本地用户'} · 功能菜单`}>
+        <button type="button" ref={menuButtonRef} className={`messenger-profile ${menuOpen ? 'is-active' : ''}`} aria-label="用户菜单" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setContext(null); setGroupContext(null); setChatContext(null); setMenuOpen((value) => !value); }} title={`${settings.userName || '本地用户'} · 功能菜单`}>
           <UserAvatar /><span className="messenger-profile__name">{settings.userName || '本地用户'}</span>
         </button>
-        <button type="button" className={`messenger-menu-button ${connectorsOpen ? 'is-active' : ''}`} aria-label="连接器" title="连接器" aria-haspopup="dialog" aria-expanded={connectorsOpen} onClick={(event) => { event.currentTarget.focus(); setMenuOpen(false); setContext(null); setGroupContext(null); setConnectorsOpen(true); }}>
+        <button type="button" className={`messenger-menu-button ${connectorsOpen ? 'is-active' : ''}`} aria-label="连接器" title="连接器" aria-haspopup="dialog" aria-expanded={connectorsOpen} onClick={(event) => { event.currentTarget.focus(); setMenuOpen(false); setContext(null); setGroupContext(null); setChatContext(null); setConnectorsOpen(true); }}>
           <Icon name="plug" size={18} />
         </button>
       </div>
       {context && contextBot ? <BotContextMenu key={`${context.botId}-${context.x}-${context.y}`} bot={contextBot} x={context.x} y={context.y} onClose={closeContext} onTogglePin={() => togglePin(contextBot)} /> : null}
       {groupContext ? <GroupContextMenu key={`${groupContext.name}-${groupContext.x}-${groupContext.y}`} {...groupContext} onClose={closeGroupContext} /> : null}
+      {chatContext && contextChat ? <GroupChatContextMenu key={`${chatContext.id}-${chatContext.x}-${chatContext.y}`} group={contextChat} index={groupChats.indexOf(contextChat)} count={groupChats.length} x={chatContext.x} y={chatContext.y} onClose={closeChatContext} /> : null}
       {searchOpen ? <SearchDialog onClose={closeSearch} onCreateBot={onCreateBot} onCreateGroup={() => setCreatingGroup(true)} /> : null}
       {creatingGroup ? <CreateGroupDialog onClose={closeGroup} /> : null}
       {connectorsOpen ? <ConnectorsDialog onClose={closeConnectors} /> : null}

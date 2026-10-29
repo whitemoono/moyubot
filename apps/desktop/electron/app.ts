@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
+import { initializeProviderNetworking } from './provider-network';
 import type {
   AgentEvent,
   AppSettings,
@@ -12,6 +13,7 @@ import type {
   Bot,
   BotMetadataPatch,
   BotGroupAction,
+  GroupChatAction,
   BootstrapPayload,
   CloudStatus,
   Conversation,
@@ -100,6 +102,7 @@ export class MoyuApp {
   private terminalRuns = new Map<string, AbortController>();
 
   constructor(dataDir: string, version: string, options?: { localDirectory?: string }) {
+    initializeProviderNetworking();
     this.version = version;
     const secrets = new SafeSecretBox(dataDir);
     this.store = new Store(dataDir, secrets, options);
@@ -247,7 +250,7 @@ export class MoyuApp {
       const activeWorkspaceId = skipCloud ? 'workspace_local' : 'workspace_cloud';
       if (skipCloud && !settings.bots.some((bot) => bot.workspaceId === 'workspace_local')) {
         const source = settings.bots[0]!;
-        this.store.upsertBot({ ...source, id: `bot_local_${randomUUID()}`, workspaceId: 'workspace_local', name: '本地助手', approvalPolicy: 'ask', sidebar: undefined, image: { ...source.image, backend: 'api', wakeHost: false } });
+        this.store.upsertBot({ ...source, id: `bot_local_${randomUUID()}`, workspaceId: 'workspace_local', name: '本地助手', approvalPolicy: 'ask', sidebar: undefined });
       }
       const botId = this.store.getSettings().bots.find((bot) => bot.workspaceId === activeWorkspaceId)?.id;
       return this.store.updateSettings({ onboarding: { step: 2, completedAt: Date.now() }, activeWorkspaceId, activeBotId: botId, workspaces: this.store.getSettings().workspaces.map((workspace) => workspace.id === activeWorkspaceId ? { ...workspace, activeBotId: botId } : workspace) });
@@ -352,6 +355,12 @@ export class MoyuApp {
       return this.runtime.send(input);
     });
     handle('moyu:group:create', (_event, title: string, memberBotIds: string[]) => this.store.createGroup(title, memberBotIds));
+    handle('moyu:group:update', (_event, id: string, action: GroupChatAction) => {
+      if (action.type !== 'move' && this.runtime.isRunning(id)) throw new Error('请先停止群聊任务，再编辑或删除群聊');
+      const group = this.store.updateGroupChat(id, action);
+      return { group, settings: this.store.getSettings() };
+    });
+    handle('moyu:group:collapse', (_event, workspaceId: string, collapsed: boolean) => this.store.setGroupChatsCollapsed(workspaceId, collapsed));
 
     handle('moyu:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
 

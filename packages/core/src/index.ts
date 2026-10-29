@@ -17,6 +17,7 @@ export { AgentRuntime, resolveArtifact } from './agent';
 export { runTool, schemasFor, toolNamesFor, TOOL_SCHEMAS } from './tools';
 export type { ToolContext, ToolSchema } from './tools';
 export { createChatProvider, PROVIDER_PRESETS, generateImageWithProvider } from './providers';
+export { setProviderFetch } from './providers/transport';
 export type { ChatProvider, AgentMessage, StreamHandlers, GeneratedImage, ImageRequest } from './providers';
 export { parseCron, nextCronTime, ScheduleRunner } from './scheduler';
 export { TelegramGateway } from './telegram';

@@ -4,6 +4,7 @@ import type {
   AppSettings,
   BotMetadataPatch,
   BotGroupAction,
+  GroupChatAction,
   SidebarBotGroup,
   CloudHostSettings,
   Conversation,
@@ -15,7 +16,7 @@ import type {
   TelegramSettings,
   UiSettings,
 } from './types';
-import { DEFAULT_CLOUD_COMMAND, DEFAULT_SYSTEM_PROMPT } from './types';
+import { DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, normalizeRemoteDirectory, safeJsonParse } from './util';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
@@ -97,11 +98,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
         approvalPolicy: 'never',
         tools: ['cloud_exec', 'cloud_read', 'cloud_write', 'generate_image', 'remember', 'recall', 'schedule_task'],
         image: {
-          backend: 'api',
-          cloudCommand: DEFAULT_CLOUD_COMMAND,
-          cloudOutputPath: '/data/moyubot/out/{name}.png',
           aspect: '1:1',
-          wakeHost: true,
         },
         wakeOnTask: true,
         createdAt: now,
@@ -199,7 +196,8 @@ export class Store {
       this.settings.bots = this.settings.bots.map((bot) => ({
         ...base.bots[0]!,
         ...bot,
-        image: { ...base.bots[0]!.image, ...bot.image },
+        // Retain the image ratio and discard retired cloud-script settings.
+        image: { aspect: bot.image?.aspect ?? base.bots[0]!.image.aspect },
         avatar: { ...base.bots[0]!.avatar, ...bot.avatar },
         workspaceId: bot.workspaceId || 'workspace_cloud',
       }));
@@ -240,6 +238,7 @@ export class Store {
     this.settings = {
       ...this.settings,
       ...patch,
+      bots: patch.bots ? patch.bots.map((bot) => ({ ...bot, image: { aspect: bot.image?.aspect ?? '1:1' } })) : this.settings.bots,
       cloud: patch.cloud ? { ...this.settings.cloud, ...patch.cloud } : this.settings.cloud,
       ui: patch.ui ? { ...this.settings.ui, ...patch.ui } : this.settings.ui,
       telegram: patch.telegram ? { ...this.settings.telegram, ...patch.telegram } : this.settings.telegram,
@@ -263,7 +262,7 @@ export class Store {
 
   upsertBot(bot: AppSettings['bots'][number]) {
     const existing = this.getBot(bot.id);
-    bot = { ...bot, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
+    bot = { ...bot, image: { aspect: bot.image?.aspect ?? '1:1' }, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
     if (!this.settings.workspaces.some((item) => item.id === bot.workspaceId)) throw new Error('工作区不存在');
     if (existing && (existing.workspaceId ?? 'workspace_cloud') !== bot.workspaceId) throw new Error('现有 Bot 不能直接转移工作区，请创建独立 Bot');
     const index = this.settings.bots.findIndex((item) => item.id === bot.id);
@@ -358,7 +357,7 @@ export class Store {
 
   listConversations(botId?: string): ConversationSummary[] {
     return [...this.conversations.values()]
-      .filter((conv) => !conv.mergedInto && (!botId || conv.botId === botId))
+      .filter((conv) => !conv.mergedInto && !conv.deletedAt && (!botId || conv.botId === botId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((conv) => ({
         id: conv.id,
@@ -373,6 +372,7 @@ export class Store {
 
   getConversation(id: string): Conversation | undefined {
     const conv = this.conversations.get(id);
+    if (conv?.deletedAt) return undefined;
     return conv?.mergedInto ? this.conversations.get(conv.mergedInto) : conv;
   }
 
@@ -389,6 +389,50 @@ export class Store {
     this.conversations.set(id, conv);
     this.saveConversation(id);
     return conv;
+  }
+
+  setGroupChatsCollapsed(workspaceId: string, collapsed: boolean): AppSettings {
+    if (typeof collapsed !== 'boolean') throw new Error('无效的折叠状态');
+    if (!this.settings.workspaces.some((item) => item.id === workspaceId)) throw new Error('工作区不存在');
+    const previous = this.settings;
+    try { return this.updateSettings({ workspaces: this.settings.workspaces.map((item) => item.id === workspaceId ? { ...item, groupChatsCollapsed: collapsed } : item) }); }
+    catch (error) { this.settings = previous; throw error; }
+  }
+
+  updateGroupChat(id: string, action: GroupChatAction): Conversation {
+    const current = this.getConversation(id);
+    if (!current?.group) throw new Error('群聊不存在');
+    const workspaceId = current.workspaceId ?? 'workspace_cloud';
+    if (action.type === 'move') {
+      if (!['up', 'down'].includes(action.direction)) throw new Error('无效的移动方向');
+      const workspace = this.settings.workspaces.find((item) => item.id === workspaceId);
+      if (!workspace) throw new Error('工作区不存在');
+      const chats = this.listConversations().filter((item) => item.group && item.workspaceId === workspaceId);
+      const existing = workspace.groupChatOrder ?? [];
+      const order = [...new Set([...existing.filter((item) => chats.some((chat) => chat.id === item)), ...chats.map((item) => item.id)])];
+      const index = order.indexOf(id), target = index + (action.direction === 'up' ? -1 : 1);
+      if (target < 0 || target >= order.length) return current;
+      [order[index], order[target]] = [order[target], order[index]];
+      const previous = this.settings;
+      try { this.updateSettings({ workspaces: this.settings.workspaces.map((item) => item.id === workspaceId ? { ...item, groupChatOrder: order } : item) }); }
+      catch (error) { this.settings = previous; throw error; }
+      return current;
+    }
+    let next: Conversation;
+    if (action.type === 'edit') {
+      const title = action.title.trim(), ids = [...new Set(action.memberBotIds)];
+      if (!title || title.length > 60) throw new Error('群聊名字需要 1–60 个字符');
+      if (ids.length < 2 || ids.length > 12) throw new Error('请选择 2–12 个 Bot');
+      if (ids.some((member) => !this.getBot(member))) throw new Error('群成员中的 Bot 不存在');
+      if (ids.some((member) => (this.getBot(member)!.workspaceId ?? 'workspace_cloud') !== workspaceId)) throw new Error('不能跨工作区添加群成员');
+      next = { ...current, title, group: { ...current.group, memberBotIds: ids }, updatedAt: Date.now() };
+    } else if (action.type === 'delete') {
+      next = { ...current, deletedAt: Date.now() };
+    } else throw new Error('无效的群聊操作');
+    this.conversations.set(id, next);
+    try { this.saveConversation(id); }
+    catch (error) { this.conversations.set(id, current); throw error; }
+    return next;
   }
 
   botConversation(botId: string): Conversation {

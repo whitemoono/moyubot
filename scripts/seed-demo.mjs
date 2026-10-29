@@ -49,7 +49,6 @@ const bots = [
     model: 'claude-sonnet-4-5',
     systemPrompt: '你是 Nova，擅长长文写作与结构化整理。用 cloud_write 把结果落到云电脑，再读回来确认。',
     approvalPolicy: 'ask',
-    image: { ...first.image, backend: 'cloud' },
     createdAt: now,
     updatedAt: now,
   },
@@ -64,7 +63,6 @@ const bots = [
     systemPrompt: '你是 Orbit，负责抓网页、跑脚本、盯定时任务。工具优先，结论简短。',
     approvalPolicy: 'never',
     tools: ['cloud_exec', 'web_fetch', 'schedule_task', 'remember', 'recall'],
-    image: { ...first.image, backend: 'api' },
     createdAt: now,
     updatedAt: now,
   },
@@ -142,8 +140,8 @@ if (!store.botConversation(first.id).messages.length) {
   store.appendMessage(conversation.id, {
     id: messageId,
     role: 'assistant',
-    // 说明为什么唤醒、产物落在哪，避免把工具回显混进正文。
-    content: '云主机已就绪，海报出好了：分层玻璃质感的球体，标题压在下三分之一。\n原图已落在 `/data/moyubot/out/poster-169.svg`，本地也存了一份，点开可以看大图。',
+    // 展示绘图结果及本机保存位置。
+    content: '海报出好了：分层玻璃质感的球体，标题压在下三分之一。\n图片已保存到本机，点开可以看大图。',
     createdAt: now - 60_000,
     model: first.model,
     toolCalls: [call],
@@ -152,8 +150,8 @@ if (!store.botConversation(first.id).messages.length) {
         id: call.id,
         name: call.name,
         ok: true,
-        summary: '云主机出图 · 16:9 · 唤云 2.1s',
-        detail: 'wake 2.1s → generate_image → /data/moyubot/images/poster-169.svg',
+        summary: '图片已生成（16:9）',
+        detail: 'generate_image → images/poster-169.svg（演示图片）',
         durationMs: 8400,
       },
     ],

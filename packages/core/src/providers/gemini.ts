@@ -1,3 +1,4 @@
+import { providerFetch } from './transport';
 import type { ChatArgs, ChatOutcome, ChatProvider, StreamHandlers } from './types';
 import { ProviderError, splitDataUrl, parseToolArguments } from './types';
 import { iterSse, readErrorMessage } from './sse';
@@ -77,7 +78,7 @@ export class GeminiProvider implements ChatProvider {
       },
     };
 
-    const res = await fetch(url, {
+    const res = await providerFetch(this.config, url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -131,7 +132,7 @@ export class GeminiProvider implements ChatProvider {
   }
 
   async listModels(): Promise<string[]> {
-    const res = await fetch(`${this.baseUrl()}/models?pageSize=200`, { headers: this.headers() });
+    const res = await providerFetch(this.config, `${this.baseUrl()}/models?pageSize=200`, { headers: this.headers() });
     if (!res.ok) throw new ProviderError(await readErrorMessage(res), res.status);
     const payload = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
     return (payload.models ?? [])
@@ -142,7 +143,7 @@ export class GeminiProvider implements ChatProvider {
   async test(): Promise<{ ok: boolean; message: string; latencyMs: number }> {
     const startedAt = Date.now();
     try {
-      const res = await fetch(`${this.baseUrl()}/models/${encodeURIComponent(this.config.defaultModel)}`, {
+      const res = await providerFetch(this.config, `${this.baseUrl()}/models/${encodeURIComponent(this.config.defaultModel)}`, {
         headers: this.headers(),
       });
       const latencyMs = Date.now() - startedAt;

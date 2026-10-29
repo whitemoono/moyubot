@@ -11,6 +11,8 @@ export interface ProviderConfig {
   kind: ProviderKind;
   /** Base URL without a trailing slash, e.g. https://api.x.ai/v1 */
   baseUrl: string;
+  /** Omitted values connect directly; system follows OS proxy and bypass rules. */
+  networkMode?: 'system' | 'direct';
   defaultModel: string;
   models: string[];
   imageModel?: string;
@@ -34,15 +36,8 @@ export interface BotAvatar {
 export type ApprovalPolicy = 'ask' | 'always' | 'never';
 
 export interface ImageConfig {
-  /** api = provider image endpoint, cloud = run the job inside the shared cloud computer */
-  backend: 'api' | 'cloud';
-  /** Command template executed inside the VM. {prompt} and {out} are substituted. */
-  cloudCommand?: string;
-  /** Path inside the VM that the command writes the PNG to. */
-  cloudOutputPath?: string;
+  /** Images are generated through the Bot's provider image API. */
   aspect: '1:1' | '3:2' | '2:3' | '4:3' | '3:4' | '16:9' | '9:16';
-  /** Wake the shared cloud host even when the image backend is an HTTP API. */
-  wakeHost: boolean;
 }
 
 export interface Bot {
@@ -76,10 +71,16 @@ export interface Workspace {
   activeBotId?: string;
   botGroups?: SidebarBotGroup[];
   ungroupedGroupIndex?: number;
+  groupChatsCollapsed?: boolean;
+  groupChatOrder?: string[];
 }
 
 export type BotMetadataPatch = { name?: string; sidebar?: NonNullable<Bot['sidebar']> };
 export interface SidebarBotGroup { name: string; collapsed?: boolean }
+export type GroupChatAction =
+  | { type: 'edit'; title: string; memberBotIds: string[] }
+  | { type: 'move'; direction: 'up' | 'down' }
+  | { type: 'delete' };
 export type BotGroupAction =
   | { type: 'rename'; name: string }
   | { type: 'move'; direction: 'up' | 'down' }
@@ -220,6 +221,8 @@ export interface Conversation {
   updatedAt: number;
   /** Legacy threads stay on disk after being merged into the bot's single thread. */
   mergedInto?: string;
+  /** Deleted group chats retain their transcript on disk and leave the active list. */
+  deletedAt?: number;
   context?: ConversationContext;
 }
 
@@ -443,9 +446,7 @@ export interface BootstrapPayload {
 
 export const DEFAULT_SYSTEM_PROMPT = `你是 {bot_name}，一个运行在 MoyuBot 里的通用智能体。
 你有一台共享的云端 Linux 电脑（4 vCPU / 8 GB），平时处于休眠状态，需要时会被自动唤醒。
-- 涉及文件、命令、脚本、绘图的任务，用 cloud_* 工具在云电脑里完成；聊天闲聊不必唤醒云电脑。
-- 需要生成图片时调用 generate_image，它会按配置走云主机或图像 API。
+- 涉及文件、命令、脚本的任务，用 cloud_* 工具在云电脑里完成；聊天闲聊不必唤醒云电脑。
+- 需要生成图片时调用 generate_image，通过供应商图像 API 出图，无需唤醒云电脑。
 - 长任务先说明计划，再用工具一步步执行，每一步都给出可验证的结果。
 - 不确定的信息要说明不确定，不要编造命令输出。`;
-
-export const DEFAULT_CLOUD_COMMAND = `mkdir -p "$(dirname {out})" && python3 /opt/moyubot/draw.py --prompt {prompt} --out {out}`;

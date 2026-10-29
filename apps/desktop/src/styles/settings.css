@@ -332,11 +332,6 @@
 .computer-terminal__line--cmd > span { color: #69ae86; }
 .computer-terminal__line--err { color: #d17777; }
 .computer-terminal__running { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--text-faint); }
-.computer-terminal__command { display: flex; align-items: center; gap: 9px; padding: 10px 13px; border-top: 1px solid var(--line); }
-.computer-terminal__command > span { font-size: 12px; color: var(--text-faint); }
-.computer-terminal__command > input { flex: 1; min-width: 0; border: 0; padding: 3px; background: transparent; font-size: 11px; }
-.computer-terminal__command > input:focus-visible { outline: none; }
-.computer-terminal__command:focus-within { background: var(--hover); }
 .computer-terminal__hint { padding: 0 13px 12px; color: var(--text-faint); font-size: 9px; line-height: 1.7; margin: 0; }
 .computer-savebar { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 26px; border-top: 1px solid var(--line); background: var(--bg); }
 .computer-savebar > span { display: grid; grid-template-columns: 13px 1fr; align-items: center; column-gap: 6px; color: var(--text-dim); font-size: 11px; }

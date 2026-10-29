@@ -1,3 +1,4 @@
+import { providerFetch } from './transport';
 import type { ChatArgs, ChatOutcome, ChatProvider, StreamHandlers } from './types';
 import { ProviderError, splitDataUrl, parseToolArguments } from './types';
 import { iterSse, readErrorMessage } from './sse';
@@ -75,7 +76,7 @@ export class AnthropicProvider implements ChatProvider {
     const url = this.config.baseUrl.endsWith('/v1')
       ? `${this.config.baseUrl}/messages`
       : `${this.config.baseUrl}/v1/messages`;
-    const res = await fetch(url, {
+    const res = await providerFetch(this.config, url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -153,7 +154,7 @@ export class AnthropicProvider implements ChatProvider {
 
   async listModels(): Promise<string[]> {
     const base = this.config.baseUrl.replace(/\/v1$/, '');
-    const res = await fetch(`${base}/v1/models`, { headers: this.headers() });
+    const res = await providerFetch(this.config, `${base}/v1/models`, { headers: this.headers() });
     if (!res.ok) throw new ProviderError(await readErrorMessage(res), res.status);
     const payload = (await res.json()) as { data?: { id: string }[] };
     return (payload.data ?? []).map((item) => item.id);
@@ -163,7 +164,7 @@ export class AnthropicProvider implements ChatProvider {
     const startedAt = Date.now();
     try {
       const base = this.config.baseUrl.replace(/\/v1$/, '');
-      const res = await fetch(`${base}/v1/messages`, {
+      const res = await providerFetch(this.config, `${base}/v1/messages`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({
