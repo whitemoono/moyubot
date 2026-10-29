@@ -100,7 +100,7 @@ export class AgentRuntime {
     return `${bot.systemPrompt.replace(/\{bot_name\}/g, bot.name)}
 
 当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}
-本地工作区（生成图片会存到这里）：${workspace}
+${bot.workspaceId === 'workspace_local' ? '本机工作目录' : '图片保存目录（本机）'}：${workspace}
 当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
 ${bot.workspaceId === 'workspace_local' ? '执行环境约束：以上角色设定若提及云端 Linux，以本条为准。cloud_exec / cloud_read / cloud_write 是兼容工具名，实际只操作本机 Windows 工作区。命令使用 PowerShell 语法，文件路径位于该工作区目录，不能使用 bash 或云端路径。API 绘图不唤醒云电脑。' : ''}
 ${memoryBlock}${scheduleGuide}`;

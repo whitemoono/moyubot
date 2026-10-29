@@ -352,6 +352,9 @@ test('interrupted calls never turn into orphan tool messages in the next request
 
 test('runtime reuses the same thread, recovers from a real context rejection, and isolates simultaneous bots', async () => {
   const f = fixture();
+  // An empty tool list means all tools in the legacy configuration. Keep this
+  // 4K-context test focused on overflow recovery with one explicit capability.
+  f.bot.tools = ['remember'];
   const seen = [];
   let rejectFirst = true;
   const server = http.createServer(async (req, res) => {
