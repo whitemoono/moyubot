@@ -6,8 +6,8 @@
   ; The components page already explains the uninstall choices.
 !macroend
 
-LangString moyuDeleteData ${LANG_SIMPCHINESE} "同时删除用户数据（聊天、设置、密钥和缓存）"
-LangString moyuDeleteData ${LANG_ENGLISH} "Delete user data (chats, settings, credentials and cache)"
+LangString moyuDeleteData 2052 "同时删除用户数据（聊天、设置、密钥和缓存）"
+LangString moyuDeleteData 1033 "Delete user data (chats, settings, credentials and cache)"
 
 !macro customUnInstallSection
   Section "un.$(moyuDeleteData)" moyuDeleteDataSection
