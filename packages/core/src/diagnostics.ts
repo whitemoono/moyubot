@@ -45,6 +45,7 @@ export class DiagnosticJournal {
       if (Array.isArray(saved)) this.entries = saved.filter((entry) => typeof entry?.id === 'string' && Number.isFinite(entry.createdAt) && typeof entry.message === 'string').slice(-60).map((entry) => this.clean(entry));
     } catch { /* New or damaged journal. */ }
     this.prune();
+    this.flush();
   }
   private clean(entry: DiagnosticEntry): DiagnosticEntry {
     const scrub = (text: string, length: number) => redactDiagnostic(text, this.secrets()).slice(0, length);
@@ -61,6 +62,6 @@ export class DiagnosticJournal {
     if (last && last.source === entry.source && last.message === entry.message && last.command === entry.command && entry.createdAt - last.createdAt < 3000) return;
     this.entries = [...this.entries, entry].slice(-60); this.flush();
   }
-  list(): DiagnosticEntry[] { this.prune(); return this.entries.map((entry) => this.clean(entry)).reverse(); }
+  list(): DiagnosticEntry[] { this.prune(); this.entries = this.entries.map((entry) => this.clean(entry)); this.flush(); return this.entries.map((entry) => ({ ...entry })).reverse(); }
   clear(): void { this.entries = []; this.flush(); }
 }
