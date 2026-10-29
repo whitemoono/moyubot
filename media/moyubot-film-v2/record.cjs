@@ -5,14 +5,10 @@ const repo=path.resolve(__dirname,'../..'),out=path.join(__dirname,'output');fs.
 let instance,page,recording,encoder,recordPromise;const manifest={source:'Real Electron UI, production MoyuApp, live InstaBox and provider APIs',clips:[],events:[]};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function startClip(name){
- const ffmpeg=path.join(repo,'.work/video-tools/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
- const args=['-y','-hide_banner','-loglevel','error','-f','image2pipe','-vcodec','mjpeg','-framerate','15','-i','pipe:0','-c:v','libx264','-preset','fast','-crf','17','-pix_fmt','yuv420p','-movflags','+faststart',path.join(out,'clips',name+'.mp4')];
- encoder=spawn(ffmpeg,args,{stdio:['pipe','ignore','pipe'],windowsHide:true});const logs=[];encoder.stderr.on('data',b=>logs.push(String(b)));encoder.stdin.on('error',()=>{});
- const done=once(encoder,'close');recording={name,started:Date.now(),frames:0,stop:false};const state=recording;
- recordPromise=(async()=>{while(!state.stop){const target=state.started+state.frames*1000/15;await wait(Math.max(0,target-Date.now()));const buf=await page.screenshot({type:'jpeg',quality:96});if(!encoder.stdin.write(buf))await once(encoder.stdin,'drain');state.frames++;}encoder.stdin.end();const [code]=await done;if(code)throw Error(logs.join(''));})();
+ recording={name,started:Date.now()};await instance.evaluate((_,name)=>global.startFilmCapture(name),name);
  await wait(350);
 }
-async function endClip(){await wait(650);recording.stop=true;await recordPromise;const {name,started,frames}=recording;manifest.clips.push({name,frames,duration:frames/15,wallDuration:(Date.now()-started)/1000});fs.writeFileSync(path.join(out,'recordings.json'),JSON.stringify(manifest,null,2));console.log(`Recorded ${name}: ${(frames/15).toFixed(2)}s`,true);recording=null;}
+async function endClip(){await wait(650);const result=await instance.evaluate(()=>global.stopFilmCapture());const {name,started}=recording;manifest.clips.push({name,wallDuration:(Date.now()-started)/1000});fs.writeFileSync(path.join(out,'recordings.json'),JSON.stringify(manifest,null,2));console.log(`Recorded ${name}`);recording=null;}
 async function click(locator){const box=await locator.boundingBox();if(box){await page.mouse.move(box.x+box.width/2,box.y+box.height/2,{steps:14});await wait(160);}await locator.click();await wait(280);}
 async function type(locator,text,delay=27){await click(locator);await locator.fill('');await locator.pressSequentially(text,{delay});await wait(230);}
 async function feature(name){
@@ -28,7 +24,7 @@ async function finishRun(timeout=120000){const end=Date.now()+timeout;let approv
  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
  instance=await _electron.launch({executablePath:path.join(repo,'apps/desktop/node_modules/electron/dist/electron.exe'),args:['--no-sandbox',path.join(__dirname,'electron-recording.cjs')],env,timeout:30000});
  page=await instance.firstWindow();await page.waitForSelector('.workspace-switcher');await page.waitForTimeout(1200);
- await instance.evaluate(async({BrowserWindow})=>{BrowserWindow.getAllWindows()[0].setContentSize(1600,900);await global.filmBackend.cloud.refresh();});
+ await instance.evaluate(async({BrowserWindow})=>{BrowserWindow.getAllWindows()[0].setContentSize(1600,900);BrowserWindow.getAllWindows()[0].show();await global.filmBackend.cloud.refresh();});
  // Visible cursor and click rings are recording annotations; UI content is unchanged.
  await page.evaluate(()=>{const style=document.createElement('style');style.textContent='#film-cursor{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;width:28px;height:35px;filter:drop-shadow(0 2px 3px #0005)}.film-click{position:fixed;width:42px;height:42px;margin:-21px;border:3px solid #5890f0;border-radius:50%;z-index:2147483646;pointer-events:none;animation:filmclick .5s forwards}@keyframes filmclick{to{transform:scale(1.7);opacity:0}}';document.head.append(style);const cursor=document.createElement('div');cursor.id='film-cursor';cursor.innerHTML='<svg viewBox="0 0 28 35"><path d="M2 2L24 21L15 22L20 32L14 34L10 24L3 30Z" fill="#fff" stroke="#24314b" stroke-width="2"/></svg>';document.body.append(cursor);addEventListener('mousemove',e=>{cursor.style.transform=`translate(${e.clientX}px,${e.clientY}px)`;});addEventListener('click',e=>{const ring=document.createElement('i');ring.className='film-click';ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';document.body.append(ring);setTimeout(()=>ring.remove(),600);},true);});
  await startClip('workspaces');await wait(800);await click(page.locator('.workspace-switcher').getByRole('button',{name:'本地',exact:true}));await wait(1200);await click(page.locator('.workspace-switcher').getByRole('button',{name:'云电脑',exact:true}));await click(page.locator('[data-bot-id="film-cloud-1"]').first());await wait(1000);await click(page.locator('[data-bot-id="film-cloud-0"]').first());await endClip();
@@ -52,4 +48,4 @@ async function finishRun(timeout=120000){const end=Date.now()+timeout;let approv
  const report=await instance.evaluate(()=>{const b=global.filmBackend;return {cloudState:b.cloud.status().state,driver:b.store.getSettings().cloud.driver,memories:b.store.listMemories('film-cloud-0').length};}).catch(()=>({driver:'instabox'}));
  manifest.live=report;fs.writeFileSync(path.join(out,'recordings.json'),JSON.stringify(manifest,null,2));
  await page.screenshot({path:path.join(out,'recording-final.png')});await instance.close();console.log('All live recording clips complete.');
-})().catch(async error=>{console.error(error.message);if(recording){recording.stop=true;await recordPromise.catch(()=>{});}if(page)await page.screenshot({path:path.join(out,'recording-failure.png')}).catch(()=>{});await instance?.close();process.exitCode=1;});
+})().catch(async error=>{console.error(error.message);if(recording)await instance.evaluate(()=>global.stopFilmCapture()).catch(()=>{});if(page)await page.screenshot({path:path.join(out,'recording-failure.png')}).catch(()=>{});await instance?.close();process.exitCode=1;});
