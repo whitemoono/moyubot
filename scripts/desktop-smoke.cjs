@@ -159,7 +159,7 @@ app.whenReady().then(async () => {
     { ...first, id: 'ui-nova', avatar: { ...first.avatar, from: '#ff8a00' }, providerId: provider.id, model: 'grok-4-fast', name: 'Nova', handle: 'nova' },
     { ...first, id: 'ui-orbit', avatar: { ...first.avatar, from: '#eaa000' }, providerId: provider.id, model: 'grok-4', name: 'Orbit', handle: 'orbit' },
   ];
-  seed.updateSettings({ providers: [provider], bots, activeBotId: first.id, activeView: 'chat', cloud: { ...original.cloud, driver: 'mock' }, telegram: { ...original.telegram, enabled: false }, ui: { ...original.ui, appearance: 'dark', reduceMotion: false } });
+  seed.updateSettings({ onboarding: { step: 2, completedAt: Date.now() }, providers: [provider], bots, activeBotId: first.id, activeView: 'chat', cloud: { ...original.cloud, driver: 'mock' }, telegram: { ...original.telegram, enabled: false }, ui: { ...original.ui, appearance: 'dark', reduceMotion: false } });
   const orbit = seed.botConversation('ui-orbit');
   for (let n = 0; n < 8; n++) {
     seed.appendMessage(orbit.id, { id: `old-user-${n}`, role: 'user', content: `项目阶段 ${n}：${'这是需要长期保留的项目资料和约束。'.repeat(60)}`, createdAt: n * 2 });

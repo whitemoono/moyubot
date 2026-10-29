@@ -26,7 +26,7 @@ app.whenReady().then(async () => {
   const { MoyuApp } = require('../apps/desktop/dist-electron/app');
   const { startRendererServer } = require('../apps/desktop/dist-electron/renderer-server');
   backend = new MoyuApp(path.join(output, 'data'), '0.1.0');
-  backend.store.updateSettings({ cloud: { driver: 'mock' }, ui: { ...backend.store.getSettings().ui, appearance: 'light' } });
+  backend.store.updateSettings({ onboarding: { step: 2, completedAt: Date.now() }, cloud: { driver: 'mock' }, ui: { ...backend.store.getSettings().ui, appearance: 'light' } });
   backend.cloud.updateSettings(backend.store.getSettings().cloud);
   backend.store.secrets.set('cloud:instabox', 'test-private-cloud-credential');
   backend.start();

@@ -13,7 +13,7 @@ import { Icon } from './Icon';
 const STEPS = [{ label: '认识你', icon: 'users' }, { label: '云电脑', icon: 'cloud' }, { label: '本地目录', icon: 'folder' }] as const;
 
 export function Onboarding() {
-  const { settings, secrets, saveSettings, saveCloud, chooseLocalDirectory } = useMoyu();
+  const { settings, secrets, saveSettings, saveCloud, chooseLocalDirectory, completeSetup } = useMoyu();
   const [step, setStep] = useState<number>(settings.onboarding?.step ?? 0);
   const [name, setName] = useState(settings.userName ?? '');
   const [avatar, setAvatar] = useState<Avatar>(settings.ui.userAvatar ?? DEFAULT_USER_AVATAR);
@@ -67,8 +67,7 @@ export function Onboarding() {
     setBusy(true); setError('');
     try {
       await moyu().setupDirectory(directory);
-      await moyu().finishSetup(skipCloud);
-      window.location.reload();
+      await completeSetup(skipCloud);
     } catch (reason) { setError((reason as Error).message); setBusy(false); }
   };
   const uploadAvatar = async (file: File) => {

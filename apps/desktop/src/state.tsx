@@ -37,6 +37,7 @@ interface MoyuContextValue {
   activeWorkspace: Workspace | undefined;
   selectWorkspace: (workspaceId: string) => void;
   chooseLocalDirectory: () => Promise<void>;
+  completeSetup: (skipCloud: boolean) => Promise<void>;
   secrets: { providerKeys: Record<string, boolean>; cloudKey: boolean; telegramToken: boolean; encrypted: boolean };
   view: View;
   setView: (view: View) => void;
@@ -696,6 +697,11 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     activeWorkspace,
     selectWorkspace,
     chooseLocalDirectory: async () => { applySavedSettings(await moyu().chooseLocalDirectory()); },
+    completeSetup: async (skipCloud: boolean) => {
+      const next = await moyu().finishSetup(skipCloud);
+      setSettings(next); setActiveBotId(next.activeBotId ?? ''); setView('chat');
+      setConversations(await moyu().conversations());
+    },
     saveProviderKey,
     refreshSchedules,
     addSchedule,
