@@ -11,8 +11,10 @@ import { BotTasks } from './BotTasks';
 const TABS = [{ id: 'details', label: '详情' }, { id: 'library', label: '资料库' }, { id: 'computer', label: '电脑' }] as const;
 type Tab = typeof TABS[number]['id'];
 
-export function Inspector({ onClose, onCreateBot }: { onClose: () => void; onCreateBot: () => void }) {
-  const { cloud, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast, conversation, compacting, setView } = useMoyu();
+export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: () => void; onCreateBot: () => void; onOpenTerminal: () => void }) {
+  const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, memories, addMemory, deleteMemory, toast, conversation, compacting, setView } = useMoyu();
+  const isLocal = activeWorkspace?.kind === 'local';
+  const cloud = isLocal ? local : cloudStatus;
   const [tab, setTab] = useState<Tab>('computer');
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -65,12 +67,12 @@ export function Inspector({ onClose, onCreateBot }: { onClose: () => void; onCre
             <div className="computer-character" aria-hidden="true"><span className="computer-character__eyes" />{resting ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}</div>
             <strong>{computerLabel}</strong>
           </div>
-          <p className="computer-caption">{bot?.name} 的电脑</p>
+          <p className="computer-caption">{isLocal ? '本机 Windows' : cloud.machine?.name ?? settings.cloud.machineName}<small> · 工作区内所有 Bot 共用</small></p>
           <div className="computer-controls">
-            <Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button>
-            <IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} />
+            {!isLocal ? <><Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning || cloud.state === 'busy'} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button><IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} /></> : null}
+            <Button variant="glass" size="sm" icon="terminal" onClick={onOpenTerminal}>打开终端</Button>
           </div>
-          {awake ? <div className="computer-session"><span>本次在线 {formatDuration(cloud.awakeMs || Date.now() - (cloud.lastWakeAt ?? Date.now()))}</span><Button variant="ghost" size="sm" onClick={() => setView('cloud')}>管理电脑</Button></div> : null}
+          {awake ? <div className="computer-session"><span>{isLocal ? '本地执行，无需云电脑' : `本次在线 ${formatDuration(cloud.awakeMs || Date.now() - (cloud.lastWakeAt ?? Date.now())))}`}</span><Button variant="ghost" size="sm" onClick={() => setView('cloud')}>管理电脑</Button></div> : null}
           {cloud.state === 'error' || cloud.state === 'unconfigured' ? <p className="inspector-note">{cloud.lastError ?? meta.hint}<button type="button" onClick={() => setView('cloud')}>检查云电脑配置</button></p> : null}
         </div> : null}
 

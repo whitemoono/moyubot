@@ -10,6 +10,7 @@ import { ChatView } from './views/ChatView';
 import { TasksView } from './views/TasksView';
 import { SettingsView } from './views/SettingsView';
 import { CreateBotDialog } from './components/CreateBotDialog';
+import { WorkspaceTerminal } from './components/WorkspaceTerminal';
 
 function Backdrop() {
   return <div className="wallpaper" aria-hidden="true" />;
@@ -22,7 +23,7 @@ function ApprovalSheet() {
     <Sheet
       open
       title="需要你的确认"
-      subtitle={`${approval.toolName} 请求访问共享云电脑`}
+      subtitle={`${approval.toolName} 请求操作工作区电脑`}
       onClose={() => void respondApproval(false)}
       footer={
         <>
@@ -66,7 +67,8 @@ function Toasts() {
 }
 
 export function App() {
-  const { ready, view, settings, settingsOpen, conversation } = useMoyu();
+  const { ready, view, settings, settingsOpen, conversation, activeWorkspace } = useMoyu();
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [creatingBot, setCreatingBot] = useState(false);
@@ -118,15 +120,18 @@ export function App() {
       ) : (
         <div inert={settingsOpen} className={`window-body ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${inspectorOpen && view === 'chat' ? 'is-inspector-open' : ''}`}>
           <Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} onCreateBot={() => setCreatingBot(true)} />
-          <main className="main-view" key={view} ref={mainRef}>
+          <main className="main-view workspace-main" key={view} ref={mainRef}>
+            <div className="workspace-main__content" key={activeWorkspace?.id}>
             {view === 'chat' ? <ChatView inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen((value) => !value)} /> : null}
             {view === 'tasks' ? <TasksView /> : null}
+            </div>
+            <WorkspaceTerminal open={terminalOpen} onClose={() => setTerminalOpen(false)} />
           </main>
-          {inspectorOpen && view === 'chat' && !conversation?.group ? <Inspector onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
+          {inspectorOpen && view === 'chat' && !conversation?.group ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
         </div>
       )}
       <ApprovalSheet />
-      {ready && settingsOpen ? <SettingsView onCreateBot={() => setCreatingBot(true)} /> : null}
+      {ready && settingsOpen ? <SettingsView key={activeWorkspace?.id} onCreateBot={() => setCreatingBot(true)} /> : null}
       {creatingBot ? <CreateBotDialog onClose={() => setCreatingBot(false)} /> : null}
       <Toasts />
     </div>

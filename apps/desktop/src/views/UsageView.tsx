@@ -44,7 +44,7 @@ function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string
 }
 
 export function UsageView() {
-  const { settings } = useMoyu();
+  const { settings, activeWorkspace } = useMoyu();
   const [period, setPeriod] = useState('7d');
   const [from, setFrom] = useState(() => dayValue(new Date(Date.now() - 6 * 86400000)));
   const [to, setTo] = useState(() => dayValue(new Date()));
@@ -57,9 +57,9 @@ export function UsageView() {
   useEffect(() => {
     let cancelled = false;
     setReport(undefined); setError(''); setActive(undefined);
-    if (range) void moyu().usage({ ...range, botId: botId || undefined, modelKey: modelKey || undefined }).then((value) => { if (!cancelled) setReport(value); }).catch((failure: Error) => { if (!cancelled) setError(failure.message); });
+    if (range) void moyu().usage({ ...range, workspaceId: activeWorkspace?.id, botId: botId || undefined, modelKey: modelKey || undefined }).then((value) => { if (!cancelled) setReport(value); }).catch((failure: Error) => { if (!cancelled) setError(failure.message); });
     return () => { cancelled = true; };
-  }, [range, botId, modelKey]);
+  }, [range, botId, modelKey, activeWorkspace?.id]);
   const totals = report?.totals;
   const rows = report?.[groupBy] ?? [];
   const visible = rows.slice(0, 7);
