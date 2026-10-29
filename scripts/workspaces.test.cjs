@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { Store, LocalHost, runTool } = require('../packages/core/dist/index.js');
+const { Store, LocalHost, CloudHost, AgentRuntime, runTool } = require('../packages/core/dist/index.js');
 const temporary = (t) => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-workspaces-')); t.after(() => fs.rmSync(directory, { recursive: true, force: true })); return directory; };
 
 test('legacy migration backs up original data and keeps conversation identities', (t) => {
@@ -30,6 +30,10 @@ test('Bot groups, conversations, usage and memberships stay in their workspace',
   store.updateBotGroup('项目', { type: 'rename', name: '本地项目' }, 'workspace_local');
   assert.equal(store.getBot(cloud.id).sidebar.group, '项目');
   assert.equal(store.getBot(local.id).sidebar.group, '本地项目');
+  store.updateBotGroup('本地项目', { type: 'collapse', collapsed: true }, 'workspace_local');
+  const reopened = new Store(store.dataDir);
+  assert.deepEqual(reopened.listBotGroups('workspace_local'), [{ name: '本地项目', collapsed: true }]);
+  assert.deepEqual(reopened.listBotGroups('workspace_cloud'), [{ name: '项目', collapsed: false }]);
   assert.throws(() => store.createGroup('不能混用', [cloud.id, local.id]), /跨工作区/);
   assert.throws(() => store.upsertBot({ ...local, workspaceId: 'workspace_cloud' }), /不能直接转移/);
   assert.equal(store.botConversation(local.id).workspaceId, 'workspace_local');
@@ -49,13 +53,51 @@ test('local execution uses the local folder, supports UTF-8, timeout and cancell
   const failure = await host.exec(process.platform === 'win32' ? 'exit 7' : 'exit 7');
   assert.equal(failure.exitCode, 7);
   const command = process.platform === 'win32' ? 'Start-Sleep -Seconds 10' : 'sleep 10';
+  let started = Date.now();
   const timed = await host.exec(command, { timeoutSeconds: 1 });
   assert.equal(timed.timedOut, true);
+  assert.ok(Date.now() - started < 8000, 'Timeout must stop the process promptly');
   const controller = new AbortController();
+  started = Date.now();
   const pending = host.exec(command, { signal: controller.signal });
   setTimeout(() => controller.abort(), 400);
   await assert.rejects(pending, /已停止/);
+  assert.ok(Date.now() - started < 8000, 'Cancellation must stop the process promptly');
   assert.equal(host.status().state, 'ready');
+});
+
+test('a local Bot keeps its executor and memories while the active workspace changes', async (t) => {
+  const store = new Store(temporary(t)), folder = path.join(store.dataDir, 'local'); fs.mkdirSync(folder);
+  const cloudBot = store.getSettings().bots[0];
+  const bot = store.upsertBot({ ...cloudBot, id: 'local-runtime', workspaceId: 'workspace_local', tools: ['cloud_exec'], approvalPolicy: 'ask' });
+  store.addMemory(bot.id, '本地独立记忆'); store.addMemory(cloudBot.id, '云端私有记忆');
+  const local = new LocalHost({ ...store.getSettings().cloud, workspaceDir: folder });
+  const cloud = new CloudHost({ settings: { ...store.getSettings().cloud, driver: 'mock' }, apiKey: () => '' });
+  t.after(() => { local.dispose(); cloud.dispose(); });
+  cloud.exec = cloud.ensureAwake = async () => { throw new Error('Local Bot must not access the cloud'); };
+  let calls = 0, approvals = 0;
+  const events = [];
+  const runtime = new AgentRuntime({ store, cloud, computers: { workspace_local: local }, emit: (event) => events.push(event), requestApproval: async () => { approvals++; return true; } });
+  runtime.providerFor = () => ({ provider: { kind: 'openai', async chat(args, handlers) {
+    assert.match(args.system, /本地独立记忆/); assert.ok(!args.system.includes('云端私有记忆'));
+    assert.match(args.system, /PowerShell/);
+    if (!calls++) {
+      store.updateSettings({ activeWorkspaceId: 'workspace_cloud' });
+      handlers.onToolCall({ id: 'local-run', name: 'cloud_exec', arguments: { cmd: process.platform === 'win32' ? 'Write-Output "local-agent-success"' : 'printf local-agent-success' } });
+      return { finishReason: 'tool_calls' };
+    }
+    handlers.onText('本机已完成'); return { finishReason: 'stop' };
+  } } });
+  const result = await runtime.send({ botId: bot.id, text: '检查本机' });
+  const deadline = Date.now() + 15000;
+  while (runtime.isRunning(result.conversationId) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(runtime.isRunning(result.conversationId), false);
+  assert.equal(approvals, 1);
+  const conversation = store.getConversation(result.conversationId);
+  assert.match(conversation.messages.at(-1).toolResults[0].detail, /local-agent-success/);
+  assert.equal(conversation.messages.at(-1).content, '本机已完成');
+  assert.equal(events.some((event) => event.type === 'cloud'), false);
+  assert.equal(store.botConversation(cloudBot.id).messages.length, 0);
 });
 
 test('local file tools reject directory traversal and junction escapes', async (t) => {
