@@ -1,0 +1,23 @@
+const path=require('node:path'),os=require('node:os'),fs=require('node:fs'),{once}=require('node:events');
+const {chromium}=require(path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+const server=require('../moyubot-film/serve.cjs');let browser;
+(async()=>{
+ server.listen(0,'localhost');await once(server,'listening');
+ browser=await chromium.launch({channel:'chrome',headless:true});
+ const page=await browser.newPage({viewport:{width:430,height:932},deviceScaleFactor:1});const errors=[];
+ page.on('pageerror',e=>errors.push(String(e)));
+ await page.goto(`http://localhost:${server.address().port}/media/moyubot-short/`);await page.waitForFunction(()=>window.FILM_READY);
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
+ await page.click('#play');await page.waitForFunction(()=>document.querySelector('#audio').currentTime>.4);
+ await page.click('#mute');if(!await page.$eval('#audio',a=>a.muted))throw Error('Mute failed');
+ await page.$eval('#seek',e=>{e.value=21;e.dispatchEvent(new Event('input'));});
+ await page.waitForFunction(()=>document.querySelector('#audio').currentTime>=21);
+ await page.click('#play');
+ if(await page.$eval('#play',e=>e.textContent)!=='播放')throw Error('Pause failed');
+ if(errors.length)throw Error(errors.join('\n'));
+ await page.screenshot({path:path.join(__dirname,'output','mobile-player.png'),fullPage:true});
+ const report={viewport:'430 × 932',overflow:false,play:true,pause:true,seek:true,mute:true,errors};
+ fs.writeFileSync(path.join(__dirname,'output','player-report.json'),JSON.stringify(report,null,2));
+ console.log('Mobile preview passed: playback, audio, seek, pause, mute, no overflow.');
+ await browser.close();server.close();
+})().catch(async e=>{console.error(e);await browser?.close();server.close();process.exitCode=1;});
