@@ -55,8 +55,9 @@ export interface MoyuBridge {
   local(): Promise<CloudStatus>;
   chooseLocalDirectory(): Promise<AppSettings>;
   cloudAction(action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus>;
-  cloudExec(cmd: string): Promise<ExecResult>;
-  localExec(cmd: string): Promise<ExecResult>;
+  cloudExec(cmd: string, requestId?: string): Promise<ExecResult>;
+  localExec(cmd: string, requestId?: string): Promise<ExecResult>;
+  stopTerminal(requestId: string): Promise<void>;
   saveCloud(patch: Partial<AppSettings['cloud']>, apiKey?: string): Promise<CloudStatus>;
   schedules(): Promise<Schedule[]>;
   updateSchedule(botId: string, id: string, patch: ScheduleUpdate): Promise<Schedule>;

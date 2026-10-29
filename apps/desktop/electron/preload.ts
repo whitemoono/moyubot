@@ -51,8 +51,9 @@ const api = {
   local: () => invoke<CloudStatus>('moyu:local'),
   chooseLocalDirectory: () => invoke<AppSettings>('moyu:local:directory'),
   cloudAction: (action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop') => invoke<CloudStatus>('moyu:cloud:action', action),
-  cloudExec: (cmd: string) => invoke<ExecResult>('moyu:cloud:exec', cmd),
-  localExec: (cmd: string) => invoke<ExecResult>('moyu:local:exec', cmd),
+  cloudExec: (cmd: string, requestId?: string) => invoke<ExecResult>('moyu:cloud:exec', cmd, requestId),
+  localExec: (cmd: string, requestId?: string) => invoke<ExecResult>('moyu:local:exec', cmd, requestId),
+  stopTerminal: (requestId: string) => invoke<void>('moyu:terminal:stop', requestId),
   saveCloud: (patch: Partial<AppSettings['cloud']>, apiKey?: string) =>
     invoke<CloudStatus>('moyu:cloud:save', { patch, apiKey }),
 

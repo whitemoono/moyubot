@@ -93,6 +93,7 @@ export class MoyuApp {
   private approvals = new Map<string, PendingApproval>();
   private version: string;
   private offSchedules: () => void;
+  private terminalRuns = new Map<string, AbortController>();
 
   constructor(dataDir: string, version: string) {
     this.version = version;
@@ -163,10 +164,11 @@ export class MoyuApp {
   private registerIpc(): void {
     ipcMain.handle('moyu:app:check-updates', () => checkForUpdates(this.version));
     ipcMain.handle('moyu:local:directory', async () => {
-      if (this.local.status().state === 'busy') throw new Error('本机仍有任务运行，请完成后再更换目录');
+      const running = () => this.local.status().state === 'busy' || this.store.listConversations().some((item) => item.workspaceId === 'workspace_local' && this.runtime.isRunning(item.id));
+      if (running()) throw new Error('本机仍有任务运行，请完成后再更换目录');
       const result = await dialog.showOpenDialog({ title: '选择本地工作区目录', defaultPath: this.local.getSettings().workspaceDir, properties: ['openDirectory', 'createDirectory'] });
       if (!result.canceled && result.filePaths[0]) {
-        if (this.local.status().state === 'busy') throw new Error('本机有任务运行，暂时不能更换目录');
+        if (running()) throw new Error('本机有任务运行，暂时不能更换目录');
         const directory = result.filePaths[0];
         this.store.updateSettings({ workspaces: this.store.getSettings().workspaces.map((item) => item.kind === 'local' ? { ...item, directory } : item) });
         this.local.updateSettings({ ...this.local.getSettings(), workspaceDir: directory });
@@ -282,10 +284,9 @@ export class MoyuApp {
       return this.cloud.status();
     });
 
-    ipcMain.handle('moyu:cloud:exec', async (_event, cmd: string): Promise<ExecResult> => {
-      return this.cloud.exec(cmd, { timeoutSeconds: 60 });
-    });
-    ipcMain.handle('moyu:local:exec', async (_event, cmd: string): Promise<ExecResult> => this.local.exec(cmd, { timeoutSeconds: 60 }));
+    ipcMain.handle('moyu:cloud:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('cloud', cmd, requestId));
+    ipcMain.handle('moyu:local:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('local', cmd, requestId));
+    ipcMain.handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
 
     ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
       if (typeof input.apiKey === 'string') {
@@ -344,12 +345,23 @@ export class MoyuApp {
   }
 
   resolveWorkspaceArtifact(relative: string): string | undefined {
-    if (relative.startsWith('@workspace_local/')) return resolveArtifact(this.local.getSettings().workspaceDir, relative.slice('@workspace_local/'.length));
+    if (relative.startsWith('@workspace_local/')) return resolveArtifact(path.join(this.store.dataDir, 'local-artifacts'), relative.slice('@workspace_local/'.length));
     return resolveArtifact(this.store.getSettings().cloud.workspaceDir, relative);
+  }
+
+  private async runTerminalCommand(kind: 'local' | 'cloud', cmd: string, requestId = crypto.randomUUID()): Promise<ExecResult> {
+    if (typeof cmd !== 'string' || !cmd.trim() || cmd.length > 64000 || typeof requestId !== 'string' || requestId.length > 100) throw new Error('无效的终端命令');
+    if (this.terminalRuns.has(requestId)) throw new Error('命令正在执行，请勿重复提交');
+    const computer = kind === 'local' ? this.local : this.cloud;
+    const controller = new AbortController(); this.terminalRuns.set(requestId, controller);
+    computer.beginTask('终端命令');
+    try { return await computer.exec(cmd, { timeoutSeconds: 60, signal: controller.signal }); }
+    finally { computer.endTask(); this.terminalRuns.delete(requestId); }
   }
 
 
   dispose(): void {
+    this.terminalRuns.forEach((controller) => controller.abort());
     this.offSchedules();
     this.scheduler.stop();
     this.cloud.dispose();
