@@ -67,6 +67,14 @@ export function CloudDesktop() {
     } else { setExpanded(false); setLoaded(false); }
   };
 
+  const reconnect = async () => {
+    if (pending) return;
+    setPending(true); setError('');
+    try { const value = await moyu().desktopOpen(); if (alive.current) { setSession(value); setLoaded(false); } }
+    catch (reason) { if (alive.current) setError((reason as Error).message); }
+    finally { if (alive.current) setPending(false); }
+  };
+
   const viewer = (thumbnail: boolean) => session ? <iframe
     key={`${session.url}-${thumbnail}`}
     className={thumbnail ? 'cloud-desktop__iframe cloud-desktop__iframe--thumbnail' : 'cloud-desktop__iframe'}
@@ -90,7 +98,7 @@ export function CloudDesktop() {
         {expanded ? viewer(false) : null}
         {!loaded && !error ? <div className="cloud-desktop__loading"><span className="spinner" />连接桌面中…</div> : null}
       </div>
-      {error ? <div className="cloud-desktop__error" role="alert">{error}</div> : null}
+      {error ? <div className="cloud-desktop__error" role="alert">{error}<Button size="sm" variant="ghost" disabled={pending} onClick={() => void reconnect()}>重新连接</Button></div> : null}
     </Sheet>
   </div>;
 }
