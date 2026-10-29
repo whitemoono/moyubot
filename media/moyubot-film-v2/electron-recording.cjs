@@ -26,7 +26,7 @@ app.whenReady().then(async()=>{
  const {startRendererServer}=require(path.join(repo,'apps/desktop/dist-electron/renderer-server.js'));
  backend=new MoyuApp(data,'0.1.0');global.filmBackend=backend;backend.start();
  server=await startRendererServer(path.join(repo,'apps/desktop/dist'));
- const win=new BrowserWindow({width:1600,height:900,show:false,frame:false,webPreferences:{preload:path.join(repo,'apps/desktop/dist-electron/preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+ const win=new BrowserWindow({width:1600,height:900,show:true,frame:false,webPreferences:{preload:path.join(repo,'apps/desktop/dist-electron/preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
  backend.setWindow(win);await win.loadURL(server.url);
 });
 app.on('window-all-closed',()=>app.quit());
