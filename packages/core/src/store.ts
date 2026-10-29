@@ -65,11 +65,13 @@ function writeJsonAtomic(file: string, value: unknown): void {
   fs.renameSync(tmp, file);
 }
 
-export function defaultSettings(dataDir: string): AppSettings {
+export function defaultSettings(dataDir: string, localDirectory = path.join(dataDir, 'local-workspace')): AppSettings {
   const now = Date.now();
   const providerId = 'openai-compatible';
   return {
     version: 1,
+    userName: '',
+    onboarding: { step: 0 },
     providers: [
       {
         id: providerId,
@@ -121,7 +123,7 @@ export function defaultSettings(dataDir: string): AppSettings {
     telegram: { enabled: false, token: '', allowedIds: [] },
     workspaces: [
       { id: 'workspace_cloud', name: '云电脑工作区', kind: 'cloud', computerName: '共享云电脑', createdAt: now },
-      { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', directory: path.join(dataDir, 'local-workspace'), createdAt: now },
+      { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', directory: localDirectory, createdAt: now },
     ],
     activeWorkspaceId: 'workspace_cloud',
     ui: {
@@ -162,7 +164,7 @@ export class Store {
   private scheduleList: Schedule[] = [];
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
-  constructor(dataDir: string, secrets?: SecretBox) {
+  constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string }) {
     this.dataDir = dataDir;
     this.secrets = secrets ?? new PlainSecretBox(dataDir);
     fs.mkdirSync(dataDir, { recursive: true });
@@ -179,7 +181,7 @@ export class Store {
           if (['settings.json', 'conversations', 'memories.json', 'schedules.json', 'usage.jsonl'].includes(entry.name)) fs.cpSync(path.join(dataDir, entry.name), path.join(backup, entry.name), { recursive: true });
         }
       }
-      const base = defaultSettings(dataDir);
+      const base = defaultSettings(dataDir, options?.localDirectory);
       this.settings = {
         ...base,
         ...parsed,
@@ -190,6 +192,8 @@ export class Store {
         bots: parsed.bots?.length ? parsed.bots : base.bots,
         workspaces: parsed.workspaces?.length ? parsed.workspaces : base.workspaces,
         activeWorkspaceId: parsed.activeWorkspaceId ?? base.activeWorkspaceId,
+        // Existing installs retain their setup; they can edit the profile in Settings.
+        onboarding: parsed.onboarding ?? { step: 2, completedAt: Date.now() },
       };
       // Backfill fields added after a user's settings.json was written.
       this.settings.bots = this.settings.bots.map((bot) => ({
@@ -200,7 +204,7 @@ export class Store {
         workspaceId: bot.workspaceId || 'workspace_cloud',
       }));
     } else {
-      this.settings = defaultSettings(dataDir);
+      this.settings = defaultSettings(dataDir, options?.localDirectory);
       this.persistSettings();
     }
 
@@ -228,6 +232,10 @@ export class Store {
   }
 
   updateSettings(patch: SettingsPatch): AppSettings {
+    if (patch.userName !== undefined) {
+      if (typeof patch.userName !== 'string' || !patch.userName.trim() || [...patch.userName.trim()].length > 40 || /[\x00-\x1f\x7f]/.test(patch.userName)) throw new Error('用户名需要 1–40 个字符，不能包含换行或控制字符');
+      patch = { ...patch, userName: patch.userName.trim() };
+    }
     if (patch.cloud?.remoteWorkspaceDir !== undefined) patch = { ...patch, cloud: { ...patch.cloud, remoteWorkspaceDir: normalizeRemoteDirectory(patch.cloud.remoteWorkspaceDir) } };
     this.settings = {
       ...this.settings,

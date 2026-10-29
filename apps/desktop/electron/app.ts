@@ -99,10 +99,10 @@ export class MoyuApp {
   private offSchedules: () => void;
   private terminalRuns = new Map<string, AbortController>();
 
-  constructor(dataDir: string, version: string) {
+  constructor(dataDir: string, version: string, options?: { localDirectory?: string }) {
     this.version = version;
     const secrets = new SafeSecretBox(dataDir);
-    this.store = new Store(dataDir, secrets);
+    this.store = new Store(dataDir, secrets, options);
     this.diagnostics = new DiagnosticJournal(dataDir, () => [
       secrets.get('cloud:instabox') ?? '', secrets.get('telegram:token') ?? '',
       ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
@@ -111,7 +111,8 @@ export class MoyuApp {
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
     const localSettings = { ...this.store.getSettings().cloud, workspaceDir: this.store.getSettings().workspaces.find((item) => item.kind === 'local')?.directory ?? path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };
-    fs.mkdirSync(localSettings.workspaceDir, { recursive: true });
+    // A fresh install may be in a protected folder. The setup flow validates it
+    // and allows selecting another directory before local execution begins.
     this.local = new LocalHost(localSettings, (status) => {
       this.send('moyu:local', status);
     });
@@ -220,6 +221,37 @@ export class MoyuApp {
       if (!this.win || event.sender !== this.win.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('桌面控制仅允许应用主界面调用');
     };
     handle('moyu:app:check-updates', () => checkForUpdates(this.version));
+    handle('moyu:setup:directory', (event, directory: string) => {
+      desktopCaller(event);
+      if (this.store.getSettings().onboarding?.completedAt) throw new Error('请通过通用设置更换本地工作目录');
+      if (typeof directory !== 'string' || !path.isAbsolute(directory) || /[\x00-\x1f]/.test(directory)) throw new Error('请选择有效的本地绝对路径');
+      const target = path.resolve(directory);
+      try {
+        fs.mkdirSync(target, { recursive: true });
+        const probe = path.join(target, `.moyu-write-check-${randomUUID()}`);
+        fs.writeFileSync(probe, '', { flag: 'wx' }); fs.unlinkSync(probe);
+      } catch { throw new Error('这个目录无法写入，请选择文档目录或其他可写文件夹'); }
+      const next = this.store.updateSettings({ workspaces: this.store.getSettings().workspaces.map((workspace) => workspace.kind === 'local' ? { ...workspace, directory: target } : workspace) });
+      this.local.updateSettings({ ...this.local.getSettings(), workspaceDir: target });
+      return next;
+    });
+    handle('moyu:setup:finish', (event, skipCloud: boolean) => {
+      desktopCaller(event);
+      const settings = this.store.getSettings();
+      if (settings.onboarding?.completedAt) return settings;
+      if (!settings.userName) throw new Error('请先设置用户名');
+      const folder = settings.workspaces.find((workspace) => workspace.kind === 'local')?.directory;
+      if (!folder) throw new Error('请先选择本地工作目录');
+      try { fs.accessSync(folder, fs.constants.W_OK); } catch { throw new Error('本地工作目录不可写，请重新选择'); }
+      if (!skipCloud && !this.store.secrets.get('cloud:instabox')) throw new Error('请配置云电脑或选择跳过');
+      const activeWorkspaceId = skipCloud ? 'workspace_local' : 'workspace_cloud';
+      if (skipCloud && !settings.bots.some((bot) => bot.workspaceId === 'workspace_local')) {
+        const source = settings.bots[0]!;
+        this.store.upsertBot({ ...source, id: `bot_local_${randomUUID()}`, workspaceId: 'workspace_local', name: '本地助手', approvalPolicy: 'ask', sidebar: undefined, image: { ...source.image, backend: 'api', wakeHost: false } });
+      }
+      const botId = this.store.getSettings().bots.find((bot) => bot.workspaceId === activeWorkspaceId)?.id;
+      return this.store.updateSettings({ onboarding: { step: 2, completedAt: Date.now() }, activeWorkspaceId, activeBotId: botId, workspaces: this.store.getSettings().workspaces.map((workspace) => workspace.id === activeWorkspaceId ? { ...workspace, activeBotId: botId } : workspace) });
+    });
     handle('moyu:feedback:diagnostics', (event) => { desktopCaller(event); return this.diagnostics.list(); });
     handle('moyu:feedback:clear', (event) => { desktopCaller(event); this.diagnostics.clear(); });
     handle('moyu:feedback:copy', (event, text: string) => {

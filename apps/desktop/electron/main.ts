@@ -90,7 +90,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   const dataDir = process.env.MOYU_DATA_DIR ?? path.join(app.getPath('userData'), 'moyu');
-  moyuApp = new MoyuApp(dataDir, app.getVersion());
+  moyuApp = new MoyuApp(dataDir, app.getVersion(), { localDirectory: path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.resolve(app.getAppPath(), '../..'), 'workspace') });
   moyuApp.start();
 
   const workspaceDir = moyuApp.store.getSettings().cloud.workspaceDir;
