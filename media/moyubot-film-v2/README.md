@@ -38,3 +38,7 @@ node media/moyubot-film-v2/render.cjs
 修改旁白后，删除 `output/voice/voice-XX.mp3` 中对应的一条缓存再运行 `audio.py`；编号从 00 开始。`output/audio-report.json` 保存每句时间与速度，避免超出分镜。修改分镜时须同步画面中的动画节点和音效时间。`MOYU_FFMPEG` 环境变量可覆盖默认 FFmpeg 路径。
 
 输出目录还包含 `master.wav`、独立旁白 / 配乐 / 音效、`MoyuBot.zh-CN.srt`、关键帧。原横屏、竖屏与表情视频均保留在原目录。
+
+## B 站封面
+
+封面源文件为 `cover.html` 与 `cover.js`，复用七个角色的产品矢量素材。运行 `node media/moyubot-film-v2/cover.cjs` 导出 `output/cover/` 下的 1920×1200 与 1920×1080 PNG。上传版为 960×600 JPG，文案、颜色、角色位置均可在 `cover.js` 修改。
