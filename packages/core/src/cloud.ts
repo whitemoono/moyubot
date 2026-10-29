@@ -5,6 +5,8 @@ import { newId, normalizeRemoteDirectory, shellQuote, sleep } from './util';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { ComputerControl } from './computer-control';
+import type { DesktopStatus, DesktopStream } from './instabox';
 
 export interface CloudDriver {
   readonly kind: 'instabox' | 'mock';
@@ -27,6 +29,9 @@ export interface CloudDriver {
   ): Promise<ExecResult>;
   writeFile(id: string, path: string, content: string | Uint8Array): Promise<void>;
   readFile(id: string, path: string): Promise<Uint8Array>;
+  desktopStart?(id: string): Promise<DesktopStatus>;
+  desktopStream?(id: string, viewOnly: boolean): Promise<DesktopStream>;
+  desktopRevoke?(id: string): Promise<void>;
 }
 
 export class InstaBoxDriver implements CloudDriver {
@@ -84,6 +89,9 @@ export class InstaBoxDriver implements CloudDriver {
   readFile(id: string, path: string) {
     return this.client.readFile(id, path);
   }
+  desktopStart(id: string) { return this.client.desktopStart(id); }
+  desktopStream(id: string, viewOnly: boolean) { return this.client.desktopStream(id, viewOnly); }
+  desktopRevoke(id: string) { return this.client.desktopRevoke(id); }
 }
 
 /**
@@ -226,7 +234,7 @@ export interface CloudHostDeps {
   onLog?: (level: 'info' | 'warn' | 'error', text: string) => void;
 }
 
-export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'>;
+export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'> & { control?: ComputerControl };
 
 /** Local Windows execution environment. It deliberately exposes the same narrow
  * computer surface as CloudHost so the agent cannot care where a workspace runs. */
