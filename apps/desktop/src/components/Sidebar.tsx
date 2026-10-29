@@ -25,7 +25,7 @@ const FEATURES: { id: View | 'usage'; label: string; icon: IconName }[] = [
 ];
 
 export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boolean; onExpand: () => void; onCreateBot: () => void }) {
-  const { settings, bot, conversation, selectBot, conversations, view, setView, openSettings, runningBotIds, botActivities, updateBotMetadata, updateBotGroup, toast } = useMoyu();
+  const { settings, bot, conversation, selectBot, conversations, view, setView, openSettings, runningBotIds, botActivities, updateBotMetadata, updateBotGroup, toast, workspaces, activeWorkspace, selectWorkspace } = useMoyu();
   const [searchOpen, setSearchOpen] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
@@ -43,7 +43,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const previewFor = (id: string) => conversations.find((item) => item.botId === id)?.preview?.replace(/[#*`\n]+/g, ' ').trim() || '还没有消息，和我聊聊吧';
-  const filteredBots = settings.bots;
+  const filteredBots = settings.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id);
   const groupChats = conversations.filter((item) => item.group);
   const hiddenBots = filteredBots.filter((item) => item.sidebar?.hidden);
   const pinnedBots = filteredBots.filter((item) => !item.sidebar?.hidden && item.sidebar?.pinned);
@@ -111,6 +111,11 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         <IconButton name="search" label="搜索 Bot" aria-haspopup="dialog" aria-expanded={searchOpen} onClick={openSearch} />
         <IconButton name="plus" label="添加 Bot" onClick={onCreateBot} />
       </div>
+      {workspaces.length > 1 ? <div className="workspace-switcher" role="group" aria-label="工作区">
+        {workspaces.map((workspace) => <button type="button" key={workspace.id} className={workspace.id === activeWorkspace?.id ? 'is-active' : ''} aria-pressed={workspace.id === activeWorkspace?.id} onClick={() => selectWorkspace(workspace.id)}>
+          <Icon name={workspace.kind === 'local' ? 'computer' : 'cloud'} size={14} /><span>{workspace.name}</span><small>{workspace.kind === 'local' ? '本机' : '云端'}</small>
+        </button>)}
+      </div> : null}
       {pinnedBots.length ? <div className="messenger-pins" aria-label="置顶 Bot">
         {pinnedBots.map((item) => <button type="button" className={`messenger-pin ${view === 'chat' && !conversation?.group && bot?.id === item.id ? 'is-active' : ''}`} key={item.id} data-bot-id={item.id} title={item.name} aria-label={`打开置顶 Bot ${item.name}`} aria-current={view === 'chat' && !conversation?.group && bot?.id === item.id ? 'page' : undefined} aria-haspopup="menu" onClick={() => selectBot(item.id)} onContextMenu={(event) => openContext(event, item)}>
           <span className="messenger-pin__portrait"><BotAvatar bot={item} size="lg" />{item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : null}</span><span className="messenger-pin__name">{item.name}</span>

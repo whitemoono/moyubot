@@ -12,6 +12,7 @@ import type {
   MemoryFact,
   Message,
   Schedule,
+  Workspace,
 } from '@moyu/core';
 import { moyu } from './lib/bridge';
 import type { ConversationSummary } from './lib/bridge';
@@ -31,6 +32,10 @@ interface MoyuContextValue {
   ready: boolean;
   settings: AppSettings;
   cloud: CloudStatus;
+  local: CloudStatus;
+  workspaces: Workspace[];
+  activeWorkspace: Workspace | undefined;
+  selectWorkspace: (workspaceId: string) => void;
   secrets: { providerKeys: Record<string, boolean>; cloudKey: boolean; telegramToken: boolean; encrypted: boolean };
   view: View;
   setView: (view: View) => void;
@@ -135,6 +140,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [activeBotId, setActiveBotId] = useState<string>('');
+  const [local, setLocal] = useState<CloudStatus>({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 });
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
@@ -165,7 +171,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((prev) => prev.filter((item) => item.id !== id)), level === 'error' ? 7000 : 4200);
   }, []);
 
-  const bot = useMemo(() => settings.bots.find((item) => item.id === activeBotId) ?? settings.bots.find((item) => conversations.find((conv) => conv.id === activeBotId)?.group?.memberBotIds.includes(item.id)) ?? settings.bots[0], [settings.bots, activeBotId, conversations]);
+  const workspaces = settings.workspaces ?? [];
+  const activeWorkspace = workspaces.find((item) => item.id === settings.activeWorkspaceId) ?? workspaces[0];
+  const workspaceBots = useMemo(() => settings.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id), [settings.bots, activeWorkspace?.id]);
+  const bot = useMemo(() => workspaceBots.find((item) => item.id === activeBotId) ?? workspaceBots[0], [workspaceBots, activeBotId]);
 
   const loadConversations = useCallback(async () => {
     const list = await moyu().conversations();
@@ -207,6 +216,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setSettings(boot.settings);
         setCloud(boot.cloud);
+        setLocal(await moyu().local());
         setSecrets(boot.secrets);
         setSchedules(boot.schedules);
         setMemories(boot.memories);
@@ -216,7 +226,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         setView(restoredSettings ? 'chat' : (boot.settings.activeView as View) || 'chat');
         setSettingsOpen(restoredSettings);
         if (boot.settings.activeView === 'bots' || boot.settings.activeView === 'cloud') setSettingsSection(boot.settings.activeView);
-        const initialBot = boot.settings.bots.some((item) => item.id === boot.settings.activeBotId) || boot.conversations.some((item) => item.group && item.id === boot.settings.activeBotId) ? boot.settings.activeBotId : boot.settings.bots[0]?.id;
+        const workspaceId = boot.settings.activeWorkspaceId ?? 'workspace_cloud';
+        const initialBot = boot.settings.bots.find((item) => item.id === boot.settings.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? boot.settings.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
         setActiveBotId(initialBot ?? '');
         setConversations(boot.conversations);
         runningRef.current = new Set(boot.runningConversations);
@@ -327,13 +338,24 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       }
     });
     const offCloud = moyu().onCloud((status) => setCloud(status));
+    const offLocal = moyu().onLocal((status) => setLocal(status));
     return () => {
       off();
       offCloud();
+      offLocal();
       activityTimers.current.forEach((timer) => window.clearTimeout(timer));
       activityTimers.current.clear();
     };
   }, [patchMessage, toast, loadConversations, updateBotMetadata]);
+
+  const selectWorkspace = useCallback((workspaceId: string) => {
+    const target = settingsRef.current.workspaces?.find((item) => item.id === workspaceId);
+    if (!target) return;
+    const next = settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId);
+    setSettings((previous) => ({ ...previous, activeWorkspaceId: workspaceId }));
+    setActiveBotId(next?.id ?? ''); setConversation(null); setMemories([]); setSettingsOpen(false); setView('chat');
+    void moyu().saveSettings({ activeWorkspaceId: workspaceId, activeBotId: next?.id, activeView: 'chat' });
+  }, []);
 
   useEffect(() => {
     if (!activeBotId) return;
@@ -364,7 +386,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const selectBot = useCallback(
     (botId: string, preserveSettings = false) => {
       if (!preserveSettings) setSettingsOpen(false);
-      const target = settingsRef.current.bots.find((item) => item.id === botId);
+      const target = settingsRef.current.bots.find((item) => item.id === botId && (item.workspaceId ?? 'workspace_cloud') === settingsRef.current.activeWorkspaceId);
       if (target?.sidebar?.unread) void updateBotMetadata(botId, { sidebar: { unread: false } }).catch((error: Error) => toast(error.message, 'error'));
       selectedBotRef.current = botId;
       if (conversationRef.current?.botId !== botId) { setConversation(null); setMemories([]); }
@@ -639,6 +661,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     saveSettings,
     saveCloud,
     cloudAction,
+    local,
+    workspaces,
+    activeWorkspace,
+    selectWorkspace,
     saveProviderKey,
     refreshSchedules,
     addSchedule,

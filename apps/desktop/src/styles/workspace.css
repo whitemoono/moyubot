@@ -390,6 +390,15 @@ svg { flex-shrink: 0; }
 .messenger-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 2px 3px; margin-bottom: 10px; flex-shrink: 0; }
 .sidebar--messenger .messenger-toolbar .icon-btn { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: var(--bg); color: var(--text); }
 .sidebar--messenger .messenger-toolbar .icon-btn:hover { background: var(--surface-raised); transform: translateY(-1px); }
+.workspace-switcher { display: flex; gap: 4px; margin: 10px 0 4px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.workspace-switcher button { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; padding: 7px 7px; border-radius: 9px; color: var(--text-faint); font-size: 10px; transition: background 160ms ease, color 160ms ease; }
+.workspace-switcher button:hover { color: var(--text); background: var(--hover); }
+.workspace-switcher button.is-active { color: var(--text); background: var(--selected); }
+.workspace-switcher button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-switcher button small { margin-left: auto; color: var(--text-faint); font-size: 9px; }
+.is-sidebar-collapsed .workspace-switcher { flex-direction: column; border: 0; background: transparent; padding: 0; }
+.is-sidebar-collapsed .workspace-switcher button { justify-content: center; padding: 8px 0; }
+.is-sidebar-collapsed .workspace-switcher button span, .is-sidebar-collapsed .workspace-switcher button small { display: none; }
 .messenger-mascot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: 28px 0 23px; min-height: 83px; width: 100%; flex-shrink: 0; }
 .messenger-mascot > .bot-avatar { width: 56px; height: 56px; }
 .messenger-mascot > img { width: 56px; height: 56px; border-radius: 16px; }
