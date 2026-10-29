@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { UiSettings } from '@moyu/core';
 import { useMoyu } from '../state';
 import { AvatarPicker } from './AvatarPicker';
@@ -9,6 +9,15 @@ import { readAvatar } from '../lib/avatar-image';
 export function ProfileSettings({ hidden }: { hidden: boolean }) {
   const { settings, saveSettings, toast } = useMoyu();
   const [busy, setBusy] = useState(false);
+  const [name, setName] = useState(settings.userName ?? '');
+  const [savingName, setSavingName] = useState(false);
+  useEffect(() => setName(settings.userName ?? ''), [settings.userName]);
+  const saveName = async () => {
+    setSavingName(true);
+    try { await saveSettings({ userName: name }); toast('用户名已更新，所有 Bot 都会使用新称呼'); }
+    catch (error) { toast((error as Error).message, 'error'); }
+    finally { setSavingName(false); }
+  };
   const uploadRef = useRef<HTMLInputElement>(null);
   const avatar = settings.ui.userAvatar ?? DEFAULT_USER_AVATAR;
   const persist = async (next: NonNullable<UiSettings['userAvatar']>) => {
@@ -29,8 +38,9 @@ export function ProfileSettings({ hidden }: { hidden: boolean }) {
     finally { setBusy(false); }
   };
   return <Panel className="settings-card profile-settings" hidden={hidden}>
-    <div className="panel-head"><div><h3>用户头像</h3><p>选择一个喜欢的角色，或者上传自己的图片。</p></div></div>
-    <div className="profile-settings__preview"><UserAvatar className="profile-settings__avatar" animated={!hidden} /><div><strong>本地用户</strong><p>显示在左侧底部，点击头像打开功能菜单。</p><Button icon="image" size="sm" loading={busy} disabled={busy} onClick={() => uploadRef.current?.click()}>上传头像</Button></div></div>
+    <div className="panel-head"><div><h3>个人资料</h3><p>让所有 Bot 知道该怎么称呼你。</p></div></div>
+    <div className="profile-settings__preview"><UserAvatar className="profile-settings__avatar" animated={!hidden} /><div><strong>{settings.userName || '本地用户'}</strong><p>显示在左侧底部，点击头像打开功能菜单。</p><Button icon="image" size="sm" loading={busy} disabled={busy} onClick={() => uploadRef.current?.click()}>上传头像</Button></div></div>
+    <form className="profile-name" onSubmit={(event) => { event.preventDefault(); void saveName(); }}><label htmlFor="profile-username">用户名<span>所有 Bot、私聊与群聊共享这个称呼。</span></label><div><input id="profile-username" className="input" aria-label="用户名" value={name} maxLength={40} placeholder="你希望 Bot 怎么称呼你？" autoComplete="nickname" onChange={(event) => setName(event.target.value)} /><Button type="submit" size="sm" disabled={savingName || !name.trim() || name.trim() === settings.userName} loading={savingName}>保存用户名</Button></div></form>
     <fieldset className="profile-settings__choices" disabled={busy}><legend>内置头像</legend>
       <AvatarPicker value={avatar.imageDataUrl ? { ...avatar, shape: 'custom' } : avatar} onChange={(next) => void choose({ ...next, shape: next.shape === 'custom' ? avatar.shape : next.shape, imageDataUrl: undefined })} />
     </fieldset>

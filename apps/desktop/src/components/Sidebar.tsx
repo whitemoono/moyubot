@@ -139,8 +139,8 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         {!filteredBots.length ? <p className="messenger-no-results">没有找到相关 Bot</p> : null}
       </nav>
       <div className="messenger-footer">
-        <button type="button" ref={menuButtonRef} className={`messenger-profile ${menuOpen ? 'is-active' : ''}`} aria-label="用户菜单" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setContext(null); setGroupContext(null); setMenuOpen((value) => !value); }} title="本地用户 · 功能菜单">
-          <UserAvatar /><span className="messenger-profile__name">本地用户</span>
+        <button type="button" ref={menuButtonRef} className={`messenger-profile ${menuOpen ? 'is-active' : ''}`} aria-label="用户菜单" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setContext(null); setGroupContext(null); setMenuOpen((value) => !value); }} title={`${settings.userName || '本地用户'} · 功能菜单`}>
+          <UserAvatar /><span className="messenger-profile__name">{settings.userName || '本地用户'}</span>
         </button>
         <button type="button" className={`messenger-menu-button ${connectorsOpen ? 'is-active' : ''}`} aria-label="连接器" title="连接器" aria-haspopup="dialog" aria-expanded={connectorsOpen} onClick={(event) => { event.currentTarget.focus(); setMenuOpen(false); setContext(null); setGroupContext(null); setConnectorsOpen(true); }}>
           <Icon name="plug" size={18} />
