@@ -130,5 +130,6 @@ app.on('before-quit', (event) => {
 });
 
 process.on('uncaughtException', (error) => {
+  moyuApp?.diagnostics.record({ source: '应用异常', message: error.message, detail: error.stack });
   console.error('[moyu] uncaught', error);
 });

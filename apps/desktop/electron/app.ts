@@ -164,7 +164,10 @@ export class MoyuApp {
 
   setWindow(win: BrowserWindow): void {
     this.win = win;
-    win.webContents.on('render-process-gone', () => { void this.desktop.close().catch(() => {}); });
+    win.webContents.on('render-process-gone', (_event, details) => {
+      this.diagnostics.record({ source: '界面进程', message: `界面退出：${details.reason}（${details.exitCode}）` });
+      void this.desktop.close().catch(() => {});
+    });
     win.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
       if (isMainFrame) void this.desktop.close().catch(() => {});
     });
@@ -280,8 +283,10 @@ export class MoyuApp {
       const startedAt = Date.now();
       try {
         const result = await provider.test();
+        if (!result.ok) this.diagnostics.record({ source: '供应商连接测试', message: result.message });
         return { ok: result.ok, latencyMs: result.latencyMs, message: result.message };
       } catch (error) {
+        this.diagnostics.record({ source: '供应商连接测试', message: (error as Error).message });
         return { ok: false, latencyMs: Date.now() - startedAt, message: (error as Error).message };
       }
     });
