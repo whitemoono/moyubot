@@ -10,7 +10,7 @@ const server=require('../moyubot-film/serve.cjs');let browser,encoder;
  await page.goto(`http://localhost:${server.address().port}/media/moyubot-film-v2/?render=1`);await page.waitForFunction(()=>window.FILM_READY||window.FILM_ERROR);
  const error=await page.evaluate(()=>window.FILM_ERROR);if(error)throw new Error(error);
  if(qa){
-  // Seven portraits and all eight expressions, including arbitrary backward seeks.
+  // Scene layouts, deterministic backward seeks and all cut boundaries.
   for(const t of [2.5,10,24,28,34.5,41.5,45,49.8,53,57,60.5,66,69,71.5,73,74.5,76.5,81,88]){
    const png=await page.evaluate(t=>{film.render(t);return film.canvas.toDataURL('image/png').split(',')[1];},t);
    fs.writeFileSync(path.join(out,'frames',`frame-${t.toFixed(1).padStart(4,'0')}.png`),Buffer.from(png,'base64'));
