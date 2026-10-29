@@ -13,7 +13,7 @@ import { Icon } from './Icon';
 const STEPS = [{ label: '认识你', icon: 'users' }, { label: '云电脑', icon: 'cloud' }, { label: '本地目录', icon: 'folder' }] as const;
 
 export function Onboarding() {
-  const { settings, secrets, saveSettings, saveCloud, chooseLocalDirectory, completeSetup } = useMoyu();
+  const { settings, secrets, saveSettings, saveCloud, chooseLocalDirectory, completeSetup, platform } = useMoyu();
   const [step, setStep] = useState<number>(settings.onboarding?.step ?? 0);
   const [name, setName] = useState(settings.userName ?? '');
   const [avatar, setAvatar] = useState<Avatar>(settings.ui.userAvatar ?? DEFAULT_USER_AVATAR);
@@ -77,7 +77,13 @@ export function Onboarding() {
     finally { setBusy(false); }
   };
 
-  return <div className="setup-backdrop"><div ref={dialog} className="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+  return <div className="setup-backdrop">
+    <div className="setup-window-drag" aria-hidden="true" />
+    {platform !== 'darwin' ? <div className="setup-window-controls win-controls">
+      <button type="button" className="win-btn" aria-label="最小化引导窗口" onClick={() => void moyu().win('minimize')}><Icon name="minimize" size={14} /></button>
+      <button type="button" className="win-btn win-btn--close" aria-label="关闭引导窗口" onClick={() => void moyu().win('close')}><Icon name="close" size={14} /></button>
+    </div> : null}
+    <div ref={dialog} className="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="setup-title">
     <aside className="setup-sidebar"><div className="setup-brand"><img src={logo} alt="" /><span>MoyuBot<small>你的长期 AI 工作空间</small></span></div><div className="setup-steps">{STEPS.map((item, index) => <div key={item.label} className={`setup-step ${step === index ? 'is-current' : ''} ${step > index ? 'is-done' : ''}`} aria-current={step === index ? 'step' : undefined}><span><Icon name={step > index ? 'check' : item.icon} size={16} /></span><div><small>0{index + 1}</small><strong>{item.label}</strong></div></div>)}</div><p>几步简单设置，<br />让 Bot 从认识你开始。</p></aside>
     <main className="setup-main"><header><span>开始之前 · {step + 1} / 3</span><h1 id="setup-title">{step === 0 ? '我们该怎么称呼你？' : step === 1 ? '给 Bot 一台云电脑' : '为本地工作选个位置'}</h1><p>{step === 0 ? '所有 Bot 都会知道你的名字，之后也可以在设置里修改。' : step === 1 ? '用 InstaBox 提供桌面、浏览器和终端，工作区内的 Bot 共同使用。' : 'Bot 在这里整理文件、执行命令。你的工作留在自己电脑上。'}</p></header>
     <div key={step} className="setup-content">
