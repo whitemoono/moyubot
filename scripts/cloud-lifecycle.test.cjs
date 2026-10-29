@@ -5,7 +5,7 @@ const { CloudHost, InstaBoxClient, defaultSettings } = require('../packages/core
 async function fixture(t, initial = 'suspended', configuredId = true) {
   let machine = { id: 'existing', name: 'shared', state: initial, autoSuspendAfterSeconds: 1800 };
   const calls = [];
-  let failed = false, transition = 'suspended';
+  let failed = false;
   const driver = {
     kind: 'mock',
     listMachines: async () => [{ ...machine }],
@@ -15,7 +15,7 @@ async function fixture(t, initial = 'suspended', configuredId = true) {
     waitOperation: async () => failed ? { id: 'operation', state: 'failed', error: { message: 'resume failed' } } : { id: 'operation', state: 'succeeded' },
     waitForState: async (_id, accept) => {
       calls.push('wait');
-      if (!accept.includes(machine.state)) machine = { ...machine, state: transition };
+      if (!accept.includes(machine.state)) machine = { ...machine, state: 'suspended' };
       assert.ok(accept.includes(machine.state), `Unexpected state ${machine.state}`);
       return { ...machine };
     },
@@ -25,8 +25,8 @@ async function fixture(t, initial = 'suspended', configuredId = true) {
   host.isConfigured = () => true;
   Object.defineProperty(host, 'driver', { get: () => driver });
   t.after(() => host.dispose());
-  await host.refresh();
-  return { host, calls, state(value) { machine = { ...machine, state: value }; }, fail() { failed = true; }, settleTo(value) { transition = value; } };
+  if (configuredId) await host.refresh();
+  return { host, calls, state(value) { machine = { ...machine, state: value }; }, fail() { failed = true; } };
 }
 
 test('suspended machine resumes its snapshot and concurrent wake requests share the operation', async (t) => {
@@ -56,7 +56,6 @@ test('stopped machines start and already-running machines do not receive power a
 
 test('wake discovers an existing machine even before startup refresh finishes', async (t) => {
   const f = await fixture(t, 'suspended', false);
-  f.host.updateSettings({ ...f.host.getSettings(), machineId: undefined });
   await f.host.ensureAwake('click');
   assert.ok(f.calls.includes('resume'));
   assert.equal(f.host.getSettings().machineId, 'existing');
