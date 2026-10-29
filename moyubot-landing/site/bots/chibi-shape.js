@@ -31,7 +31,7 @@
   const shapes = { chibi };
   Object.keys(g.shapes).forEach((k) => { shapes[k] = g.shapes[k]; });
   g.shapes = shapes;
-  const palette = { chibi: { light: "#5890F0", dark: "#3E74D4" } };
+  const palette = { chibi: { light: "#7AA2FF", dark: "#3E74D4" } };
   Object.keys(g.palette).forEach((k) => { palette[k] = g.palette[k]; });
   g.palette = palette;
 })(window.GROK_GEO);
