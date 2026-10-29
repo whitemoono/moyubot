@@ -90,8 +90,8 @@
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
 .settings-row strong { font-size: 12px; font-weight: 450; }
 .settings-row p { font-size: 10px; color: var(--text-faint); margin: 5px 0 0; }
-.settings-row .segmented { min-width: 210px; border: 0; padding: 3px; border-radius: 8px; background: var(--selected); }
-.settings-row .segmented button { padding: 6px 10px; min-height: 27px; font-size: 11px; border-radius: 6px; }
+.settings-row .segmented { width: 210px; max-width: 100%; min-width: 0; flex-shrink: 0; border: 0; padding: 3px; border-radius: 8px; background: var(--selected); }
+.settings-row .segmented button { flex: 1; min-width: 0; padding: 6px 10px; min-height: 27px; font-size: 11px; border-radius: 6px; text-align: center; white-space: nowrap; }
 .settings-row .segmented button.is-active { background: var(--bg); box-shadow: 0 1px 4px #00000012; }
 .settings-row .swatch-row { gap: 7px; }
 .settings-row .swatch { width: 22px; height: 22px; border-radius: 8px; border: 2px solid #88888830; }
