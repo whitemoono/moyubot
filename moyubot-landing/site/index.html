@@ -271,8 +271,8 @@
     }
 
     /* ---------- Model marquee ---------- */
-    .models { padding: 20px 0 10px; }
-    .models-label { text-align: center; font-size: 13px; color: var(--ink-mute); letter-spacing: 2px; margin-bottom: 22px; }
+    .models { padding: 36px 0 10px; }
+    .models-label { text-align: center; font-size: 13px; color: var(--ink-soft); letter-spacing: 1px; margin: 0 20px 22px; line-height: 1.8; }
     .marquee {
       overflow: hidden;
       mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
@@ -320,34 +320,34 @@
     .b-big { grid-column: span 2; grid-row: span 2; display: flex; flex-direction: column; background: linear-gradient(160deg, rgba(255,255,255,.85), rgba(232,239,255,.8)); }
     .b-big h3 { font-size: 24px; }
 
-    /* mock cloud-pc window */
-    .window {
-      margin-top: 26px; flex: 1; min-height: 260px;
-      border-radius: 18px; overflow: hidden;
-      background: #0f1a3a; color: #cdd8f6;
-      box-shadow: 0 24px 50px -20px rgba(15,26,58,.6), inset 0 1px 0 rgba(255,255,255,.08);
-      display: flex; flex-direction: column;
-      font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px;
-    }
-    .win-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.06); }
-    .win-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); }
-    .win-bar span { margin-left: 10px; color: #7f8db5; font-size: 12px; }
-    .win-bar b { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 12px; color: #9fe3b8; }
-    .win-bar b .dot { width: 7px; height: 7px; }
-    .log { flex: 1; padding: 16px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; overflow: hidden; }
-    .log li { display: flex; gap: 12px; align-items: baseline; animation: log-in .7s var(--ease) both; white-space: nowrap; }
-    .log li.out { animation: log-out .5s var(--ease) both; }
-    @keyframes log-in { from { opacity: 0; translate: 0 12px; filter: blur(4px); } }
-    @keyframes log-out { to { opacity: 0; translate: 0 -10px; margin-top: -26px; } }
-    .log time { color: #56658f; }
-    .log .tag { color: var(--c); font-weight: 700; min-width: 86px; }
-    .log .msg { overflow: hidden; text-overflow: ellipsis; }
-    .log .cursor { display: inline-block; width: 8px; height: 15px; background: #6f9bff; vertical-align: -2px; animation: blink 1s steps(1) infinite; }
-    @keyframes blink { 50% { opacity: 0; } }
+    /* Execution environments and cloud lifecycle */
+    .environments { margin-top: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .environment { padding: 22px 18px; border-radius: 18px; background: rgba(255,255,255,.7); border: 1px solid var(--line); }
+    .environment svg { color: var(--blue); margin-bottom: 12px; }
+    .environment b { display: block; font-size: 16px; }
+    .environment span { display: block; margin-top: 7px; color: var(--ink-soft); font-size: 13px; line-height: 1.8; }
+    .cloud-cycle { margin-top: auto; padding-top: 28px; }
+    .cycle-label { display: block; margin-bottom: 12px; color: var(--ink-soft); font-size: 12px; }
+    .cycle-track { display: flex; align-items: center; gap: 12px; padding: 18px; background: #17244a; border-radius: 16px; color: #cdd8f6; font-size: 13px; }
+    .cycle-track b { color: #fff; font-weight: 500; }
+    .cycle-track svg { flex: 1; min-width: 14px; color: #7ea9ff; }
+    .card .card-note { margin-top: 16px; font-size: 12px; color: var(--ink-mute); }
+
+    /* Real client screenshots */
+    .product { padding-top: 90px; padding-bottom: 0; }
+    .product-tabs { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 30px 0 24px; }
+    .product-tab { padding: 11px 20px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.6); font: inherit; font-size: 14px; color: var(--ink-soft); cursor: pointer; transition: color .2s, background .2s, box-shadow .2s; }
+    .product-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 6px 18px -8px rgba(23,36,74,.4); }
+    .product-panel { text-align: left; }
+    .product-panel[hidden] { display: none; }
+    .product-shot { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: #fff; box-shadow: var(--shadow); }
+    .product-shot img { display: block; width: 100%; height: auto; }
+    .product-caption { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
+    .product-caption small { flex-shrink: 0; color: var(--ink-mute); font-size: 12px; }
 
     /* ---------- Stats ---------- */
     .stats {
-      margin: 0 auto; max-width: 1096px;
+      margin: 0 clamp(20px, 5vw, 72px); max-width: 1096px;
       display: grid; grid-template-columns: repeat(4, 1fr);
       border-radius: 26px; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); box-shadow: var(--shadow);
     }
@@ -355,11 +355,12 @@
     .stat + .stat { border-left: 1px solid var(--line); }
     .stat b {
       display: block; font-family: Nunito, sans-serif; font-style: italic; font-weight: 900;
-      font-size: clamp(36px, 4vw, 52px); line-height: 1;
+      font-size: clamp(28px, 3.5vw, 44px); line-height: 1.2;
       background: linear-gradient(180deg, var(--blue), var(--blue-deep)); -webkit-background-clip: text; background-clip: text; color: transparent;
       font-variant-numeric: tabular-nums;
     }
     .stat span { display: block; margin-top: 10px; color: var(--ink-soft); font-size: 14px; }
+    @media (min-width: 1240px) { .stats { margin-left: auto; margin-right: auto; } }
 
     /* ---------- Steps ---------- */
     .steps { position: relative; margin-top: 64px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -382,6 +383,20 @@
     .step h3 { font-size: 19px; }
     .step p { margin-top: 10px; color: var(--ink-soft); line-height: 1.8; font-size: 15px; }
     .step code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(61,109,242,.08); color: var(--blue-deep); }
+    .setup-note { margin-top: 36px; padding: 16px 22px; border: 1px solid var(--line); border-radius: 16px; color: var(--ink-soft); font-size: 13px; line-height: 1.9; background: rgba(255,255,255,.5); }
+    .setup-note a, .faq a, .download-note a { color: var(--blue-deep); text-decoration: underline; text-underline-offset: 3px; }
+
+    /* Common questions */
+    .faq { padding-top: 0; }
+    .faq-list { margin-top: 36px; border-top: 1px solid var(--line); }
+    .faq details { border-bottom: 1px solid var(--line); }
+    .faq summary { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 24px 0; cursor: pointer; font-size: 16px; font-weight: 700; list-style: none; }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: "+"; color: var(--blue); font: 24px Nunito, sans-serif; }
+    .faq details[open] summary::after { content: "−"; }
+    .faq details p { max-width: 860px; padding-bottom: 24px; font-size: 14px; line-height: 1.95; color: var(--ink-soft); }
+    .download-note { margin: 20px auto 0; max-width: 620px; font-size: 13px; color: var(--ink-soft); line-height: 1.9; }
+    section[id] { scroll-margin-top: 90px; }
 
     /* ---------- Outro + footer (one continuous section) ---------- */
     .outro { position: relative; overflow: hidden; isolation: isolate; padding-top: 140px; margin-top: 40px; }
@@ -452,7 +467,16 @@
       .features { grid-template-columns: repeat(2, 1fr); row-gap: 20px; }
       .btn { width: 100%; justify-content: center; }
       .section { padding-top: 80px; padding-bottom: 80px; }
-      .log .tag { min-width: 0; }
+      .product { padding-bottom: 0; }
+      .product-caption { flex-direction: column; gap: 4px; }
+      .product-tab { padding: 10px 16px; font-size: 13px; }
+      .card { padding: 24px; }
+      .environments { grid-template-columns: 1fr; }
+      .environment { padding: 18px; }
+      .cycle-track { gap: 8px; font-size: 12px; padding: 16px 12px; }
+      .stat { padding: 26px 12px; }
+      .stat span { font-size: 12px; }
+      .faq { padding-top: 0; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
