@@ -13,6 +13,7 @@
   <a href="https://github.com/whitemoono/moyubot/releases/latest">下载 Windows 版</a> ·
   <a href="#截图">界面预览</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#参与贡献">参与贡献</a> ·
   <a href="#开发者">认识开发者</a>
 </p>
 
@@ -199,6 +200,38 @@ MoyuBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
 因此这份素材在本仓库里是**受限制的第三方内容，不是 MIT 的一部分**：只有 MoyuBot 自研的代码与文档适用 MIT，角色造型与引擎版权归 xAI / 相应权利人。完整说明（授权状态、如何一行关掉它）见 [docs/ASSETS.md](docs/ASSETS.md)。
 
 想去掉这套角色素材：把 [grok-engine.ts](apps/desktop/src/assets/grok/grok-engine.ts) 里的 `GROK_ENGINE_ENABLED` 改成 `false`，头像自动回落到「单色底 + 首字母」，其余代码无需改动。
+
+## 参与贡献
+
+欢迎参与问题修复、功能开发、文档完善和使用反馈。外部开发者可以通过 Fork 和 Pull Request（PR）贡献代码，无需主仓库写权限。
+
+1. **确定任务**：先查看 [Issues](https://github.com/whitemoono/moyubot/issues)，在相关 Issue 下说明想参与的内容，避免重复开发。小修复可以直接提交 PR；新功能或架构调整建议先开 Issue，和维护者确认方向与范围。
+2. **Fork 并创建分支**：将 [MoyuBot 仓库](https://github.com/whitemoono/moyubot) Fork 到自己的账号，克隆到本地，为每项独立改动创建分支，例如 `fix/schedule-timezone` 或 `feat/provider-search`。
+3. **本地开发**：准备好 Node.js 和 pnpm，版本要求见根目录 [package.json](package.json)（仓库指定 pnpm `11.7.0`），在仓库根目录运行：
+
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+
+   未配置密钥时可以使用演示模式。界面与 Electron 代码位于 `apps/desktop`，Agent、模型适配、存储与调度等核心逻辑位于 `packages/core`。修改 core 时，另开终端运行 `pnpm dev:core` 监听编译。模块说明见 [架构文档](docs/ARCHITECTURE.md)，开发方向可参考 [路线图](docs/ROADMAP.md)。
+
+4. **验证改动**：代码改动提交前运行 `pnpm typecheck` 和 `pnpm build`，并根据影响范围运行相关测试：
+
+   | 命令 | 验证范围 |
+   | --- | --- |
+   | `pnpm test:conversations` | 会话、上下文压缩与记忆 |
+   | `pnpm test:usage` | Token 用量记录与统计 |
+   | `pnpm test:schedules` | 定时任务与调度 |
+   | `pnpm test:avatars` | Bot 头像活动状态 |
+   | `pnpm smoke` | Agent 工具链集成流程 |
+   | `pnpm smoke:desktop` | 桌面交互冒烟检查 |
+
+   修复问题时，尽量补充能复现问题的回归测试；界面改动请检查明暗主题和相关交互。纯文档改动检查内容、链接与排版即可。
+
+5. **提交 PR 并参与评审**：将分支推送到自己的 Fork，再向主仓库默认分支发起 [Pull Request](https://github.com/whitemoono/moyubot/pulls)。写清解决的问题、主要改动、验证步骤与结果，并关联对应 Issue；界面改动附截图或录屏。每个 PR 尽量聚焦一个主题，根据评审意见继续修改，通过后由维护者合并并安排发布。
+
+提交时请排除 API Key、个人会话、本地数据和构建产物。自研代码与文档采用 MIT 许可；新增第三方代码或素材请注明来源与许可，并留意现有 [素材授权说明](docs/ASSETS.md)。
 
 ## 开发者
 
