@@ -418,12 +418,13 @@
 
     .outro-inner { text-align: center; padding: 0 clamp(20px, 5vw, 72px) 120px; max-width: 900px; margin: 0 auto; }
     .outro-inner h2 { font-size: clamp(36px, 5vw, 64px); }
+    .outro-inner h2 .grad { white-space: nowrap; }
     .outro-inner .cta { justify-content: center; margin-top: 36px; }
     .platforms { margin-top: 26px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
     .platforms li {
       display: inline-flex; align-items: center; gap: 8px;
-      font-size: 13px; color: var(--ink-mute); padding: 7px 8px 7px 14px; border-radius: 999px;
-      background: rgba(255,255,255,.45); border: 1px dashed rgba(140,153,184,.45);
+      font-size: 13px; color: var(--ink-soft); padding: 7px 14px; border-radius: 999px;
+      background: rgba(255,255,255,.6); border: 1px solid var(--line);
     }
     .platforms li em { font-style: normal; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(140,153,184,.14); }
     .platforms li.on { color: var(--ink); font-weight: 700; background: rgba(255,255,255,.8); border: 1px solid #c9d7fb; }
