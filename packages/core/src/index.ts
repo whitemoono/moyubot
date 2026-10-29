@@ -1,4 +1,6 @@
 export * from './types';
+export { DiagnosticJournal, redactDiagnostic } from './diagnostics';
+export type { DiagnosticEntry } from './diagnostics';
 export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage';
 export * from './util';
 export { Store, PlainSecretBox, defaultSettings } from './store';
