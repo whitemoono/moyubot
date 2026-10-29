@@ -503,6 +503,9 @@
     <symbol id="i-win" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5l7.5-1v7H3zM11.5 4.4L21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 21a2 2 0 0 0 4 0"/></symbol>
     <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-1-6-1-9 1Zm0 0v15"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v17h17M9 15v-4m5 4V7m5 8V5"/></symbol>
   </svg>
 
   <nav class="nav" aria-label="主导航">
@@ -578,8 +581,8 @@
   </header>
 
   <main>
-    <section class="models" aria-label="已适配模型">
-      <p class="models-label reveal">已适配主流大模型，也支持任意 OpenAI 兼容接口</p>
+    <section class="models" aria-label="支持的模型供应商">
+      <p class="models-label reveal">模型由你选。支持 OpenAI 兼容、Anthropic、Gemini 三种协议，也能连接本地 Ollama。</p>
       <div class="marquee reveal" style="--d:.1s">
         <ul class="marquee-track">
           <li class="chip" style="--c:#10a37f"><i></i>OpenAI</li>
@@ -588,9 +591,9 @@
           <li class="chip" style="--c:#4d6bfe"><i></i>DeepSeek</li>
           <li class="chip" style="--c:#615ced"><i></i>通义千问</li>
           <li class="chip" style="--c:#111827"><i></i>Kimi</li>
-          <li class="chip" style="--c:#3859ff"><i></i>智谱 GLM</li>
+          <li class="chip" style="--c:#3859ff"><i></i>OpenRouter</li>
           <li class="chip" style="--c:#6b7280"><i></i>Grok</li>
-          <li class="chip" style="--c:#0866ff"><i></i>Llama</li>
+          <li class="chip" style="--c:#0866ff"><i></i>自定义 API</li>
           <li class="chip" style="--c:#f59e0b"><i></i>Ollama 本地模型</li>
           <!-- duplicated for seamless loop -->
           <li class="chip" style="--c:#10a37f" aria-hidden="true"><i></i>OpenAI</li>
@@ -599,77 +602,116 @@
           <li class="chip" style="--c:#4d6bfe" aria-hidden="true"><i></i>DeepSeek</li>
           <li class="chip" style="--c:#615ced" aria-hidden="true"><i></i>通义千问</li>
           <li class="chip" style="--c:#111827" aria-hidden="true"><i></i>Kimi</li>
-          <li class="chip" style="--c:#3859ff" aria-hidden="true"><i></i>智谱 GLM</li>
+          <li class="chip" style="--c:#3859ff" aria-hidden="true"><i></i>OpenRouter</li>
           <li class="chip" style="--c:#6b7280" aria-hidden="true"><i></i>Grok</li>
-          <li class="chip" style="--c:#0866ff" aria-hidden="true"><i></i>Llama</li>
+          <li class="chip" style="--c:#0866ff" aria-hidden="true"><i></i>自定义 API</li>
           <li class="chip" style="--c:#f59e0b" aria-hidden="true"><i></i>Ollama 本地模型</li>
         </ul>
       </div>
     </section>
 
-    <section class="section" id="features">
+    <section class="section product center" id="workspace" aria-labelledby="workspace-title">
+      <div class="reveal"><span class="eyebrow">YOUR WORKSPACE</span></div>
+      <h2 id="workspace-title" class="reveal" style="--d:.08s">聊得来，也能<span class="grad">一起把事做完</span></h2>
+      <p class="lead reveal" style="--d:.16s">一个 Bot，一段持续的对话。把不同模型请进群聊，把重复事项交给定时任务，在熟悉的聊天窗口里继续工作。</p>
+      <div class="product-tabs" role="tablist" aria-label="查看客户端界面">
+        <button class="product-tab" type="button" id="tab-chat" role="tab" aria-selected="true" aria-controls="panel-chat" tabindex="0">专属 Bot</button>
+        <button class="product-tab" type="button" id="tab-group" role="tab" aria-selected="false" aria-controls="panel-group" tabindex="-1">多 Bot 群聊</button>
+        <button class="product-tab" type="button" id="tab-tasks" role="tab" aria-selected="false" aria-controls="panel-tasks" tabindex="-1">例行任务</button>
+      </div>
+      <div class="product-panel" id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" tabindex="0">
+        <figure>
+          <div class="product-shot"><img src="screenshots/chat.png" alt="MoyuBot 浅色客户端：左侧切换 Bot，中间开始对话、运行代码或整理文件" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>选好模型和角色，随时回到它的对话；历史记录与长期记忆会留在本地。</span><small>客户端实拍 · 示例内容</small></figcaption>
+        </figure>
+      </div>
+      <div class="product-panel" id="panel-group" role="tabpanel" aria-labelledby="tab-group" tabindex="0" hidden>
+        <figure>
+          <div class="product-shot"><img src="screenshots/group.png" alt="MoyuBot 群聊界面：Atlas 和 Nova 按顺序回复同一条用户消息" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>邀请 2–12 个 Bot 按顺序发言，后发言的成员可以参考前面的讨论，各自保留模型与工具配置。</span><small>客户端实拍 · 示例内容</small></figcaption>
+        </figure>
+      </div>
+      <div class="product-panel" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="0" hidden>
+        <figure>
+          <div class="product-shot"><img src="screenshots/tasks.png" alt="MoyuBot 例行任务界面：聊天中管理任务，右侧查看一次性提醒、重复任务和历史记录" width="1460" height="950" loading="lazy" decoding="async" /></div>
+          <figcaption class="product-caption"><span>直接在聊天中安排、修改或暂停任务，在右侧查看计划和最近结果；执行时需保持应用运行。</span><small>客户端实拍 · 示例内容</small></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" id="features" aria-labelledby="features-title">
       <div class="reveal"><span class="eyebrow">FEATURES</span></div>
-      <h2 class="reveal" style="--d:.08s">把活交给 Bot，<span class="grad">把时间留给自己</span></h2>
-      <p class="lead reveal" style="--d:.16s">多个 AI 在同一台云电脑里协同工作：打开浏览器、运行代码、读写文件，像一支真正的小团队。</p>
+      <h2 id="features-title" class="reveal" style="--d:.08s">从一句话，<span class="grad">到真正动手</span></h2>
+      <p class="lead reveal" style="--d:.16s">接入你自己的模型，让 Bot 读写文件、执行命令、抓取网页或生成图片。在哪执行、能用什么工具，都由你来定。</p>
 
       <div class="bento">
         <article class="card b-big reveal">
           <div class="feature-icon"><svg width="24" height="24"><use href="#i-cloud"/></svg></div>
-          <h3>一台共享云电脑，一支 AI 小队</h3>
-          <p>所有 Bot 共用同一个桌面环境与文件系统，上下文天然互通。你可以随时远程接管，看看它们在忙什么。</p>
-          <div class="window" aria-hidden="true">
-            <div class="win-bar">
-              <i style="--c:#ff5f57"></i><i style="--c:#febc2e"></i><i style="--c:#28c840"></i>
-              <span>cloud-pc · moyu-01</span>
-              <b><span class="dot"></span>4 Bots online</b>
-            </div>
-            <ul class="log" id="log"></ul>
+          <h3>本地干活，或交给云电脑</h3>
+          <p>本地与云电脑各有独立工作区，同一工作区的 Bot 共用执行环境与文件。Bot、对话、记忆和任务按工作区分别保存。</p>
+          <div class="environments">
+            <div class="environment"><svg width="26" height="26" aria-hidden="true"><use href="#i-terminal"/></svg><b>本地 Windows</b><span>选择工作目录，用 PowerShell 执行命令，直接读写本机工作文件。</span></div>
+            <div class="environment"><svg width="26" height="26" aria-hidden="true"><use href="#i-cloud"/></svg><b>InstaBox 云电脑</b><span>配置云主机后按需唤醒，空闲自动休眠，工作文件持久保留。</span></div>
           </div>
+          <div class="cloud-cycle"><span class="cycle-label">云电脑的工作节奏</span><div class="cycle-track"><span>纯聊天 · 休眠</span><svg width="20" height="20" aria-hidden="true"><use href="#i-arrow"/></svg><b>需要执行 · 唤醒</b><svg width="20" height="20" aria-hidden="true"><use href="#i-arrow"/></svg><span>空闲 · 再休眠</span></div></div>
+          <p class="card-note">共享文件不等于共享私聊；每个 Bot 的私聊记忆独立保存。</p>
         </article>
         <article class="card reveal" style="--d:.08s">
           <div class="feature-icon"><svg width="24" height="24"><use href="#i-bot"/></svg></div>
-          <h3>多模型、多角色</h3>
-          <p>为每个 Bot 指定模型、人设与工具权限，程序员、写手、研究员各司其职。</p>
+          <h3>不同模型，同桌讨论</h3>
+          <p>给每个 Bot 选择模型、人设和工具。单独聊，也能拉进群聊按顺序交流，让不同思路互相补充。</p>
         </article>
         <article class="card reveal" style="--d:.16s">
-          <div class="feature-icon"><svg width="24" height="24"><use href="#i-flow"/></svg></div>
-          <h3>任务自动编排</h3>
-          <p>一句话描述需求，Manager Bot 自动拆解、分派、验收，全程无需盯梢。</p>
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-memory"/></svg></div>
+          <h3>聊得久，也接得上</h3>
+          <p>每个 Bot 保留自己的持续对话。上下文接近上限时自动整理摘要，把稳定偏好和长期事项存入记忆。</p>
         </article>
         <article class="card reveal">
           <div class="feature-icon"><svg width="24" height="24"><use href="#i-lock"/></svg></div>
-          <h3>开源、可自托管</h3>
-          <p>MIT 协议开源，部署在自己的服务器上，数据与密钥都留在你手里。</p>
+          <h3>动手之前，你来把关</h3>
+          <p>执行命令、读写文件、抓取网页、生成图片，按 Bot 开关工具，选择自动执行或每步审批。绘图需配置对应服务。</p>
         </article>
         <article class="card reveal" style="--d:.08s">
-          <div class="feature-icon"><svg width="24" height="24"><use href="#i-plug"/></svg></div>
-          <h3>插件与工具</h3>
-          <p>浏览器、终端、MCP 工具一键挂载，能力边界随你扩展。</p>
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-bell"/></svg></div>
+          <h3>重复的事，按时来做</h3>
+          <p>一句话安排一次性提醒或重复任务，也能查询、改期、暂停和恢复。保持应用运行，结果回到当前 Bot 的对话。</p>
         </article>
         <article class="card reveal" style="--d:.16s">
-          <div class="feature-icon"><svg width="24" height="24"><use href="#i-bell"/></svg></div>
-          <h3>结果主动送达</h3>
-          <p>任务完成后推送到微信、飞书、Telegram，你只管等好消息。</p>
+          <div class="feature-icon"><svg width="24" height="24"><use href="#i-chart"/></svg></div>
+          <h3>每次模型调用，都有数</h3>
+          <p>按日期、Bot 和供应商模型查看 Token 趋势、调用次数与缓存命中。用量在本地记录，以供应商实际报告为准。</p>
         </article>
       </div>
     </section>
 
-    <div class="stats reveal" role="list">
-      <div class="stat" role="listitem"><b data-count="10" data-suffix="+">10+</b><span>主流模型适配</span></div>
-      <div class="stat" role="listitem"><b data-count="1">1</b><span>台共享云电脑</span></div>
-      <div class="stat" role="listitem"><b data-count="24" data-suffix="h">24h</b><span>全天候在线</span></div>
-      <div class="stat" role="listitem"><b data-count="100" data-suffix="%">100%</b><span>开源免费</span></div>
+    <div class="stats reveal" role="list" aria-label="功能一览">
+      <div class="stat" role="listitem"><b>3 种</b><span>模型 API 协议</span></div>
+      <div class="stat" role="listitem"><b>2–12</b><span>群聊 Bot 成员</span></div>
+      <div class="stat" role="listitem"><b>按需唤醒</b><span>云电脑空闲自动休眠</span></div>
+      <div class="stat" role="listitem"><b>本地保存</b><span>对话、记忆与用量记录</span></div>
     </div>
 
     <section class="section center" id="how">
       <div class="reveal"><span class="eyebrow">HOW IT WORKS</span></div>
       <h2 class="reveal" style="--d:.08s">三步，开始<span class="grad">摸鱼</span></h2>
-      <p class="lead reveal" style="--d:.16s">从部署到第一个任务完成，通常不超过十分钟。</p>
+      <p class="lead reveal" style="--d:.16s">先连上模型，再选择执行环境，就可以和你的第一个 Bot 开工。</p>
       <div class="steps" data-observe>
         <div class="steps-line" aria-hidden="true"></div>
-        <div class="step reveal" style="--d:.2s"><div class="step-num">01</div><h3>安装客户端</h3><p>下载 Windows 客户端，一键启动你的云电脑。</p></div>
-        <div class="step reveal" style="--d:.45s"><div class="step-num">02</div><h3>招募你的 Bot</h3><p>填入模型 API Key，挑选角色模板，组建 AI 小队。</p></div>
-        <div class="step reveal" style="--d:.7s"><div class="step-num">03</div><h3>布置任务</h3><p>用一句话描述需求，Bot 们自动拆解、执行、汇报。</p></div>
+        <div class="step reveal" style="--d:.2s"><div class="step-num">01</div><h3>启动，接入模型</h3><p>按 README 启动桌面端，在设置中填写供应商地址、模型和 API Key，测试连接后保存。</p></div>
+        <div class="step reveal" style="--d:.45s"><div class="step-num">02</div><h3>选工作区，创建 Bot</h3><p>本地工作区选择文件目录；云电脑工作区配置 InstaBox。再为 Bot 设定角色、模型和执行权限。</p></div>
+        <div class="step reveal" style="--d:.7s"><div class="step-num">03</div><h3>说需求，看执行</h3><p>让 Bot 整理文件、运行代码或安排提醒。在对话中查看工具结果，按需确认审批，也能邀请多个 Bot 群聊。</p></div>
+      </div>
+      <p class="setup-note">想先看看？未配置密钥时可体验演示模式；真实聊天需要可用模型服务，云电脑需另行配置。<a href="https://github.com/whitemoono/moyubot#快速开始" target="_blank" rel="noopener">查看启动与配置说明 ↗</a></p>
+    </section>
+
+    <section class="section faq" aria-labelledby="faq-title">
+      <div class="reveal"><span class="eyebrow">GOOD TO KNOW</span></div>
+      <h2 id="faq-title" class="reveal">开工前，你可能<span class="grad">还想知道</span></h2>
+      <div class="faq-list">
+        <details><summary>免费使用，需要自己准备什么？</summary><p>MoyuBot 自研代码开源，客户端不收取订阅费。你需要自备模型 API Key，或接入本地 Ollama；模型调用和 InstaBox 云电脑的费用由对应服务商收取。本地工作区无需配置云电脑。</p></details>
+        <details><summary>电脑休眠、退出应用后，定时任务还会运行吗？</summary><p>当前聊天与任务调度由桌面端运行，需要保持 MoyuBot 和本机运行。配置好云电脑后，执行需要云环境的任务时会按需唤醒云主机；云主机在线并不代表退出桌面端后还能继续调度。任务结果保存在对应 Bot 的对话中。</p></details>
+        <details><summary>我的聊天记录和 API Key 存在哪里？</summary><p>对话、长期记忆、任务和用量记录保存在本机，API Key 使用系统级加密单独保存。模型请求会发送给你配置的供应商，云工具执行的命令与相关文件会发送到配置的云电脑。本地命令使用当前 Windows 用户的权限执行。</p></details>
+        <details><summary>能连接第三方应用，或从手机远程使用吗？</summary><p>目前第三方连接器仅提供应用列表和连接界面，OAuth 授权尚未接入。跨设备连接、远程共享和手机 PWA 仍在规划中；当前可用的是 Windows 桌面端的本地与云电脑工作区。<a href="https://github.com/whitemoono/moyubot/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">查看开发计划 ↗</a></p></details>
       </div>
     </section>
 
@@ -682,32 +724,32 @@
       <div class="outro-inner">
         <div class="reveal"><span class="eyebrow">GET STARTED</span></div>
         <h2 id="outro-title" class="reveal" style="--d:.08s">今天，也该轮到<span class="grad">你摸鱼</span>了</h2>
-        <p class="lead reveal" style="--d:.16s">免费、开源、可自托管。把重复的工作交给 Bot，把灵感留给自己。</p>
+        <p class="lead reveal" style="--d:.16s">带上你喜欢的模型，组建自己的 Bot 小队。从一段对话开始，把重复的工作慢慢交出去。</p>
         <div class="cta reveal" style="--d:.24s">
-          <a class="btn btn-primary" href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">
-            <svg width="20" height="20"><use href="#i-github"/></svg><span>Star on GitHub</span>
+          <a class="btn btn-primary" href="https://github.com/whitemoono/moyubot#快速开始" target="_blank" rel="noopener">
+            <svg width="20" height="20"><use href="#i-github"/></svg><span>从 GitHub 开始</span>
           </a>
-          <a class="btn btn-ghost" href="#">
-            <svg width="20" height="20"><use href="#i-win"/></svg><span>下载 Windows 版</span><svg class="arrow" width="18" height="18"><use href="#i-arrow"/></svg>
+          <a class="btn btn-ghost" href="https://github.com/whitemoono/moyubot/releases" target="_blank" rel="noopener">
+            <svg width="20" height="20"><use href="#i-win"/></svg><span>查看 Windows 发布</span><svg class="arrow" width="18" height="18"><use href="#i-arrow"/></svg>
           </a>
         </div>
         <ul class="platforms reveal" style="--d:.32s" aria-label="支持平台">
-          <li class="on"><svg width="14" height="14" aria-hidden="true"><use href="#i-win"/></svg>Windows<em>已支持</em></li>
-          <li>macOS<em>开发中</em></li>
-          <li>Android<em>开发中</em></li>
-          <li>iOS<em>开发中</em></li>
+          <li class="on"><svg width="14" height="14" aria-hidden="true"><use href="#i-win"/></svg>Windows 桌面端<em>当前可用</em></li>
+          <li>自带模型 API Key</li>
+          <li>本地 / 云电脑工作区</li>
         </ul>
+        <p class="download-note">项目仍在开发中，安装包以 GitHub Releases 为准；如暂无安装包，可按 <a href="https://github.com/whitemoono/moyubot#快速开始" target="_blank" rel="noopener">README</a> 从源码运行。模型与云电脑服务费用另计。</p>
       </div>
 
       <footer class="footer">
         <a class="brand" href="#top"><img class="brand-logo" src="logo.webp?v=2" alt="" width="28" height="28" />MoyuBot<em class="dev-pill">开发中</em></a>
         <nav aria-label="页脚导航">
           <a href="https://github.com/whitemoono/moyubot" target="_blank" rel="noopener">GitHub</a>
-          <a href="#">文档</a>
-          <a href="#">更新日志</a>
-          <a href="#">社区</a>
+          <a href="https://github.com/whitemoono/moyubot#快速开始" target="_blank" rel="noopener">使用文档</a>
+          <a href="https://github.com/whitemoono/moyubot/releases" target="_blank" rel="noopener">版本发布</a>
+          <a href="https://github.com/whitemoono/moyubot/issues" target="_blank" rel="noopener">反馈问题</a>
         </nav>
-        <p class="copy">© 2026 MoyuBot · MIT License · 摸鱼愉快(ฅ´ω`ฅ)</p>
+        <p class="copy">© 2026 MoyuBot · 自研代码 MIT · 摸鱼愉快(ฅ´ω`ฅ)</p>
       </footer>
     </section>
   </main>
