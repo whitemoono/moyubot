@@ -1,0 +1,21 @@
+{
+ "title":"MoyuBot · 让 AI 上班，你负责摸鱼",
+ "duration":30,"width":1080,"height":1920,"fps":30,
+ "website":"https://moyubot.net","github":"https://github.com/whitemoono/moyubot",
+ "scenes":[
+  {"start":0,"end":4,"title":"让 AI 上班。你负责摸鱼。","note":"七个角色围绕中心标题，轻快跳入。"},
+  {"start":4,"end":9,"title":"本地，或云端。你来选。","note":"展示新版实际界面的本地与云电脑工作区切换和独立 Bot。"},
+  {"start":9,"end":14,"title":"一句话，开始动手。","note":"新版命令面板取景，命令和文件工具示意；本地 PowerShell 与云电脑明确分开。"},
+  {"start":14,"end":19,"title":"记住你，继续做。","note":"新版长期记忆与任务界面取景；执行前确认、用量可查作为辅助文案。"},
+  {"start":19,"end":24,"title":"下一站，随处连接。","note":"跨设备与手机 PWA、MCP、MoyuChain 均标注待开发；不宣称已上线。"},
+  {"start":24,"end":30,"title":"MoyuBot","note":"七角色重新集合，完整官网和 GitHub 地址持续展示。"}
+ ],
+ "cues":[
+  {"start":0.45,"end":3.75,"text":"让 AI 上班，你负责摸鱼。"},
+  {"start":4.15,"end":8.75,"text":"本地或云电脑，各有自己的 Bot 和工作区。"},
+  {"start":9.15,"end":13.75,"text":"接入喜欢的模型，让 AI 执行命令、整理文件。"},
+  {"start":14.15,"end":18.75,"text":"长期记忆、定时任务，执行前还能由你确认。"},
+  {"start":19.15,"end":23.75,"text":"跨设备、手机访问与 MCP，正在规划。"},
+  {"start":24.35,"end":29.55,"text":"MoyuBot，开源的智能体工作空间。官网和 GitHub，等你来。"}
+ ]
+}
