@@ -6,8 +6,17 @@ const server=require('../moyubot-film/serve.cjs');let browser;
  server.listen(0,'localhost');await once(server,'listening');browser=await chromium.launch({channel:'chrome',headless:true,args:['--disable-gpu','--force-color-profile=srgb']});
  const page=await browser.newPage({viewport:{width:1080,height:1920}});const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(`http://localhost:${server.address().port}/media/moyubot-expressions/?render=1`);await page.waitForFunction(()=>window.FILM_READY||window.FILM_ERROR);
- const result=await page.evaluate(()=>{
+ const result=await page.evaluate(before=>{
   if(window.FILM_ERROR)throw Error(window.FILM_ERROR);
+  if(!before){
+   const skin=GROK_GEO.shapes.shiro.decals.find(d=>d.fill==='#FEF3EE');
+   const check=document.createElement('canvas');check.width=check.height=1832;const ctx=check.getContext('2d');
+   ctx.scale(8,8);ctx.fillStyle=skin.fill;ctx.fill(new Path2D(skin.d));
+   for(const [x,y] of [[132.2,141.6],[142.97,146.8],[85.98,142.9]]){
+    const rgba=ctx.getImageData(Math.round(x*8),Math.round(y*8),1,1).data;
+    if(rgba[0]!==254||rgba[1]!==243||rgba[2]!==238||rgba[3]!==255)throw Error(`Incomplete eye skin fill at ${x},${y}: ${[...rgba]}`);
+   }
+  }
   const canvas=document.createElement('canvas');canvas.width=1240;canvas.height=740;const c=canvas.getContext('2d');c.fillStyle='#faf8f3';c.fillRect(0,0,1240,740);
   const captures=[];
   for(let j=0;j<8;j++){
@@ -17,7 +26,7 @@ const server=require('../moyubot-film/serve.cjs');let browser;
   // Exercise the complete Shiro interval, including blink minima and cut boundaries.
   for(let f=720;f<1020;f++)film.render(f/30);
   return {sheet:canvas.toDataURL('image/png').split(',')[1],captures};
- });
+ },process.argv.includes('--before'));
  const name=process.argv.includes('--before')?'shiro-before':'shiro-fixed';fs.writeFileSync(path.join(__dirname,'output',name+'.png'),Buffer.from(result.sheet,'base64'));
  if(errors.length)throw Error(errors.join('\n'));console.log('Shiro check passed: eight expressions and all 300 solo frames.');
  await browser.close();server.close();
