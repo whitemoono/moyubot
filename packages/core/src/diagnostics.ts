@@ -48,7 +48,8 @@ export class DiagnosticJournal {
     this.flush();
   }
   private clean(entry: DiagnosticEntry): DiagnosticEntry {
-    const scrub = (text: string, length: number) => redactDiagnostic(text, this.secrets()).slice(0, length);
+    const secrets = this.secrets();
+    const scrub = (text: string, length: number) => redactDiagnostic(text, secrets).slice(0, length);
     return { id: entry.id, createdAt: entry.createdAt, source: scrub(entry.source || 'app', 80), message: scrub(entry.message, 1000), command: entry.command ? scrub(entry.command, 2000) : undefined, detail: entry.detail ? scrub(entry.detail, 2500) : undefined };
   }
   private prune(): void { this.entries = this.entries.filter((entry) => entry.createdAt > Date.now() - 7 * 86400_000).slice(-60); }

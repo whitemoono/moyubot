@@ -63,7 +63,8 @@ app.whenReady().then(async () => {
   assert.match(copied, /失败命令：/);
   await click('.feedback-channel:nth-child(1)'); assert.equal(opened.at(-1), 'https://t.me/moyubotnya');
   await click('.feedback-channel:nth-child(2)'); assert.equal(copied, '2162036353');
-  await delay(500);
+  await evaluate(() => { document.querySelector('.settings-content').scrollTop = 0; });
+  await delay(4500);
   fs.writeFileSync(path.join(output, 'feedback-light.png'), (await win.webContents.capturePage()).toPNG());
   const outside = await evaluate(() => [...document.querySelectorAll('.feedback-channel,.feedback-footer button,.feedback-card')].filter((element) => { const r = element.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth || r.width < 20; }).length);
   assert.equal(outside, 0);
@@ -72,6 +73,7 @@ app.whenReady().then(async () => {
   await until(() => !!document.querySelector('[aria-label="用户菜单"]'), 'reload');
   await click('[aria-label="用户菜单"]'); await button('设置'); await button('反馈与帮助');
   await click('.feedback-diagnostics__heading input'); await click('.feedback-command-option input');
+  await evaluate(() => { document.querySelector('.settings-content').scrollTop = 0; });
   await delay(400);
   fs.writeFileSync(path.join(output, 'feedback-dark.png'), (await win.webContents.capturePage()).toPNG());
   await click('[aria-label="清空报错记录"]');
