@@ -11,6 +11,7 @@ import { TasksView } from './views/TasksView';
 import { SettingsView } from './views/SettingsView';
 import { CreateBotDialog } from './components/CreateBotDialog';
 import { WorkspaceTerminal } from './components/WorkspaceTerminal';
+import { Onboarding } from './components/Onboarding';
 
 function Backdrop() {
   return <div className="wallpaper" aria-hidden="true" />;
@@ -72,6 +73,7 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [creatingBot, setCreatingBot] = useState(false);
+  const settingUp = ready && !settings.onboarding?.completedAt;
 
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -118,7 +120,7 @@ export function App() {
           <p>正在启动 MoyuBot…</p>
         </div>
       ) : (
-        <div inert={settingsOpen} className={`window-body ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${inspectorOpen && view === 'chat' ? 'is-inspector-open' : ''}`}>
+        <div inert={settingsOpen || settingUp} className={`window-body ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${inspectorOpen && view === 'chat' ? 'is-inspector-open' : ''}`}>
           <Sidebar collapsed={sidebarCollapsed} onExpand={() => setSidebarCollapsed(false)} onCreateBot={() => setCreatingBot(true)} />
           <main className="main-view workspace-main" key={view} ref={mainRef}>
             <div className="workspace-main__content" key={activeWorkspace?.id}>
@@ -130,7 +132,7 @@ export function App() {
           {inspectorOpen && view === 'chat' && !conversation?.group ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
         </div>
       )}
-      <ApprovalSheet />
+      {settingUp ? <Onboarding /> : <ApprovalSheet />}
       {ready && settingsOpen ? <SettingsView key={activeWorkspace?.id} onCreateBot={() => setCreatingBot(true)} /> : null}
       {creatingBot ? <CreateBotDialog onClose={() => setCreatingBot(false)} /> : null}
       <Toasts />
