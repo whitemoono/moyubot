@@ -36,7 +36,7 @@ let browser;
   };
  },{settings,conversations,memories,schedules});
  await page.goto(`http://localhost:${server.address().port}/apps/desktop/dist/`);
- await page.waitForSelector('.workspace-switcher');await page.waitForFunction(()=>getComputedStyle(document.querySelector('.app')).display==='flex');await page.waitForTimeout(500);await page.screenshot({path:path.join(out,'local.png')});
+ await page.waitForSelector('.workspace-switcher');await page.waitForFunction(()=>getComputedStyle(document.body).overflow==='hidden');await page.waitForTimeout(500);await page.screenshot({path:path.join(out,'local.png')});
  await page.getByRole('button',{name:'工作区终端',exact:true}).click();
  await page.getByRole('textbox',{name:'工作区终端命令',exact:true}).fill('Get-ChildItem');await page.getByRole('textbox',{name:'工作区终端命令',exact:true}).press('Enter');await page.waitForTimeout(200);
  await page.screenshot({path:path.join(out,'local-terminal.png')});
