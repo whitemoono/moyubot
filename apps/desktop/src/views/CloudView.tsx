@@ -10,7 +10,32 @@ interface TerminalLine { kind: 'cmd' | 'out' | 'err'; text: string }
 const IDLE_OPTIONS = [300, 600, 900, 1800].map((seconds) => ({ value: String(seconds), label: `${seconds / 60} 分钟` }));
 const connection = (cloud: AppSettings['cloud']) => ({ driver: cloud.driver, baseUrl: cloud.baseUrl, machineName: cloud.machineName, templateId: cloud.templateId, idleSuspendMinutes: cloud.idleSuspendMinutes, autoSuspendAfterSeconds: cloud.autoSuspendAfterSeconds, wakeOnDemand: cloud.wakeOnDemand });
 
-export function CloudView({ active = true, onDirty }: { active?: boolean; onDirty?: (value: boolean) => void }) {
+export function CloudView(props: { active?: boolean; onDirty?: (value: boolean) => void }) {
+  const { activeWorkspace } = useMoyu();
+  return activeWorkspace?.kind === 'local' ? <LocalWorkspaceView active={props.active} /> : <CloudWorkspacePanel {...props} />;
+}
+
+function LocalWorkspaceView({ active = true }: { active?: boolean }) {
+  const { local, activeWorkspace } = useMoyu();
+  const [command, setCommand] = useState('Get-Location');
+  const [lines, setLines] = useState<TerminalLine[]>([]);
+  const [executing, setExecuting] = useState(false);
+  const output = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (active && output.current) output.current.scrollTop = output.current.scrollHeight; }, [lines, active]);
+  const run = async () => {
+    const cmd = command.trim(); if (!cmd || executing) return;
+    setExecuting(true); setLines((previous) => [...previous.slice(-100), { kind: 'cmd', text: cmd }]);
+    try { const result = await window.moyu.localExec(cmd); setLines((previous) => [...previous, ...(result.stdout ? [{ kind: 'out' as const, text: result.stdout }] : []), ...(result.stderr ? [{ kind: 'err' as const, text: result.stderr }] : []), ...(result.exitCode ? [{ kind: 'err' as const, text: `exit ${result.exitCode}` }] : [])]); }
+    catch (error) { setLines((previous) => [...previous, { kind: 'err', text: (error as Error).message }]); }
+    finally { setExecuting(false); }
+  };
+  return <div className="computer-page"><div className="computer-page__scroll">
+    <section className="computer-overview computer-overview--ready" aria-label="本地工作区状态"><div className="computer-overview__top"><div className="computer-device" aria-hidden="true"><Icon name="terminal" size={42} /><i /></div><div className="computer-overview__identity"><div><h3>本机 Windows</h3><span className="computer-status"><i />本机已就绪</span></div><p>所有本地工作区 Bot 共用这台电脑</p></div></div><div className="computer-metrics"><div><span>工作区</span><strong>{activeWorkspace?.name}</strong></div><div><span>执行位置</span><strong>本机</strong></div><div><span>终端</span><strong>PowerShell</strong></div><div><span>状态</span><strong>在线</strong></div></div></section>
+    <section className="computer-terminal"><header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>本机终端</span><small>Windows PowerShell · 本地执行</small></div><Button size="sm" variant="ghost" icon="trash" disabled={executing || !lines.length} onClick={() => setLines([])}>清空</Button></header><div className="computer-terminal__output" ref={output} role="log" aria-live="polite" aria-label="本机终端输出">{lines.length ? lines.map((line, index) => <pre key={index} className={`computer-terminal__line computer-terminal__line--${line.kind}`}>{line.kind === 'cmd' ? <span>PS&gt; </span> : null}{line.text}</pre>) : <div className="computer-terminal__empty"><Icon name="terminal" size={26} /><strong>本机终端已就绪</strong><p>命令会在当前 Windows 工作区执行，所有本地 Bot 共用这个环境。</p></div>}{executing ? <p className="computer-terminal__running"><span className="spinner" />正在执行…</p> : null}</div><form className="computer-terminal__command" onSubmit={(e) => { e.preventDefault(); void run(); }}><span>PS&gt;</span><input aria-label="本机终端命令" className="mono" value={command} disabled={executing} onChange={(e) => setCommand(e.target.value)} placeholder="输入 PowerShell 命令，按 Enter 执行" spellCheck={false} /><Button type="submit" size="sm" variant="primary" icon="play" loading={executing} disabled={executing || !command.trim()}>运行</Button></form><p className="computer-terminal__hint">本地命令直接运行在当前 Windows 工作区；切换到云电脑后不会混用。</p></section>
+  </div></div>;
+}
+
+function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onDirty?: (value: boolean) => void }) {
   const { settings, cloud, saveCloud, cloudAction, secrets, toast } = useMoyu();
   const [draft, setDraft] = useState(() => connection(settings.cloud));
   const [apiKey, setApiKey] = useState('');
