@@ -10,7 +10,7 @@ const REPOSITORY = 'https://github.com/whitemoono/moyubot';
 const PLATFORMS: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
 
 export function AboutSettings({ hidden }: { hidden: boolean }) {
-  const { version, platform, toast } = useMoyu();
+  const { version, platform, toast, setSettingsSection } = useMoyu();
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<AppUpdateResult>();
   const [copied, setCopied] = useState(false);
@@ -50,7 +50,7 @@ export function AboutSettings({ hidden }: { hidden: boolean }) {
     <div className="about-repository about-card">
       <div className="about-repository__head"><span className="about-card__icon"><Icon name="github" size={22} /></span><div><strong>开源仓库</strong><p>whitemoono / moyubot</p></div><button type="button" className="about-repository__open" onClick={() => open(REPOSITORY)} aria-label="打开 GitHub 仓库" title="打开 GitHub 仓库"><Icon name="external" size={16} /></button></div>
       <div className="about-repository__address"><a href={REPOSITORY} onClick={(event) => { event.preventDefault(); open(REPOSITORY); }}>{REPOSITORY}</a><button type="button" aria-label={copied ? '仓库地址已复制' : '复制仓库地址'} title={copied ? '已复制' : '复制地址'} onClick={() => void copy()} onBlur={() => setCopied(false)}><Icon name={copied ? 'check' : 'copy'} size={14} /></button></div>
-      <div className="about-repository__links"><button type="button" onClick={() => open(`${REPOSITORY}/releases`)}>发行记录<Icon name="external" size={12} /></button><button type="button" onClick={() => open(`${REPOSITORY}/issues`)}>问题反馈<Icon name="external" size={12} /></button></div>
+      <div className="about-repository__links"><button type="button" onClick={() => open(`${REPOSITORY}/releases`)}>发行记录<Icon name="external" size={12} /></button><button type="button" onClick={() => setSettingsSection('feedback')}>问题反馈<Icon name="chat" size={12} /></button></div>
     </div>
     <p className="about-license"><Icon name="shield" size={13} />MIT 开源许可<span>为每一份灵感，留一处自在的工作空间。</span></p>
   </section>;

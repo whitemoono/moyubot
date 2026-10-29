@@ -6,6 +6,7 @@ import { Button, IconButton, Panel, Segmented, Toggle } from '../components/Glas
 import { Icon } from '../components/Icon';
 import { ProfileSettings } from '../components/ProfileSettings';
 import { AboutSettings } from './AboutSettings';
+import { FeedbackSettings } from './FeedbackSettings';
 import { ProvidersSettings } from './ProvidersSettings';
 import { BotsView } from './BotsView';
 import { CloudView } from './CloudView';
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: 'providers', label: '模型供应商', icon: 'spark', hint: '连接官方服务、第三方中转站与本地模型。' },
   { id: 'cloud', label: '共享云电脑', icon: 'cloud', hint: '一个共享的执行空间，需要时唤醒，空闲时休眠。' },
   { id: 'usage', label: '用量', icon: 'usage', hint: '每一次调用，都看得见。' },
+  { id: 'feedback', label: '反馈与帮助', icon: 'chat', hint: '交流想法，反馈问题，一起完善 MoyuBot。' },
   { id: 'about', label: '关于', icon: 'bots', hint: '一个工作空间，连接你的模型、Bot 与云电脑。' },
 ] as const;
 
@@ -51,6 +53,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
         <header className="settings-heading"><div><h2 id="settings-title">{selected.label}</h2><p>{selected.hint}</p></div><IconButton name="close" label="关闭设置" onClick={close} /></header>
         <div className="settings-content">
           {section === 'usage' ? <UsageView /> : null}
+          {section === 'feedback' ? <FeedbackSettings /> : null}
           <div hidden={section !== 'providers'} className="settings-provider-page"><ProvidersSettings onDirty={setProviderDirty} /></div>
           <div hidden={section !== 'bots'} className="settings-bots-page">{section === 'bots' ? <BotsView embedded onCreate={onCreateBot} /> : null}</div>
           <div hidden={section !== 'cloud'} className="settings-cloud-page"><CloudView active={section === 'cloud'} onDirty={setCloudDirty} /></div>
