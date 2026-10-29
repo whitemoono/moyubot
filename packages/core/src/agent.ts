@@ -289,7 +289,7 @@ ${memoryBlock}${scheduleGuide}`;
           const result = await runTool(call, {
             bot,
             cloud: this.computerFor(bot),
-            workspaceDir: this.computerFor(bot).getSettings().workspaceDir,
+            workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
             requestApproval:
