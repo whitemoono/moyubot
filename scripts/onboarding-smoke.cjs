@@ -6,7 +6,7 @@ fs.mkdirSync(output, { recursive: true }); app.setPath('userData', path.join(out
 let backend, win, renderer;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const evaluate = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`);
-const until = async (fn, label) => { for (let i = 0; i < 100; i++) { if (await evaluate(fn)) return; await delay(100); } throw Error('Timeout: ' + label); };
+const until = async (fn, label) => { for (let i = 0; i < 100; i++) { if (await evaluate(fn)) return; await delay(100); } console.error(await evaluate(() => ({ text: document.body.innerText.slice(-1800), error: document.querySelector('.setup-error')?.textContent }))); console.error({ setup: backend.store.getSettings().onboarding }); throw Error('Timeout: ' + label); };
 const click = async (selector) => { assert.equal(await evaluate((selector) => { const element = document.querySelector(selector); if (!element) return false; element.click(); return true; }, selector), true, selector); await delay(150); };
 const button = async (text) => { assert.equal(await evaluate((text) => { const element = [...document.querySelectorAll('button')].find((element) => element.textContent.trim() === text); if (!element) return false; element.click(); return true; }, text), true, text); await delay(150); };
 const input = async (selector, value) => { await evaluate((selector, value) => { const element = document.querySelector(selector); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })); }, selector, value); await delay(100); };

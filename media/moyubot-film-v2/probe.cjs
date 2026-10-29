@@ -2,6 +2,11 @@ const path=require('node:path'),os=require('node:os'),fs=require('node:fs');
 const {_electron}=require(path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
 let instance;
 (async()=>{
+ // Reuse the profile's encrypted OS key so Electron can decrypt the already saved keys.
+ // Never print the key or copy browsing/session data.
+ const profile=path.resolve('.work/film-v2/electron');fs.mkdirSync(profile,{recursive:true});
+ const originalState=JSON.parse(fs.readFileSync('.work/electron-preview/Local State','utf8'));
+ if(originalState.os_crypt)fs.writeFileSync(path.join(profile,'Local State'),JSON.stringify({os_crypt:originalState.os_crypt}));
  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
  instance=await _electron.launch({executablePath:path.resolve('apps/desktop/node_modules/electron/dist/electron.exe'),args:['--no-sandbox',path.join(__dirname,'electron-recording.cjs')],env,timeout:30000});
  const page=await instance.firstWindow();await page.waitForSelector('.workspace-switcher');await page.waitForTimeout(1000);
