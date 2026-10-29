@@ -18,7 +18,7 @@ let browser;
  const memories=[{id:'memory-1',botId:'local-1',text:'报告用中文，先给结论，再给依据。',createdAt:1,updatedAt:1},{id:'memory-2',botId:'local-1',text:'每周整理项目进展，关注下一步待办。',createdAt:1,updatedAt:1}];
  const schedules=[{id:'routine-1',botId:'local-1',cron:'0 9 * * 1-5',prompt:'整理工作区中的项目进展并汇报。',enabled:true,status:'active',nextRunAt:Date.now()+86400000,createdAt:1,updatedAt:1},{id:'routine-2',botId:'local-1',cron:'0 18 * * 5',prompt:'汇总本周待办和下周计划。',enabled:true,status:'active',nextRunAt:Date.now()+86400000*2,createdAt:1,updatedAt:1}];
  server.listen(0,'localhost');await once(server,'listening');
- browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1120,height:1000},deviceScaleFactor:1});const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ browser=await chromium.launch({channel:'chrome',headless:true});const page=await browser.newPage({viewport:{width:1120,height:1000},deviceScaleFactor:3});const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.addInitScript(({settings,conversations,memories,schedules})=>{
   const clone=x=>structuredClone(x),listeners={event:[],cloud:[],local:[]};let state=settings;
   let cloud={state:'suspended',awakeMs:0,wakeCount:0,lastTransitionAt:Date.now()};const local={state:'ready',awakeMs:0,wakeCount:0,lastTransitionAt:Date.now()};

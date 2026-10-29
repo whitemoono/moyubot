@@ -2,7 +2,7 @@
  function label(s,x,y,dark=false){en(s,x,y,22,dark?'#a7b9e4':'#7386a5','left');}
  function heading(a,b,sub,dark=false){const col=dark?'#fff':ink;text(a,68,334,86,col,700,'left');text(b,68,446,86,dark?'#acc3ff':'#587ee7',700,'left');if(sub)text(sub,72,520,29,dark?'#aebbd5':'#8290a8',400,'left');}
  function card(x,y,w,h,fill='#fff',stroke='#e1e6ef'){c.save();c.shadowColor='#162b4c12';c.shadowBlur=36;c.shadowOffsetY=15;rect(x,y,w,h,30,fill,stroke);c.restore();}
- function crop(name,sx,sy,sw,sh,x,y,w,h,r=25){c.save();c.beginPath();c.roundRect(x,y,w,h,r);c.clip();c.drawImage(images[name],sx,sy,sw,sh,x,y,w,h);c.restore();}
+ function crop(name,sx,sy,sw,sh,x,y,w,h,r=25){const d=images[name].width/1120;c.save();c.beginPath();c.roundRect(x,y,w,h,r);c.clip();c.drawImage(images[name],sx*d,sy*d,sw*d,sh*d,x,y,w,h);c.restore();}
  function bullet(s,x,y,color='#587ee7',dark=false){circle(x,y-9,5,color);text(s,x+21,y,27,dark?'#c2cde1':'#6c7d97',500,'left');}
  function tag(s,x,y,w,dark=false){rect(x,y,w,53,26,dark?'#ffffff0c':'#eaf0fd',dark?'#ffffff20':null);text(s,x+w/2,y+36,24,dark?'#c1d2fc':'#5d79bc',600);}
  function intro(t){
@@ -36,7 +36,7 @@
   appear(t,.1,()=>{card(72,601,936,435);tag('长期记忆',102,625,182);crop('memory',840,340,256,96,128,701,824,309,16);});
   appear(t,.3,()=>{card(72,1065,936,470);tag('定时任务',102,1085,182);crop('tasks',840,345,256,112,128,1150,824,360.5,16);});
   appear(t,.55,()=>{tag('执行前确认',72,1570,287);tag('用量可查',389,1570,252);tag('群聊协作',671,1570,337);});
-  text('定时任务需桌面端保持运行；本地任务需本机在线',540,1635,23,'#8997ac');
+  text('定时任务需桌面端保持运行；本地任务需本机在线',540,1655,23,'#8997ac');
  }
  function roadmap(t,g){
   background(g,6,true);header(g,true);label('04 / WHAT COMES NEXT',72,233,true);
@@ -50,7 +50,7 @@
   bots.forEach((b,i)=>appear(t,.07+i*.06,()=>{let x,y;if(i<4){x=201+i*226;y=930;}else{x=314+(i-4)*226;y=1180;}circle(x,y,85,b.pale);avatar(i,x,y,178,i===1?'sleepy':'happy',g);text(b.name,x,y+113,25,ink,600);}));
   appear(t,.35,()=>{card(72,1386,936,218,ink,null);text('moyubot.net',540,1474,59,'#fff',700);en('github.com/whitemoono/moyubot',540,1552,31,'#bccbf0');});
  }
- function captions(t,dark){const q=story.cues.find(q=>t>=q.start&&t<q.end);if(!q)return;const chars=[...q.text];let lines=[];if(chars.length>27){const at=Math.ceil(chars.length/2);lines=[chars.slice(0,at).join(''),chars.slice(at).join('')];}else lines=[q.text];rect(62,1674,956,lines.length===1?74:104,20,dark?'#121e36dd':'#ffffffdf');lines.forEach((s,i)=>text(s,540,lines.length===1?1723:1716+i*37,28,dark?'#edf2ff':ink,500));}
+ function captions(t,dark){const q=story.cues.find(q=>t>=q.start&&t<q.end);if(!q)return;const chars=[...q.text];let lines=[];if(chars.length>27){const at=q.text.indexOf('。')+1||Math.ceil(chars.length/2);lines=[chars.slice(0,at).join(''),chars.slice(at).join('')];}else lines=[q.text];rect(62,1674,956,lines.length===1?74:104,20,dark?'#121e36dd':'#ffffffdf');lines.forEach((s,i)=>text(s,540,lines.length===1?1723:1716+i*37,28,dark?'#edf2ff':ink,500));}
  function render(t){t=Math.max(0,Math.min(29.999,t));c.clearRect(0,0,W,H);let local,dark=false;
   if(t<4){local=t;intro(local);}else if(t<9){local=t-4;workspaces(local,t);}else if(t<14){local=t-9;dark=true;tools(local,t);}else if(t<19){local=t-14;continuity(local,t);}else if(t<24){local=t-19;dark=true;roadmap(local,t);}else{local=t-24;ending(local,t);}
   if(t>=4&&local<.16){c.fillStyle=dark?'#202940':'#faf8f3';c.globalAlpha=1-smooth(local/.16);c.fillRect(0,190,W,1460);c.globalAlpha=1;}
