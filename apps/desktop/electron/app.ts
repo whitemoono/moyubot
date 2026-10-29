@@ -183,6 +183,9 @@ export class MoyuApp {
   }
 
   private registerIpc(): void {
+    const desktopCaller = (event: Electron.IpcMainInvokeEvent) => {
+      if (!this.win || event.sender !== this.win.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('桌面控制仅允许应用主界面调用');
+    };
     ipcMain.handle('moyu:app:check-updates', () => checkForUpdates(this.version));
     ipcMain.handle('moyu:local:directory', async () => {
       const running = () => this.local.status().state === 'busy' || this.store.listConversations().some((item) => item.workspaceId === 'workspace_local' && this.runtime.isRunning(item.id));
@@ -293,11 +296,11 @@ export class MoyuApp {
     ipcMain.handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
 
     ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
-    ipcMain.handle('moyu:desktop:open', () => this.desktop.open());
-    ipcMain.handle('moyu:desktop:take', () => this.desktop.take());
-    ipcMain.handle('moyu:desktop:release', () => this.desktop.release());
-    ipcMain.handle('moyu:desktop:close', () => this.desktop.close());
-    ipcMain.handle('moyu:desktop:heartbeat', () => this.desktop.heartbeat());
+    ipcMain.handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });
+    ipcMain.handle('moyu:desktop:take', (event) => { desktopCaller(event); return this.desktop.take(); });
+    ipcMain.handle('moyu:desktop:release', (event) => { desktopCaller(event); return this.desktop.release(); });
+    ipcMain.handle('moyu:desktop:close', (event) => { desktopCaller(event); return this.desktop.close(); });
+    ipcMain.handle('moyu:desktop:heartbeat', (event) => { desktopCaller(event); this.desktop.heartbeat(); });
     ipcMain.handle('moyu:local', (): CloudStatus => this.local.status());
     ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
       try {
