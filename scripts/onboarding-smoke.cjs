@@ -56,5 +56,17 @@ app.whenReady().then(async () => {
   await click('[aria-label="关闭设置"]'); await delay(300); await win.reload();
   await until(() => !!document.querySelector('.messenger-profile'), 'completed setup persists');
   assert.equal(await evaluate(() => !!document.querySelector('.setup-dialog')), false);
+  // Exercise the configured-cloud branch without contacting a real account.
+  backend.store.updateSettings({ onboarding: { step: 1 }, activeWorkspaceId: 'workspace_cloud' });
+  backend.cloud.refresh = async () => backend.cloud.status();
+  backend.cloud.invalidateDriver = () => {};
+  let wakes = 0; backend.cloud.ensureAwake = async () => { wakes++; throw Error('Setup must not wake a machine'); };
+  await win.reload(); await until(() => !!document.querySelector('[aria-label="首次设置云电脑 API Key"]'), 'configured branch');
+  await input('[aria-label="首次设置云电脑 API Key"]', 'setup-test-only-key');
+  await button('保存并继续'); await until(() => !!document.querySelector('[aria-label="首次设置本地工作目录"]'), 'saved cloud credentials');
+  assert.equal(backend.store.secrets.get('cloud:instabox'), 'setup-test-only-key');
+  assert.equal(backend.store.getSettings().onboarding.cloudSkipped, false);
+  await button('开启工作空间'); await until(() => !document.querySelector('.setup-dialog'), 'cloud setup finish');
+  assert.equal(backend.store.getSettings().activeWorkspaceId, 'workspace_cloud'); assert.equal(wakes, 0);
   console.log('Onboarding smoke passed. Screenshots: ' + output);
 }).catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => { await backend?.desktop.dispose(); backend?.dispose(); win?.destroy(); renderer?.close(); app.exit(process.exitCode || 0); });
