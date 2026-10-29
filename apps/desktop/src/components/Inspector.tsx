@@ -7,6 +7,7 @@ import { BotAvatarDialog } from './BotAvatarDialog';
 import { Button, IconButton } from './Glass';
 import { Icon } from './Icon';
 import { BotTasks } from './BotTasks';
+import { CloudDesktop } from './CloudDesktop';
 
 const TABS = [{ id: 'details', label: '详情' }, { id: 'library', label: '资料库' }, { id: 'computer', label: '电脑' }] as const;
 type Tab = typeof TABS[number]['id'];
@@ -67,10 +68,10 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
       </div>
       <div className="inspector-content" key={tab} id={`inspector-panel-${tab}`} role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={0}>
         {tab === 'computer' ? <div className="inspector-computer">
-          <div className={`computer-preview ${dozing ? 'is-resting' : ''} ${booting ? 'is-booting' : ''}`} role="status" aria-live="polite">
+          {!isLocal && awake ? <CloudDesktop /> : <div className={`computer-preview ${dozing ? 'is-resting' : ''} ${booting ? 'is-booting' : ''}`} role="status" aria-live="polite">
             <div className="computer-character" aria-hidden="true">{bot ? <BotAvatar bot={bot} activity={computerActivity} className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
             <strong>{computerLabel}</strong>
-          </div>
+          </div>}
           <p className="computer-caption">{isLocal ? '本机 Windows' : cloud.machine?.name ?? settings.cloud.machineName}<small> · 工作区内所有 Bot 共用</small></p>
           <div className="computer-controls">
             {!isLocal ? <><Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning || cloud.state === 'busy'} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button><IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} /></> : null}
