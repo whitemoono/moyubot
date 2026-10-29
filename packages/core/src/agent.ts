@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './store';
-import type { CloudHost } from './cloud';
+import type { CloudHost, ComputerHost } from './cloud';
 import { createChatProvider, generateImageWithProvider } from './providers';
 import type { AgentMessage, ChatProvider, StreamHandlers } from './providers';
 import { ProviderError } from './providers';
@@ -25,6 +25,7 @@ import { trackedChat } from './usage';
 export interface AgentRuntimeDeps {
   store: Store;
   cloud: CloudHost;
+  computers?: Record<string, ComputerHost>;
   emit: (event: AgentEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   maxSteps?: number;
@@ -38,6 +39,7 @@ interface RunState {
 export class AgentRuntime {
   private readonly store: Store;
   private readonly cloud: CloudHost;
+  private readonly computers: Record<string, ComputerHost>;
   private readonly emit: (event: AgentEvent) => void;
   private readonly requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   private readonly maxSteps: number;
@@ -47,9 +49,14 @@ export class AgentRuntime {
   constructor(deps: AgentRuntimeDeps) {
     this.store = deps.store;
     this.cloud = deps.cloud;
+    this.computers = deps.computers ?? {};
     this.emit = deps.emit;
     this.requestApproval = deps.requestApproval;
     this.maxSteps = deps.maxSteps ?? 14;
+  }
+
+  private computerFor(bot: Bot): ComputerHost {
+    return this.computers[bot.workspaceId ?? 'workspace_cloud'] ?? this.cloud;
   }
 
   isRunning(conversationId: string): boolean {
@@ -83,13 +90,14 @@ export class AgentRuntime {
     const memoryBlock = facts.length
       ? `\n\n长期记忆（关于用户与这个 Bot 的事实）：\n${facts.map((fact) => `- ${fact.text}`).join('\n')}`
       : '';
-    const workspace = this.store.getSettings().cloud.workspaceDir;
+    const computer = this.computerFor(bot);
+    const workspace = computer.getSettings().workspaceDir;
     const scheduleGuide = toolNamesFor(bot).includes('schedule_task') ? `\n\n定时任务（本地时区 ${Intl.DateTimeFormat().resolvedOptions().timeZone}）：用户要求或已允许后续执行才创建；时间不明确先询问。创建前查重，修改前用 list_tasks 定位，不能猜 ID。周期用 cron，一次用含时区 runAt。仅工具成功后确认操作和执行时间；到点执行不要重新创建同一任务。` : '';
     return `${bot.systemPrompt.replace(/\{bot_name\}/g, bot.name)}
 
 当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}
 本地工作区（生成图片会存到这里）：${workspace}
-共享云电脑：${this.cloud.getSettings().machineName} · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠。
+当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
 ${memoryBlock}${scheduleGuide}`;
   }
 
@@ -275,8 +283,8 @@ ${memoryBlock}${scheduleGuide}`;
           this.emit({ type: 'tool_start', conversationId, messageId: message.id, call });
           const result = await runTool(call, {
             bot,
-            cloud: this.cloud,
-            workspaceDir: this.store.getSettings().cloud.workspaceDir,
+            cloud: this.computerFor(bot),
+            workspaceDir: this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
             requestApproval:
@@ -349,8 +357,8 @@ ${memoryBlock}${scheduleGuide}`;
         this.runs.delete(conversationId);
         this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
       }
-      this.cloud.touch();
-      this.cloud.armIdleIfNeeded?.();
+      this.computerFor(bot).touch();
+      this.computerFor(bot).armIdleIfNeeded?.();
     }
   }
 

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult } from './types';
 import { DEFAULT_CLOUD_COMMAND } from './types';
-import type { CloudHost } from './cloud';
+import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
 import { newId, shellQuote, summarize, truncate } from './util';
 
@@ -125,7 +125,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
 
 export interface ToolContext {
   bot: Bot;
-  cloud: CloudHost;
+  cloud: ComputerHost;
   workspaceDir: string;
   imageApiKey: string;
   requestApproval?: (call: ToolCall, summary: string) => Promise<boolean>;

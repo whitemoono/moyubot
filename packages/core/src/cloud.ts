@@ -2,6 +2,11 @@ import { InstaBoxClient, InstaBoxError } from './instabox';
 import type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 import type { CloudHostSettings, CloudState, CloudStatus, InstaBoxMachineState } from './types';
 import { newId, sleep } from './util';
+import { exec as execProcess } from 'node:child_process';
+import { promisify } from 'node:util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const execLocal = promisify(execProcess);
 
 export interface CloudDriver {
   readonly kind: 'instabox' | 'mock';
@@ -221,6 +226,46 @@ export interface CloudHostDeps {
   apiKey?: string | (() => string | undefined);
   onStatus?: (status: CloudStatus) => void;
   onLog?: (level: 'info' | 'warn' | 'error', text: string) => void;
+}
+
+export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'>;
+
+/** Local Windows execution environment. It deliberately exposes the same narrow
+ * computer surface as CloudHost so the agent cannot care where a workspace runs. */
+export class LocalHost {
+  private settings: CloudHostSettings;
+  private statusValue: CloudStatus;
+  private onStatus?: (status: CloudStatus) => void;
+  constructor(settings: CloudHostSettings, onStatus?: (status: CloudStatus) => void) {
+    this.settings = settings;
+    this.onStatus = onStatus;
+    this.statusValue = { state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0, machine: { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null } };
+  }
+  getSettings(): CloudHostSettings { return this.settings; }
+  status(): CloudStatus { return this.statusValue; }
+  updateSettings(settings: CloudHostSettings): void { this.settings = settings; }
+  beginTask(reason: string): void { this.statusValue = { ...this.statusValue, state: 'busy', pendingReason: reason }; this.onStatus?.(this.statusValue); }
+  endTask(): void { this.statusValue = { ...this.statusValue, state: 'ready', pendingReason: undefined }; this.onStatus?.(this.statusValue); }
+  touch(): void { /* local hosts never auto-suspend */ }
+  armIdleIfNeeded(): void { /* local hosts stay available */ }
+  async ensureAwake(_reason: string): Promise<MachineSummary> { return { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null }; }
+  async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
+    this.beginTask('在本机执行命令');
+    try {
+      const result = await execLocal(command, { cwd: this.settings.workspaceDir, timeout: (options.timeoutSeconds ?? 120) * 1000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
+      options.onStdout?.(result.stdout);
+      return { stdout: result.stdout, stderr: result.stderr, exitCode: 0, timedOut: false, truncated: false };
+    } catch (error) {
+      const failure = error as { stdout?: string; stderr?: string; code?: number | string; killed?: boolean };
+      return { stdout: failure.stdout ?? '', stderr: failure.stderr ?? (error as Error).message, exitCode: typeof failure.code === 'number' ? failure.code : 1, timedOut: !!failure.killed, truncated: false };
+    } finally { this.endTask(); }
+  }
+  async readText(file: string): Promise<string> { return fs.readFile(this.safePath(file), 'utf8'); }
+  async readBytes(file: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(this.safePath(file))), machineId: 'local-windows' }; }
+  async writeText(file: string, content: string): Promise<void> { const target = this.safePath(file); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
+  async suspend(_reason: string): Promise<void> { /* no-op for local */ }
+  dispose(): void { }
+  private safePath(file: string): string { const root = path.resolve(this.settings.workspaceDir); const target = path.resolve(root, file); if (target !== root && !target.startsWith(root + path.sep)) throw new Error('路径必须位于本地工作区内'); return target; }
 }
 
 export function resolveCloudState(machine: MachineSummary | undefined, busy: boolean): CloudState {

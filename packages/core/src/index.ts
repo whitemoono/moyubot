@@ -3,7 +3,7 @@ export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage
 export * from './util';
 export { Store, PlainSecretBox, defaultSettings } from './store';
 export type { SecretBox, ConversationSummary, SettingsPatch } from './store';
-export { CloudHost, MockDriver, InstaBoxDriver, resolveCloudState } from './cloud';
+export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, resolveCloudState } from './cloud';
 export type { CloudDriver, CloudHostDeps } from './cloud';
 export { InstaBoxClient, InstaBoxError } from './instabox';
 export type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
