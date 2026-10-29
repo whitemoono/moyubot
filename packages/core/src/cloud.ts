@@ -252,6 +252,7 @@ export class LocalHost {
   async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
     if (options.signal?.aborted) throw new Error('任务已停止');
     await fs.mkdir(this.settings.workspaceDir, { recursive: true });
+    if (options.signal?.aborted) throw new Error('任务已停止');
     this.beginTask('在本机执行命令');
     try {
       return await new Promise<ExecResult>((resolve, reject) => {
@@ -263,12 +264,15 @@ export class LocalHost {
         const stop = () => {
           if (!child.pid) return;
           if (process.platform === 'win32') {
-            const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }); killer.on('error', () => child.kill());
+            const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' });
+            killer.on('error', () => child.kill());
+            killer.on('exit', (code) => { if (code !== 0) child.kill(); });
           } else { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); } }
         };
         this.processes.add(stop);
         const timeout = setTimeout(() => { timedOut = true; stop(); }, Math.max(1, Math.min(900, options.timeoutSeconds ?? 120)) * 1000);
         options.signal?.addEventListener('abort', stop, { once: true });
+        if (options.signal?.aborted) stop();
         const cleanup = () => { clearTimeout(timeout); options.signal?.removeEventListener('abort', stop); this.processes.delete(stop); };
         child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
         child.stdout.on('data', (chunk: string) => { if (stdout.length < 1024 * 1024) { stdout += chunk.slice(0, 1024 * 1024 - stdout.length); options.onStdout?.(chunk); } else truncated = true; });

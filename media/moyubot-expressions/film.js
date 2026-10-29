@@ -48,7 +48,8 @@
   const b=bots[i],g=geo[b.shape],p=pose(mood,t,i);const k=size/245;
   c.save();c.translate(x+p.x*k,y+p.y*k);c.rotate(p.roll);c.scale(k*p.sx,k*p.sy);c.translate(-114.5,-114.5);
   c.fillStyle=b.color;c.fill(g.path);g.decals.forEach(d=>{c.fillStyle=d.fill;c.fill(d.path,d.rule||'nonzero');});
-  const f=g.face,phase=(t+i*.53)%3.6,blink=phase<.2?Math.max(.03,Math.abs(phase-.1)/.1):1;
+  const f=g.face,phase=(t+i*.53)%3.6;
+  const blink=mood==='idle'&&transition>=.42&&transition<=.66?Math.max(.03,Math.abs(transition-.54)/.12):phase<.2?Math.max(.03,Math.abs(phase-.1)/.1):1;
   const peak=1-Math.exp(-Math.max(0,transition)*12);const faceInk=f.ink||'#1a1a1f';
   const gaze=mood==='thinking'?{x:3,y:-4}:mood==='shy'?{x:2,y:3}:{x:Math.sin(t*.9+i)*1.2,y:0};
   f.anchors.forEach(([ex,ey],j)=>{
