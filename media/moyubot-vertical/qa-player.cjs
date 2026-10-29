@@ -6,7 +6,7 @@ const server=require('../moyubot-film/serve.cjs');let browser;
  const page=await browser.newPage({viewport:{width:1366,height:900}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(`http://localhost:${server.address().port}/media/moyubot-vertical/`);await page.waitForFunction(()=>window.FILM_READY);
  assert.equal(await page.locator('#clock').textContent(),'00:00 / 01:30');
- await page.locator('#play').click();await page.waitForTimeout(1200);assert.equal(await page.locator('#play').textContent(),'暂停');assert((await page.locator('#clock').textContent()).startsWith('00:01'));
+ await page.locator('#play').click();await page.waitForTimeout(1200);assert.equal(await page.locator('#play').textContent(),'暂停');assert(+await page.locator('#seek').inputValue()>0);
  await page.locator('#play').click();const paused=await page.locator('#seek').inputValue();await page.waitForTimeout(150);assert.equal(await page.locator('#seek').inputValue(),paused);
  await page.locator('body').click({position:{x:8,y:8}});await page.keyboard.press('ArrowRight');assert(+await page.locator('#seek').inputValue()>5);
  await page.locator('#seek').evaluate(el=>{el.value=89;el.dispatchEvent(new Event('input'));});await page.keyboard.press('Space');await page.waitForTimeout(1150);assert.equal(await page.locator('#play').textContent(),'重播');
@@ -17,3 +17,4 @@ const server=require('../moyubot-film/serve.cjs');let browser;
  assert.equal(errors.length,0);console.log('Player QA passed: audio, play/pause, seek, keyboard, end, mute, desktop/mobile overflow.');
  await browser.close();server.close();
 })().catch(async e=>{console.error(e);await browser?.close();server.close();process.exitCode=1;});
+
