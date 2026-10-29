@@ -764,24 +764,35 @@
       entries.forEach((e) => {
         if (!e.isIntersecting) return;
         e.target.classList.add('in');
-        if (e.target.dataset.count !== undefined) countUp(e.target);
         io.unobserve(e.target);
       });
     }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal, [data-observe], [data-count]').forEach((el) => io.observe(el));
+    document.querySelectorAll('.reveal, [data-observe]').forEach((el) => io.observe(el));
 
-    /* count-up numbers */
-    function countUp(el) {
-      const end = +el.dataset.count, suffix = el.dataset.suffix || '';
-      if (reduce || end <= 1) { el.textContent = end + suffix; return; }
-      const t0 = performance.now(), dur = 1600;
-      const tick = (t) => {
-        const p = Math.min((t - t0) / dur, 1);
-        el.textContent = Math.round(end * (1 - Math.pow(1 - p, 4))) + suffix;
-        if (p < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
+    /* Client preview tabs: click, arrow keys, Home and End. */
+    const tabs = [...document.querySelectorAll('.product-tab')];
+    function selectTab(tab) {
+      tabs.forEach((item) => {
+        const selected = item === tab;
+        item.setAttribute('aria-selected', String(selected));
+        item.tabIndex = selected ? 0 : -1;
+        document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+      });
     }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => selectTab(tab));
+      tab.addEventListener('keydown', (event) => {
+        let next;
+        if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = tabs.length - 1;
+        else return;
+        event.preventDefault();
+        selectTab(tabs[next]);
+        tabs[next].focus();
+      });
+    });
 
     /* nav glass on scroll */
     const nav = document.querySelector('.nav');
@@ -819,38 +830,6 @@
         c.style.setProperty('--my', `${e.clientY - r.top}px`);
       });
     });
-
-    /* live log in the cloud-pc window */
-    const LOGS = [
-      ['Coder', '#7ea9ff', 'git commit -m "fix: 登录页样式"'],
-      ['Writer', '#c4a1ff', '周报草稿已生成 · 1,280 字'],
-      ['Researcher', '#5fd4c0', '整理 12 篇竞品资料 → /docs'],
-      ['Designer', '#ffb36b', '导出 3 张海报到 ~/Desktop'],
-      ['Coder', '#7ea9ff', '单元测试 48/48 通过 ✓'],
-      ['Manager', '#ff8fae', '任务全部完成，已推送通知'],
-    ];
-    const log = document.getElementById('log');
-    const MAX = 6;
-    let k = 0;
-    const stamp = () => new Date().toTimeString().slice(0, 8);
-    function push() {
-      const [name, color, text] = LOGS[k++ % LOGS.length];
-      const li = document.createElement('li');
-      const time = document.createElement('time'); time.textContent = stamp();
-      const tag = document.createElement('span'); tag.className = 'tag'; tag.style.setProperty('--c', color); tag.textContent = name;
-      const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = text;
-      li.append(time, tag, msg);
-      log.querySelector('.cursor')?.remove();
-      const cur = document.createElement('span'); cur.className = 'cursor'; msg.after(cur);
-      log.append(li);
-      const items = log.querySelectorAll('li:not(.out)');
-      if (items.length > MAX) {
-        const old = items[0]; old.classList.add('out');
-        old.addEventListener('animationend', () => old.remove(), { once: true });
-      }
-    }
-    for (let i = 0; i < 4; i++) push();
-    if (!reduce) setInterval(push, 1900);
 
     /* stagger the girl-bot moods so the banner doesn't blink in unison */
     document.querySelectorAll('.cast grok-bot').forEach((el, i) => {
