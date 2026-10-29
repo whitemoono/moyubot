@@ -13,7 +13,16 @@ export function CloudDesktop() {
   const [loaded, setLoaded] = useState(false);
   const alive = useRef(true);
   const screen = useRef<HTMLDivElement>(null);
+  const preview = useRef<HTMLButtonElement>(null);
   const manual = session?.mode === 'manual';
+
+  useEffect(() => {
+    const element = preview.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => element.style.setProperty('--desktop-thumbnail-scale', String(element.clientWidth / 1280)));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     alive.current = true;
@@ -68,7 +77,7 @@ export function CloudDesktop() {
   /> : null;
 
   return <div className={`cloud-desktop ${manual ? 'is-manual' : ''}`}>
-    <button type="button" className="cloud-desktop__preview" aria-label="放大云电脑桌面" onClick={() => { setExpanded(true); setLoaded(false); }}>
+    <button ref={preview} type="button" className="cloud-desktop__preview" aria-label="放大云电脑桌面" onClick={() => { setExpanded(true); setLoaded(false); }}>
       {!expanded ? viewer(true) : <div className="cloud-desktop__placeholder"><Icon name="cloud" size={25} /><span>桌面已在大窗口打开</span></div>}
       {!session ? <div className="cloud-desktop__placeholder">{error ? <Icon name="cloud" size={24} /> : <span className="spinner" />}<span>{error ? '暂时无法连接桌面' : '正在连接实时桌面…'}</span></div> : null}
       {session && !expanded ? <span className="cloud-desktop__expand"><Icon name="external" size={14} /> 放大桌面</span> : null}
