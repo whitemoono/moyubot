@@ -218,7 +218,7 @@ app.whenReady().then(async () => {
     await until(() => document.querySelector('.chat__name')?.textContent === 'Atlas', 'Cloud remains usable during local command');
     assert.ok(await evaluate(() => !document.querySelector('.workspace-terminal').textContent.includes('local-background-result')));
     await click('.workspace-switcher button:nth-child(2)');
-    await until(() => document.querySelector('.workspace-terminal').textContent.includes('local-background-result'), 'Background local output stays in local session', 20000);
+    await until(() => [...document.querySelectorAll('.workspace-terminal .is-out')].some((node) => node.textContent.includes('local-background-result')) && !document.querySelector('[aria-label="停止终端命令"]'), 'Background local output stays in local session', 20000);
     await input('[aria-label="工作区终端命令"]', 'Start-Sleep -Seconds 30; Write-Output "should-not-complete"');
     await button('执行', '.workspace-terminal button');
     await until(() => !!document.querySelector('[aria-label="停止终端命令"]'), 'Stop command offered');
