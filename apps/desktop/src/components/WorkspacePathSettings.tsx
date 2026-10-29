@@ -3,7 +3,7 @@ import { useMoyu } from '../state';
 import { Button } from './Glass';
 
 export function WorkspacePathSettings() {
-  const { workspaces, settings, local, cloud, chooseLocalDirectory, saveCloud, toast } = useMoyu();
+  const { workspaces, settings, local, cloud, chooseLocalDirectory, saveSettings, toast } = useMoyu();
   const localDirectory = workspaces.find((item) => item.kind === 'local')?.directory ?? '';
   const remoteDirectory = settings.cloud.remoteWorkspaceDir ?? '/data/moyubot';
   const [draft, setDraft] = useState(remoteDirectory);
@@ -21,7 +21,7 @@ export function WorkspacePathSettings() {
     if (!dirty || saving) return;
     if (!draft.trim().startsWith('/') || /[\\\x00\r\n]/.test(draft)) { toast('请填写 Linux 绝对路径，例如 /data/moyubot', 'warn'); return; }
     setSaving(true);
-    try { await saveCloud({ remoteWorkspaceDir: draft.trim() }); }
+    try { await saveSettings({ cloud: { ...settings.cloud, remoteWorkspaceDir: draft.trim() } }); toast('云电脑工作路径已保存'); }
     catch (error) { toast((error as Error).message, 'error'); }
     finally { setSaving(false); }
   };

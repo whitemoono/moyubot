@@ -354,7 +354,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
         </div>
       </div>
       {home ? <div className="starter-actions" aria-label="灵感建议">
-        {(bot.workspaceId === 'workspace_local' ? LOCAL_SUGGESTIONS : SUGGESTIONS).map((item) => <button type="button" key={item.title} onClick={() => { setText(item.text); textarea.current?.focus(); }}>
+        {(bot.workspaceId === 'workspace_local' ? LOCAL_SUGGESTIONS : SUGGESTIONS).map((item) => <button type="button" key={item.title} onClick={() => { setText(bot.workspaceId === 'workspace_local' ? item.text : item.text.replaceAll('/data/moyubot', settings.cloud.remoteWorkspaceDir ?? '/data/moyubot')); textarea.current?.focus(); }}>
           <Icon name={item.icon} size={16} /><span>{item.title}</span>
         </button>)}
       </div> : null}
