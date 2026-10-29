@@ -25,15 +25,17 @@ app.whenReady().then(async()=>{
  const {MoyuApp}=require(path.join(repo,'apps/desktop/dist-electron/app.js'));
  const {startRendererServer}=require(path.join(repo,'apps/desktop/dist-electron/renderer-server.js'));
  backend=new MoyuApp(data,'0.1.0');global.filmBackend=backend;backend.start();
- let feed,encoder,frames=0,recordingName;
+ let feed,encoder,frames=0,recordingName,frameSize,frameErrors=0;
  global.startFilmCapture=(name)=>{
   if(encoder)throw Error('capture already active');
   recordingName=name;frames=0;
+  frameSize=win.getContentSize();
+  const [width,height]=frameSize;
   const ffmpeg=path.join(repo,'.work/video-tools/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
   const destination=path.join(__dirname,'output','raw',name+'.mp4');fs.mkdirSync(path.dirname(destination),{recursive:true});
-  encoder=spawn(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','rawvideo','-pixel_format','bgra','-video_size','1600x900','-framerate','30','-i','pipe:0','-an','-c:v','libx264','-preset','ultrafast','-crf','14','-pix_fmt','yuv420p','-movflags','+faststart',destination],{stdio:['pipe','ignore','pipe'],windowsHide:true});encoder.stdin.on('error',()=>{});
-  global.filmEncoder=encoder;global.filmFrameCount=()=>frames;global.filmVideoPath=destination;
-  feed=(image)=>{if(!encoder||encoder.stdin.destroyed)return;const bitmap=image.toBitmap();if(bitmap.length!==1600*900*4)return;if(!encoder.stdin.write(bitmap))return;frames++;};
+  encoder=spawn(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','rawvideo','-pixel_format','bgra','-video_size',`${width}x${height}`,'-framerate','30','-i','pipe:0','-an','-c:v','libx264','-preset','ultrafast','-crf','14','-pix_fmt','yuv420p','-movflags','+faststart',destination],{stdio:['pipe','ignore','pipe'],windowsHide:true});encoder.stdin.on('error',()=>{});
+  global.filmEncoder=encoder;global.filmFrameCount=()=>frames;global.filmVideoPath=destination;global.filmFrameInfo=()=>({size:frameSize,errors:frameErrors});
+  feed=(image)=>{if(!encoder||encoder.stdin.destroyed)return;const bitmap=image.toBitmap();if(bitmap.length!==width*height*4){frameErrors++;return;}if(!encoder.stdin.write(bitmap))return;frames++;};
   win.webContents.beginFrameSubscription(feed);
  };
  global.stopFilmCapture=()=>new Promise((resolve,reject)=>{if(!encoder){resolve({frames});return;}win.webContents.endFrameSubscription();const current=encoder;encoder=undefined;current.stdin.end();current.once('close',code=>code===0?resolve({frames,name:recordingName,path:global.filmVideoPath}):reject(Error('FFmpeg stopped with code '+code)));});
