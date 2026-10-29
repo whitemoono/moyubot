@@ -238,7 +238,10 @@ export class InstaBoxClient {
     for (;;) {
       const op = await this.getOperation(id, 20);
       if (op.phase && options.onPhase && op.phase !== 'done') options.onPhase(op.phase);
-      if (op.state === 'succeeded' || op.state === 'failed') return op;
+      if (op.state === 'failed') {
+        throw new InstaBoxError({ status: 0, code: op.error?.code ?? 'operation_failed', message: op.error?.message ?? `云电脑操作 ${id} 失败` });
+      }
+      if (op.state === 'succeeded') return op;
       if (Date.now() > deadline) {
         throw new InstaBoxError({
           status: 0,

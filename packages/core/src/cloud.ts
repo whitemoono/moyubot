@@ -510,15 +510,21 @@ export class CloudHost {
     if (!this.isConfigured()) {
       throw new Error('云主机尚未配置：请在设置里填入 InstaBox API Key');
     }
-    if (this.machine?.state === 'running') {
-      this.touch();
-      return this.machine;
-    }
-    this.setStatus({ state: 'waking', pendingReason: reason }, `唤醒云主机：${reason}`);
     const startedAt = Date.now();
     try {
       let id = this.settings.machineId;
+      // Startup discovery and server-side autosuspend can race a user action.
+      // Always discover/refresh before deciding to create, resume or start.
       if (!id) {
+        const machines = await this.driver.listMachines();
+        const match = machines.find((m) => m.name === this.settings.machineName) ?? machines[0];
+        if (match) {
+          id = match.id;
+          this.settings = { ...this.settings, machineId: id };
+        }
+      }
+      if (!id) {
+        this.setStatus({ state: 'waking', pendingReason: reason }, `创建云主机：${reason}`);
         const created = await this.driver.createMachine({
           name: this.settings.machineName,
           templateId: this.settings.templateId,
@@ -535,21 +541,31 @@ export class CloudHost {
           this.onLog?.('info', `创建云主机 ${created.machine.name}`);
         }
         if (created.operationId) {
-          await this.driver.waitOperation(created.operationId, {
+          const operation = await this.driver.waitOperation(created.operationId, {
             timeoutMs: 240_000,
             onPhase: (phase) => this.setStatus({ operationPhase: phase }),
           });
+          this.checkOperation(operation);
         }
       }
       if (!id) throw new Error('创建云主机后没有拿到 machine id');
       let machine = await this.driver.getMachine(id);
       this.machine = machine;
+      if (machine.state !== 'running') {
+        this.setStatus({ state: 'waking', pendingReason: reason }, `唤醒云主机：${reason}`);
+        if (['creating', 'starting', 'resuming', 'suspending', 'stopping'].includes(machine.state)) {
+          machine = await this.driver.waitForState(id, ['running', 'suspended', 'stopped', 'error'], { timeoutMs: 240_000 });
+          this.machine = machine;
+        }
+      } else {
+        this.touch();
+        this.setStatus({ state: this.activeRuns > 0 ? 'busy' : 'ready', machine, lastError: undefined, pendingReason: undefined, operationPhase: undefined });
+        return machine;
+      }
       if (machine.state === 'suspended') {
-        const op = await this.driver.act(id, 'wake');
-        if (op.id) await this.driver.waitOperation(op.id, { timeoutMs: 120_000 });
+        await this.finishOperation(await this.driver.act(id, 'resume'), 120_000);
       } else if (machine.state === 'stopped' || machine.state === 'error') {
-        const op = await this.driver.act(id, 'start');
-        if (op.id) await this.driver.waitOperation(op.id, { timeoutMs: 240_000 });
+        await this.finishOperation(await this.driver.act(id, 'start'), 240_000);
       }
       machine = await this.driver.waitForState(id, ['running'], {
         timeoutMs: 240_000,
@@ -570,12 +586,15 @@ export class CloudHost {
             updatedAt: machine.updatedAt,
           },
           lastError: undefined,
+          pendingReason: undefined,
+          operationPhase: undefined,
           lastWakeAt: Date.now(),
           wakeCount: this.statusValue.wakeCount + 1,
           awakeMs: 0,
         },
         `云主机已就绪（${Math.round((Date.now() - startedAt) / 1000)}s）`,
       );
+      this.touch();
       await this.applyAutoSuspend();
       return machine;
     } catch (error) {
@@ -583,6 +602,19 @@ export class CloudHost {
       this.setStatus({ state: 'error', lastError: message }, `唤醒失败：${message}`);
       throw error;
     }
+  }
+
+  private checkOperation(operation: OperationSummary): void {
+    if (operation.state === 'failed') {
+      throw new Error(operation.error?.message || `云电脑操作失败（${operation.error?.code ?? operation.id}）`);
+    }
+  }
+
+  private async finishOperation(operation: OperationSummary, timeoutMs: number): Promise<void> {
+    this.checkOperation(operation);
+    if (operation.id) this.checkOperation(await this.driver.waitOperation(operation.id, {
+      timeoutMs, onPhase: (phase) => this.setStatus({ operationPhase: phase }),
+    }));
   }
 
   /** Keep the server-side idle timer aligned with the local setting. */
@@ -606,7 +638,7 @@ export class CloudHost {
     this.setStatus({ state: 'sleeping', pendingReason: reason }, `休眠云主机：${reason}`);
     try {
       const op = await this.driver.act(this.settings.machineId, 'suspend');
-      if (op.id) await this.driver.waitOperation(op.id, { timeoutMs: 90_000 });
+      await this.finishOperation(op, 90_000);
       await this.driver.getMachine(this.settings.machineId).then((machine) => {
         this.machine = machine;
         this.setStatus({
