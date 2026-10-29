@@ -6,7 +6,7 @@ import { BotAvatar } from './BotAvatar';
 import { Button, Sheet } from './Glass';
 
 export function CreateBotDialog({ onClose }: { onClose: () => void }) {
-  const { settings, saveSettings, saveBot, toast } = useMoyu();
+  const { settings, saveSettings, saveBot, toast, activeWorkspace } = useMoyu();
   const [provider] = useState(() => deepSeekProvider(settings.providers));
   const [draft, setDraft] = useState(() => ({ ...newBot(provider), name: '' }));
   const [saving, setSaving] = useState(false);
@@ -32,7 +32,7 @@ export function CreateBotDialog({ onClose }: { onClose: () => void }) {
     try {
       if (!settings.providers.some((item) => item.id === provider.id)) await saveSettings({ providers: [...settings.providers, provider] });
       const name = draft.name.trim();
-      await saveBot({ ...draft, name, handle: `bot-${draft.id.slice(0, 8)}`, avatar: { ...draft.avatar, glyph: name[0]!.toUpperCase() }, updatedAt: Date.now() });
+      await saveBot({ ...draft, workspaceId: activeWorkspace?.id ?? 'workspace_cloud', name, handle: `bot-${draft.id.slice(0, 8)}`, avatar: { ...draft.avatar, glyph: name[0]!.toUpperCase() }, updatedAt: Date.now() });
       onClose();
     } catch (error) { toast((error as Error).message, 'error'); setSaving(false); }
   };

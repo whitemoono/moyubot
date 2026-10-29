@@ -11,7 +11,7 @@ import { AvatarPicker } from '../components/AvatarPicker';
 import { Select } from '../components/Select';
 
 export function BotsView({ onCreate, embedded = false }: { onCreate: () => void; embedded?: boolean }) {
-  const { settings, saveBot, deleteBot, selectBot, bot: activeBot, updateBotMetadata, toast } = useMoyu();
+  const { settings, saveBot, deleteBot, selectBot, bot: activeBot, updateBotMetadata, toast, activeWorkspace } = useMoyu();
   const [editing, setEditing] = useState<Bot | null>(null);
 
   const providerName = (id: string) => settings.providers.find((provider) => provider.id === id)?.name ?? '未绑定供应商';
@@ -28,7 +28,7 @@ export function BotsView({ onCreate, embedded = false }: { onCreate: () => void;
       </header>
 
       <div className="bots-grid">
-        {settings.bots.map((item) => (
+        {settings.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id).map((item) => (
           <Panel key={item.id} className={`bot-card ${activeBot?.id === item.id ? 'is-active' : ''}`}>
             <div className="bot-card__head">
               <BotAvatar bot={item} size="xl" />
