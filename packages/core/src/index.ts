@@ -6,6 +6,8 @@ export type { SecretBox, ConversationSummary, SettingsPatch } from './store';
 export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, resolveCloudState } from './cloud';
 export type { CloudDriver, CloudHostDeps } from './cloud';
 export { InstaBoxClient, InstaBoxError } from './instabox';
+export { ComputerControl } from './computer-control';
+export type { DesktopStream, DesktopStatus } from './instabox';
 export type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 export { AgentRuntime, resolveArtifact } from './agent';
 export { runTool, schemasFor, toolNamesFor, TOOL_SCHEMAS } from './tools';

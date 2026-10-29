@@ -41,6 +41,16 @@ export interface ExecResult {
   truncated: boolean;
 }
 
+export interface DesktopStream {
+  url: string;
+  expiresAt: string;
+}
+
+export interface DesktopStatus {
+  installed: boolean;
+  running: boolean;
+}
+
 export class InstaBoxError extends Error {
   readonly status: number;
   readonly code: string;
@@ -154,6 +164,22 @@ export class InstaBoxClient {
     const payload = await this.request<{ machines?: any[]; data?: any[] }>('GET', '/v1/machines');
     const list = payload.machines ?? payload.data ?? [];
     return list.map(normalizeMachine);
+  }
+
+  desktopStart(id: string): Promise<DesktopStatus> {
+    return this.request('POST', `/v1/machines/${encodeURIComponent(id)}/desktop`, {
+      body: { action: 'start', width: 1280, height: 800 }, timeoutMs: 90_000,
+    });
+  }
+
+  desktopStream(id: string, viewOnly: boolean): Promise<DesktopStream> {
+    return this.request('POST', `/v1/machines/${encodeURIComponent(id)}/desktop/stream`, {
+      body: { viewOnly, ttlSeconds: 600 },
+    });
+  }
+
+  async desktopRevoke(id: string): Promise<void> {
+    await this.request('DELETE', `/v1/machines/${encodeURIComponent(id)}/desktop/stream`);
   }
 
   async getMachine(id: string): Promise<MachineSummary> {
