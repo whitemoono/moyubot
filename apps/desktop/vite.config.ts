@@ -7,6 +7,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "connect-src 'self'",
+  "frame-src https://dashboard.instabox.sh",
   "font-src 'self' data:",
 ].join('; ');
 

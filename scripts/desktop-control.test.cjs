@@ -10,7 +10,7 @@ function fixture() {
     beginTask: () => { tasks++; }, endTask: () => { tasks--; },
     driver: {
       desktopStart: async () => ({ installed: true, running: true }),
-      desktopStream: async (_id, viewOnly) => { events.push(viewOnly ? 'view' : 'manual'); if(streamFailure) throw Error('stream unavailable'); return { url: 'https://desktop.example/view', expiresAt: new Date(Date.now()+600000).toISOString() }; },
+      desktopStream: async (_id, viewOnly) => { events.push(viewOnly ? 'view' : 'manual'); if(streamFailure) throw Error('stream unavailable'); return { url: 'https://dashboard.instabox.sh/desktop/machine', expiresAt: new Date(Date.now()+600000).toISOString() }; },
       desktopRevoke: async () => { events.push('revoke'); if(revokeFailure) throw Error('offline'); },
     },
   };
@@ -82,3 +82,4 @@ test('desktop API explicitly requests server enforced readonly and real revocati
   finally { global.fetch=original; }
   assert.deepEqual(calls.map((c)=>c.body?.viewOnly),[true,false,undefined]); assert.equal(calls[2].method,'DELETE');
 });
+

@@ -52,7 +52,8 @@ export class DesktopSessions {
     const driver = this.host.driver;
     if (!driver.desktopStream) throw new Error('演示模式不提供真实远程桌面，请先配置 InstaBox');
     const stream = await driver.desktopStream(machineId, mode !== 'manual');
-    if (new URL(stream.url).protocol !== 'https:') throw new Error('桌面服务返回了无效的连接');
+    const viewer = new URL(stream.url);
+    if (viewer.origin !== 'https://dashboard.instabox.sh' || !viewer.pathname.startsWith(`/desktop/${machineId}`)) throw new Error('桌面服务返回了无效的连接');
     this.session = { ...stream, machineId, mode };
     return this.session;
   }
