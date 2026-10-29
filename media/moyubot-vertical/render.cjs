@@ -16,6 +16,19 @@ const server=require('../moyubot-film/serve.cjs');let browser,encoder;
    fs.writeFileSync(path.join(out,'frames',`frame-${t.toFixed(1).padStart(4,'0')}.png`),Buffer.from(png,'base64'));
   }
   for(const t of [89.999,0,5,17,27,35,47,57,70,74,84,4.999,16.999,26.999,34.999,46.999,56.999,69.999,73.999,83.999])await page.evaluate(t=>film.render(t),t);
+  const audit=await page.evaluate(()=>{
+   const original=CanvasRenderingContext2D.prototype.fillText,bad=[];let now;
+   CanvasRenderingContext2D.prototype.fillText=function(s,x,y,...rest){
+    const w=this.measureText(s).width,m=this.getTransform(),left=this.textAlign==='center'?x-w/2:this.textAlign==='right'?x-w:x;
+    if(m.a===1&&m.d===1&&(left+m.e<55||left+w+m.e>1010||y+m.f>1880))bad.push({time:now,text:s,left:left+m.e,right:left+w+m.e,y:y+m.f});
+    return original.call(this,s,x,y,...rest);
+   };
+   for(let f=0;f<900;f++){now=f/10;film.render(now);}
+   CanvasRenderingContext2D.prototype.fillText=original;
+   film.render(63.8);const before=film.canvas.toDataURL();film.render(0);film.render(89.9);film.render(63.8);
+   return {overflow:bad,deterministic:before===film.canvas.toDataURL()};
+  });
+  if(audit.overflow.length||!audit.deterministic)throw new Error(JSON.stringify(audit));
   if(errors.length)throw new Error(errors.join('\n'));console.log('QA passed: ten scenes, screenshots, arbitrary seek and transition checks.');
  }else{
   const ffmpeg=process.env.MOYU_FFMPEG||path.join(repo,'.work/video-tools/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
