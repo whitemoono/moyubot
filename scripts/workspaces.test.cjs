@@ -123,3 +123,43 @@ test('local API image generation never wakes the cloud, and commands respect app
   const result = await runTool({ id: 'command', name: 'cloud_exec', arguments: { cmd: 'exit 0' } }, { ...context, requestApproval: async () => false });
   assert.equal(result.ok, false); assert.match(result.summary, /拒绝/);
 });
+
+test('remote directory settings persist without changing local artifact or workspace folders', (t) => {
+  const store = new Store(temporary(t));
+  const original = store.getSettings();
+  const artifacts = original.cloud.workspaceDir, local = original.workspaces.find((item) => item.kind === 'local').directory;
+  store.updateSettings({ cloud: { remoteWorkspaceDir: '/data/team files/project/../current/' } });
+  const saved = new Store(store.dataDir).getSettings();
+  assert.equal(saved.cloud.remoteWorkspaceDir, '/data/team files/current');
+  assert.equal(saved.cloud.workspaceDir, artifacts);
+  assert.equal(saved.workspaces.find((item) => item.kind === 'local').directory, local);
+  for (const invalid of ['relative', 'D:\\work', '/data/a\nb', '/data/\x00bad', '']) assert.throws(() => store.updateSettings({ cloud: { remoteWorkspaceDir: invalid } }), /绝对路径/);
+  assert.equal(store.getSettings().cloud.remoteWorkspaceDir, '/data/team files/current');
+});
+
+test('cloud commands and relative file tools use the selected remote directory and preserve failures', async (t) => {
+  const store = new Store(temporary(t)), requests = [], reads = [], writes = [];
+  const directory = "/data/client's work";
+  const cloud = new CloudHost({ settings: { ...store.getSettings().cloud, driver: 'mock', remoteWorkspaceDir: directory }, apiKey: () => '' });
+  t.after(() => cloud.dispose());
+  const driver = {
+    async exec(id, request) { requests.push(request); return { stdout: request.cmd === 'pwd' ? request.cwd : '', stderr: '', exitCode: request.cmd === 'exit 7' ? 7 : 0, timedOut: false, truncated: false }; },
+    async readFile(id, file) { reads.push(file); return Buffer.from('remote file'); },
+    async writeFile(id, file, content) { writes.push([file, content]); },
+  };
+  Object.defineProperty(cloud, 'driver', { get: () => driver });
+  cloud.ensureAwake = async () => ({ id: 'test-cloud' });
+  assert.equal((await cloud.exec('pwd')).stdout, directory);
+  assert.equal(requests[0].cmd, "mkdir -p -- '/data/client'\\''s work'");
+  assert.equal(requests[1].cwd, directory);
+  assert.equal((await cloud.exec('exit 7')).exitCode, 7);
+  assert.equal(requests.length, 3, 'Create the selected directory once per machine');
+  assert.equal(await cloud.readText('notes/a.txt'), 'remote file');
+  await cloud.readBytes('/etc/os-release');
+  await cloud.writeText('notes/new.txt', 'hello');
+  assert.deepEqual(reads, [directory + '/notes/a.txt', '/etc/os-release']);
+  assert.deepEqual(writes, [[directory + '/notes/new.txt', 'hello']]);
+  cloud.settings = { ...cloud.getSettings(), remoteWorkspaceDir: '/data/another' };
+  assert.equal((await cloud.exec('pwd')).stdout, '/data/another');
+  assert.equal(requests.at(-1).cwd, '/data/another');
+});
