@@ -28,6 +28,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
   const resting = ['suspended', 'off', 'stopped'].includes(cloud.state);
   const files = [...new Map((conversation?.messages.flatMap((message) => message.attachments ?? []) ?? []).map((file) => [file.path ?? file.id, file])).values()];
   const computerLabel = resting ? '电脑正在休眠' : cloud.state === 'ready' ? '电脑已就绪' : cloud.state === 'busy' ? '电脑正在工作' : cloud.state === 'error' ? '电脑连接异常' : meta.hint;
+  const onlineLabel = isLocal ? '本地执行，无需云电脑' : `本次在线 ${formatDuration(cloud.awakeMs)}`;
 
   const remember = async () => {
     if (!draft.trim() || saving) return;
@@ -72,7 +73,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
             {!isLocal ? <><Button variant="ghost" size="sm" icon={awake ? 'moon' : 'power'} loading={transitioning} disabled={transitioning || cloud.state === 'busy'} onClick={() => void controlComputer(awake ? 'sleep' : 'wake')}>{awake ? '休眠电脑' : '唤醒电脑'}</Button><IconButton name="refresh" label="刷新电脑状态" disabled={transitioning} onClick={() => void controlComputer('refresh')} /></> : null}
             <Button variant="glass" size="sm" icon="terminal" onClick={onOpenTerminal}>打开终端</Button>
           </div>
-          {awake ? <div className="computer-session"><span>{isLocal ? '本地执行，无需云电脑' : `本次在线 ${formatDuration(cloud.awakeMs || Date.now() - (cloud.lastWakeAt ?? Date.now())))}`}</span><Button variant="ghost" size="sm" onClick={() => setView('cloud')}>管理电脑</Button></div> : null}
+          {awake ? <div className="computer-session"><span>{onlineLabel}</span><Button variant="ghost" size="sm" onClick={() => setView('cloud')}>管理电脑</Button></div> : null}
           {cloud.state === 'error' || cloud.state === 'unconfigured' ? <p className="inspector-note">{cloud.lastError ?? meta.hint}<button type="button" onClick={() => setView('cloud')}>检查云电脑配置</button></p> : null}
         </div> : null}
 
