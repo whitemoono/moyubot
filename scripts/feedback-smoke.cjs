@@ -34,6 +34,7 @@ app.whenReady().then(async () => {
   win = new BrowserWindow({ width: 1460, height: 950, show: false, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   backend.setWindow(win);
   await win.loadURL(renderer.url);
+  win.showInactive();
   await until(() => !!document.querySelector('[aria-label="用户菜单"]'), 'bootstrap');
   const failed = await evaluate(() => window.moyu.localExec('Write-Error "feedback-smoke-error"; exit 7', 'feedback-test'));
   assert.notEqual(failed.exitCode, 0);
