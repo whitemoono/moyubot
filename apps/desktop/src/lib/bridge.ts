@@ -8,6 +8,7 @@ import type {
   BotGroupAction,
   BootstrapPayload,
   CloudStatus,
+  DesktopSession,
   Conversation,
   ExecResult,
   MemoryFact,
@@ -52,6 +53,11 @@ export interface MoyuBridge {
   botConversation(botId: string): Promise<Conversation>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   cloud(): Promise<CloudStatus>;
+  desktopOpen(): Promise<DesktopSession>;
+  desktopTake(): Promise<DesktopSession>;
+  desktopRelease(): Promise<DesktopSession>;
+  desktopClose(): Promise<void>;
+  desktopHeartbeat(): Promise<void>;
   local(): Promise<CloudStatus>;
   chooseLocalDirectory(): Promise<AppSettings>;
   cloudAction(action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus>;

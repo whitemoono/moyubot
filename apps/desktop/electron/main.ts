@@ -115,8 +115,15 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  moyuApp?.dispose();
+let desktopCleaned = false;
+app.on('before-quit', (event) => {
+  if (desktopCleaned || !moyuApp) return;
+  event.preventDefault();
+  moyuApp.dispose();
+  void moyuApp.desktop.dispose().catch(() => {
+    // Recovery record blocks automation on next launch until revocation succeeds.
+    console.error('[moyu] desktop control cleanup deferred until next launch');
+  }).finally(() => { desktopCleaned = true; app.quit(); });
 });
 
 process.on('uncaughtException', (error) => {

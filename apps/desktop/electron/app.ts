@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
 import type {
   AgentEvent,
@@ -87,6 +87,7 @@ interface PendingApproval {
 export class MoyuApp {
   readonly store: Store;
   readonly cloud: CloudHost;
+  readonly desktop: DesktopSessions;
   readonly local: LocalHost;
   readonly runtime: AgentRuntime;
   readonly scheduler: ScheduleRunner;
@@ -121,6 +122,19 @@ export class MoyuApp {
       },
     });
 
+    const recoveryFile = path.join(dataDir, 'desktop-control.json');
+    let recoveryMachine: string | undefined;
+    if (fs.existsSync(recoveryFile)) {
+      try { recoveryMachine = JSON.parse(fs.readFileSync(recoveryFile, 'utf8')).machineId; } catch { /* corrupt record */ }
+    }
+    this.desktop = new DesktopSessions(this.cloud, (machineId) => {
+      if (machineId) fs.writeFileSync(recoveryFile, JSON.stringify({ machineId }), { mode: 0o600 });
+      else if (fs.existsSync(recoveryFile)) fs.unlinkSync(recoveryFile);
+    }, recoveryMachine);
+    if (recoveryMachine) void this.desktop.close().catch(() => {
+      this.send('moyu:event', { type: 'log', level: 'error', text: '上次桌面控制尚未撤销，云电脑自动操作暂缓，请连接桌面重试交还' } satisfies AgentEvent);
+    });
+
     this.runtime = new AgentRuntime({
       store: this.store,
       cloud: this.cloud,
@@ -144,6 +158,12 @@ export class MoyuApp {
 
   setWindow(win: BrowserWindow): void {
     this.win = win;
+    win.webContents.on('render-process-gone', () => { void this.desktop.close().catch(() => {}); });
+    win.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
+      if (isMainFrame) void this.desktop.close().catch(() => {});
+    });
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (event) => event.preventDefault());
   }
 
   private send(channel: string, payload: unknown): void {
@@ -273,9 +293,15 @@ export class MoyuApp {
     ipcMain.handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
 
     ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
+    ipcMain.handle('moyu:desktop:open', () => this.desktop.open());
+    ipcMain.handle('moyu:desktop:take', () => this.desktop.take());
+    ipcMain.handle('moyu:desktop:release', () => this.desktop.release());
+    ipcMain.handle('moyu:desktop:close', () => this.desktop.close());
+    ipcMain.handle('moyu:desktop:heartbeat', () => this.desktop.heartbeat());
     ipcMain.handle('moyu:local', (): CloudStatus => this.local.status());
     ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
       try {
+        if (this.desktop.controlling && action !== 'refresh') throw new Error('请先交还 Bot，再切换电脑电源');
         if (action === 'wake' || action === 'start') await this.cloud.ensureAwake('手动唤醒');
         else if (action === 'sleep' || action === 'stop') await this.cloud.suspend('手动休眠');
         else await this.cloud.refresh();
@@ -290,6 +316,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
 
     ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
+      await this.desktop.close();
       this.checkCloudDirectoryChange(input.patch);
       if (typeof input.apiKey === 'string') {
         const key = input.apiKey.trim();
@@ -352,6 +379,7 @@ export class MoyuApp {
   }
 
   private checkCloudDirectoryChange(patch?: Partial<AppSettings['cloud']>): void {
+    if (patch && this.desktop.controlling) throw new Error('请先交还 Bot，再修改云电脑配置');
     if (patch?.remoteWorkspaceDir === undefined) return;
     const directory = normalizeRemoteDirectory(patch.remoteWorkspaceDir);
     if (directory === (this.store.getSettings().cloud.remoteWorkspaceDir ?? '/data/moyubot')) return;
@@ -363,9 +391,13 @@ export class MoyuApp {
     if (this.terminalRuns.has(requestId)) throw new Error('命令正在执行，请勿重复提交');
     const computer = kind === 'local' ? this.local : this.cloud;
     const controller = new AbortController(); this.terminalRuns.set(requestId, controller);
-    computer.beginTask('终端命令');
-    try { return await computer.exec(cmd, { timeoutSeconds: 60, signal: controller.signal }); }
-    finally { computer.endTask(); this.terminalRuns.delete(requestId); }
+    let release: (() => void) | undefined;
+    let started = false;
+    try {
+      if (kind === 'cloud') release = await this.cloud.control.acquire(controller.signal);
+      computer.beginTask('终端命令'); started = true;
+      return await computer.exec(cmd, { timeoutSeconds: 60, signal: controller.signal });
+    } finally { if (started) computer.endTask(); release?.(); this.terminalRuns.delete(requestId); }
   }
 
 
