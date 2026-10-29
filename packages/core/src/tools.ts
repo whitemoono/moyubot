@@ -245,6 +245,8 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   });
   const args = call.arguments ?? {};
   const computerLabel = ctx.bot.workspaceId === 'workspace_local' ? '本机工作区' : '云电脑';
+  let releaseComputer: (() => void) | undefined;
+  const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
       case 'cloud_exec': {
@@ -254,6 +256,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           const approved = await ctx.requestApproval(call, `在${computerLabel}执行：${summarize(cmd, 240)}`);
           if (!approved) return finish({ ok: false, summary: '已拒绝执行', detail: cmd });
         }
+        await acquireComputer();
         ctx.cloud.beginTask('在云电脑执行命令');
         try {
           ctx.emitStatus(ctx.cloud.status(), '正在云电脑执行命令');
@@ -278,6 +281,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       }
       case 'cloud_read': {
         const remotePath = requireString(args, 'path');
+        await acquireComputer();
         ctx.cloud.beginTask('读取云电脑文件');
         try {
           const text = await ctx.cloud.readText(remotePath);
@@ -293,6 +297,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           const approved = await ctx.requestApproval(call, `写入${computerLabel}文件：${remotePath}（${content.length} 字符）`);
           if (!approved) return finish({ ok: false, summary: '已拒绝写入' });
         }
+        await acquireComputer();
         ctx.cloud.beginTask('写入云电脑文件');
         try {
           await ctx.cloud.writeText(remotePath, content);
@@ -307,12 +312,13 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const usesCloud = ctx.bot.image.backend === 'cloud';
         if (usesCloud && ctx.bot.workspaceId === 'workspace_local') throw new Error('本地工作区请使用供应商 API 绘图；现有云端绘图脚本仅适用于云电脑工作区');
         const shouldWake = ctx.bot.workspaceId !== 'workspace_local' && (usesCloud || ctx.bot.image.wakeHost);
-        if (shouldWake) {
-          ctx.cloud.beginTask('生成图片');
-          await ctx.cloud.ensureAwake('生成图片');
-          ctx.emitStatus(ctx.cloud.status(), '云电脑已唤醒，开始绘图');
-        }
+        if (shouldWake) await acquireComputer();
+        if (shouldWake) ctx.cloud.beginTask('生成图片');
         try {
+          if (shouldWake) {
+            await ctx.cloud.ensureAwake('生成图片');
+            ctx.emitStatus(ctx.cloud.status(), '云电脑已唤醒，开始绘图');
+          }
           if (usesCloud) {
             const remoteOut = (ctx.bot.image.cloudOutputPath || '/data/moyubot/out/{name}.png')
               .replace('{name}', newId('draw'))
@@ -417,6 +423,8 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return finish({ ok: false, summary: `执行失败：${summarize(message, 140)}`, detail: message });
+  } finally {
+    releaseComputer?.();
   }
 }
 

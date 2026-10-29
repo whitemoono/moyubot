@@ -333,6 +333,7 @@ export function resolveCloudState(machine: MachineSummary | undefined, busy: boo
 }
 
 export class CloudHost {
+  readonly control = new ComputerControl();
   private preparedDirectories = new Set<string>();
   private instabox: InstaBoxDriver | undefined;
   private readonly mock = new MockDriver();

@@ -7,6 +7,8 @@ export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, resolveCloudState } f
 export type { CloudDriver, CloudHostDeps } from './cloud';
 export { InstaBoxClient, InstaBoxError } from './instabox';
 export { ComputerControl } from './computer-control';
+export { DesktopSessions } from './desktop-session';
+export type { DesktopSession } from './desktop-session';
 export type { DesktopStream, DesktopStatus } from './instabox';
 export type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 export { AgentRuntime, resolveArtifact } from './agent';
