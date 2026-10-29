@@ -9,6 +9,7 @@ import type {
   BootstrapPayload,
   CloudStatus,
   DesktopSession,
+  DiagnosticEntry,
   Conversation,
   ExecResult,
   MemoryFact,
@@ -33,6 +34,9 @@ export interface ConversationSummary {
 }
 
 export interface MoyuBridge {
+  feedbackDiagnostics(): Promise<DiagnosticEntry[]>;
+  clearFeedbackDiagnostics(): Promise<void>;
+  copyFeedback(text: string): Promise<void>;
   checkForUpdates(): Promise<AppUpdateResult>;
   bootstrap(): Promise<BootstrapPayload>;
   usage(query: UsageQuery): Promise<UsageReport>;

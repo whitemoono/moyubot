@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
 import type {
   AgentEvent,
@@ -86,6 +86,8 @@ interface PendingApproval {
 
 export class MoyuApp {
   readonly store: Store;
+  readonly diagnostics: DiagnosticJournal;
+  private diagnosticCommands = new Map<string, string>();
   readonly cloud: CloudHost;
   readonly desktop: DesktopSessions;
   readonly local: LocalHost;
@@ -101,6 +103,10 @@ export class MoyuApp {
     this.version = version;
     const secrets = new SafeSecretBox(dataDir);
     this.store = new Store(dataDir, secrets);
+    this.diagnostics = new DiagnosticJournal(dataDir, () => [
+      secrets.get('cloud:instabox') ?? '', secrets.get('telegram:token') ?? '',
+      ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
+    ]);
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
@@ -167,7 +173,22 @@ export class MoyuApp {
   }
 
   private send(channel: string, payload: unknown): void {
+    if (channel === 'moyu:event') this.recordDiagnosticEvent(payload as AgentEvent);
     if (this.win && !this.win.isDestroyed()) this.win.webContents.send(channel, payload);
+  }
+
+  private recordDiagnosticEvent(event: AgentEvent): void {
+    if (event.type === 'tool_start' && typeof event.call.arguments.cmd === 'string') {
+      this.diagnosticCommands.set(event.call.id, event.call.arguments.cmd);
+      if (this.diagnosticCommands.size > 100) this.diagnosticCommands.delete(this.diagnosticCommands.keys().next().value!);
+    }
+    if (event.type === 'tool_end') {
+      const command = this.diagnosticCommands.get(event.result.id);
+      this.diagnosticCommands.delete(event.result.id);
+      if (!event.result.ok && !/已拒绝|已停止/.test(event.result.summary)) this.diagnostics.record({ source: `Bot / ${event.result.name}`, message: event.result.summary, detail: event.result.detail, command });
+    }
+    if (event.type === 'run_end' && !event.ok && event.error && event.error !== '已停止') this.diagnostics.record({ source: 'Bot / 模型调用', message: event.error });
+    if (event.type === 'log' && ['error', 'warn'].includes(event.level)) this.diagnostics.record({ source: '应用', message: event.text });
   }
 
   private waitForApproval(request: ApprovalRequest): Promise<boolean> {
@@ -183,11 +204,27 @@ export class MoyuApp {
   }
 
   private registerIpc(): void {
+    const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any) => {
+      ipcMain.handle(channel, async (event, ...args) => {
+        try { return await listener(event, ...args); }
+        catch (error) {
+          if (!/已停止|任务已停止/.test((error as Error).message)) this.diagnostics.record({ source: channel.replace('moyu:', ''), message: (error as Error).message || '操作失败' });
+          throw error;
+        }
+      });
+    };
     const desktopCaller = (event: Electron.IpcMainInvokeEvent) => {
       if (!this.win || event.sender !== this.win.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('桌面控制仅允许应用主界面调用');
     };
-    ipcMain.handle('moyu:app:check-updates', () => checkForUpdates(this.version));
-    ipcMain.handle('moyu:local:directory', async () => {
+    handle('moyu:app:check-updates', () => checkForUpdates(this.version));
+    handle('moyu:feedback:diagnostics', (event) => { desktopCaller(event); return this.diagnostics.list(); });
+    handle('moyu:feedback:clear', (event) => { desktopCaller(event); this.diagnostics.clear(); });
+    handle('moyu:feedback:copy', (event, text: string) => {
+      desktopCaller(event);
+      if (typeof text !== 'string' || text.length > 200_000) throw new Error('反馈内容过长');
+      clipboard.writeText(text);
+    });
+    handle('moyu:local:directory', async () => {
       const running = () => this.local.status().state === 'busy' || this.store.listConversations().some((item) => item.workspaceId === 'workspace_local' && this.runtime.isRunning(item.id));
       if (running()) throw new Error('本机仍有任务运行，请完成后再更换目录');
       const result = await dialog.showOpenDialog({ title: '选择本地工作区目录', defaultPath: this.local.getSettings().workspaceDir, properties: ['openDirectory', 'createDirectory'] });
@@ -199,7 +236,7 @@ export class MoyuApp {
       }
       return this.store.getSettings();
     });
-    ipcMain.handle('moyu:bootstrap', (): BootstrapPayload => {
+    handle('moyu:bootstrap', (): BootstrapPayload => {
       const settings = this.store.getSettings();
       const providerKeys: Record<string, boolean> = {};
       for (const provider of settings.providers) {
@@ -223,19 +260,19 @@ export class MoyuApp {
       };
     });
 
-    ipcMain.handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
+    handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
       this.checkCloudDirectoryChange(patch.cloud);
       const next = this.store.updateSettings(patch);
       if (patch.cloud) this.cloud.updateSettings(next.cloud);
       return next;
     });
 
-    ipcMain.handle('moyu:provider:key', (_event, input: { providerId: string; key: string }) => {
+    handle('moyu:provider:key', (_event, input: { providerId: string; key: string }) => {
       this.store.secrets.set(this.store.providerSecretKey(input.providerId), input.key.trim());
     });
 
 
-    ipcMain.handle('moyu:provider:test', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<ProviderTestResult> => {
+    handle('moyu:provider:test', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<ProviderTestResult> => {
       const config = draft ? { ...draft, id: providerId } : this.store.getProvider(providerId);
       if (!config) return { ok: false, latencyMs: 0, message: '供应商不存在' };
       const key = draftKey?.trim() || this.store.secrets.get(this.store.providerSecretKey(providerId)) || '';
@@ -249,39 +286,39 @@ export class MoyuApp {
       }
     });
 
-    ipcMain.handle('moyu:provider:models', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<string[]> => {
+    handle('moyu:provider:models', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string): Promise<string[]> => {
       const config = draft ? { ...draft, id: providerId } : this.store.getProvider(providerId);
       if (!config) return [];
       const key = draftKey?.trim() || this.store.secrets.get(this.store.providerSecretKey(providerId)) || '';
       return createChatProvider(config, key).listModels();
     });
 
-    ipcMain.handle('moyu:bot:save', (_event, bot: Bot): Bot => {
+    handle('moyu:bot:save', (_event, bot: Bot): Bot => {
       const next: Bot = { ...bot, updatedAt: Date.now(), createdAt: bot.createdAt || Date.now() };
       return this.store.upsertBot(next);
     });
 
-    ipcMain.handle('moyu:bot:metadata', (_event, botId: string, patch: BotMetadataPatch) => this.store.updateBotMetadata(botId, patch));
-    ipcMain.handle('moyu:bot-group:update', (_event, name: string, action: BotGroupAction, workspaceId?: string) => this.store.updateBotGroup(name, action, workspaceId));
-    ipcMain.handle('moyu:bot:copy-conversation', (_event, botId: string) => {
+    handle('moyu:bot:metadata', (_event, botId: string, patch: BotMetadataPatch) => this.store.updateBotMetadata(botId, patch));
+    handle('moyu:bot-group:update', (_event, name: string, action: BotGroupAction, workspaceId?: string) => this.store.updateBotGroup(name, action, workspaceId));
+    handle('moyu:bot:copy-conversation', (_event, botId: string) => {
       if (!this.store.getBot(botId)) throw new Error('Bot 不存在');
       const id = this.store.botConversation(botId).id;
       clipboard.writeText(id);
       return id;
     });
 
-    ipcMain.handle('moyu:bot:delete', (_event, botId: string) => {
+    handle('moyu:bot:delete', (_event, botId: string) => {
       this.store.removeBot(botId);
     });
 
-    ipcMain.handle('moyu:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {
+    handle('moyu:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {
       return this.runtime.send(input);
     });
-    ipcMain.handle('moyu:group:create', (_event, title: string, memberBotIds: string[]) => this.store.createGroup(title, memberBotIds));
+    handle('moyu:group:create', (_event, title: string, memberBotIds: string[]) => this.store.createGroup(title, memberBotIds));
 
-    ipcMain.handle('moyu:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
+    handle('moyu:stop', (_event, conversationId: string): boolean => this.runtime.stop(conversationId));
 
-    ipcMain.handle('moyu:approve', (_event, decision: ApprovalDecision) => {
+    handle('moyu:approve', (_event, decision: ApprovalDecision) => {
       const pending = this.approvals.get(decision.requestId);
       if (!pending) return;
       clearTimeout(pending.timer);
@@ -290,19 +327,19 @@ export class MoyuApp {
       this.send('moyu:event', { type: 'approval_done', requestId: decision.requestId, approved: decision.approved } satisfies AgentEvent);
     });
 
-    ipcMain.handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
-    ipcMain.handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
-    ipcMain.handle('moyu:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
-    ipcMain.handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
+    handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
+    handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
+    handle('moyu:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
+    handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
 
-    ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
-    ipcMain.handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });
-    ipcMain.handle('moyu:desktop:take', (event) => { desktopCaller(event); return this.desktop.take(); });
-    ipcMain.handle('moyu:desktop:release', (event) => { desktopCaller(event); return this.desktop.release(); });
-    ipcMain.handle('moyu:desktop:close', (event) => { desktopCaller(event); return this.desktop.close(); });
-    ipcMain.handle('moyu:desktop:heartbeat', (event) => { desktopCaller(event); this.desktop.heartbeat(); });
-    ipcMain.handle('moyu:local', (): CloudStatus => this.local.status());
-    ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
+    handle('moyu:cloud', (): CloudStatus => this.cloud.status());
+    handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });
+    handle('moyu:desktop:take', (event) => { desktopCaller(event); return this.desktop.take(); });
+    handle('moyu:desktop:release', (event) => { desktopCaller(event); return this.desktop.release(); });
+    handle('moyu:desktop:close', (event) => { desktopCaller(event); return this.desktop.close(); });
+    handle('moyu:desktop:heartbeat', (event) => { desktopCaller(event); this.desktop.heartbeat(); });
+    handle('moyu:local', (): CloudStatus => this.local.status());
+    handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
       try {
         if (this.desktop.controlling && action !== 'refresh') throw new Error('请先交还 Bot，再切换电脑电源');
         if (action === 'wake' || action === 'start') await this.cloud.ensureAwake('手动唤醒');
@@ -314,11 +351,11 @@ export class MoyuApp {
       return this.cloud.status();
     });
 
-    ipcMain.handle('moyu:cloud:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('cloud', cmd, requestId));
-    ipcMain.handle('moyu:local:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('local', cmd, requestId));
-    ipcMain.handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
+    handle('moyu:cloud:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('cloud', cmd, requestId));
+    handle('moyu:local:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('local', cmd, requestId));
+    handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
 
-    ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
+    handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
       await this.desktop.close();
       this.checkCloudDirectoryChange(input.patch);
       if (typeof input.apiKey === 'string') {
@@ -337,35 +374,35 @@ export class MoyuApp {
       return this.cloud.status();
     });
 
-    ipcMain.handle('moyu:schedules', (): Schedule[] => this.store.listSchedules());
-    ipcMain.handle('moyu:schedule:add', (_event, input: { botId: string; cron: string; prompt: string }): Schedule => {
+    handle('moyu:schedules', (): Schedule[] => this.store.listSchedules());
+    handle('moyu:schedule:add', (_event, input: { botId: string; cron: string; prompt: string }): Schedule => {
       return this.scheduler.create(input.botId, input.cron, input.prompt);
     });
-    ipcMain.handle('moyu:schedule:delete', (_event, id: string) => this.store.removeSchedule(id));
-    ipcMain.handle('moyu:schedule:toggle', (_event, id: string): Schedule[] => {
+    handle('moyu:schedule:delete', (_event, id: string) => this.store.removeSchedule(id));
+    handle('moyu:schedule:toggle', (_event, id: string): Schedule[] => {
       const schedule = this.store.listSchedules().find((item) => item.id === id);
       if (!schedule) throw new Error('任务不存在');
       this.store.updateSchedule(schedule.botId, id, { action: schedule.enabled ? 'pause' : 'resume' });
       return this.store.listSchedules();
     });
-    ipcMain.handle('moyu:schedule:update', (_event, botId: string, id: string, patch: ScheduleUpdate): Schedule => this.store.updateSchedule(botId, id, patch));
+    handle('moyu:schedule:update', (_event, botId: string, id: string, patch: ScheduleUpdate): Schedule => this.store.updateSchedule(botId, id, patch));
 
-    ipcMain.handle('moyu:memories', (_event, botId?: string): MemoryFact[] => this.store.listMemories(botId));
-    ipcMain.handle('moyu:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
+    handle('moyu:memories', (_event, botId?: string): MemoryFact[] => this.store.listMemories(botId));
+    handle('moyu:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
       this.store.addMemory(input.botId, input.text.trim()),
     );
-    ipcMain.handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
+    handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
 
-    ipcMain.handle('moyu:artifact:open', async (_event, relPath: string) => {
+    handle('moyu:artifact:open', async (_event, relPath: string) => {
       const file = this.resolveWorkspaceArtifact(relPath);
       if (file) await shell.openPath(file);
     });
 
-    ipcMain.handle('moyu:open-external', async (_event, url: string) => {
+    handle('moyu:open-external', async (_event, url: string) => {
       if (/^https:\/\//i.test(url)) await shell.openExternal(url);
     });
 
-    ipcMain.handle('moyu:win', (_event, action: 'minimize' | 'maximize' | 'close') => {
+    handle('moyu:win', (_event, action: 'minimize' | 'maximize' | 'close') => {
       const win = this.win;
       if (!win) return;
       if (action === 'minimize') win.minimize();
@@ -399,7 +436,12 @@ export class MoyuApp {
     try {
       if (kind === 'cloud') release = await this.cloud.control.acquire(controller.signal);
       computer.beginTask('终端命令'); started = true;
-      return await computer.exec(cmd, { timeoutSeconds: 60, signal: controller.signal });
+      const result = await computer.exec(cmd, { timeoutSeconds: 60, signal: controller.signal });
+      if (result.exitCode !== 0 || result.timedOut) this.diagnostics.record({ source: kind === 'local' ? '本地终端' : '云端终端', message: result.timedOut ? '命令执行超时' : `命令退出码 ${result.exitCode}`, command: cmd, detail: result.stderr || result.stdout });
+      return result;
+    } catch (error) {
+      if (!controller.signal.aborted) this.diagnostics.record({ source: kind === 'local' ? '本地终端' : '云端终端', message: (error as Error).message, command: cmd });
+      throw error;
     } finally { if (started) computer.endTask(); release?.(); this.terminalRuns.delete(requestId); }
   }
 

@@ -20,7 +20,7 @@ import { inferMessageActivity, updateActivities } from './lib/bot-activity';
 import type { BotActivity, ConversationActivities } from './lib/bot-activity';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
-export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage';
+export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage' | 'feedback';
 
 export interface Toast {
   id: string;

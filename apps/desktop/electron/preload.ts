@@ -10,6 +10,7 @@ import type {
   BootstrapPayload,
   CloudStatus,
   DesktopSession,
+  DiagnosticEntry,
   Conversation,
   ExecResult,
   MemoryFact,
@@ -27,6 +28,9 @@ import type { ConversationSummary } from '@moyu/core';
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
 const api = {
+  feedbackDiagnostics: () => invoke<DiagnosticEntry[]>('moyu:feedback:diagnostics'),
+  clearFeedbackDiagnostics: () => invoke<void>('moyu:feedback:clear'),
+  copyFeedback: (text: string) => invoke<void>('moyu:feedback:copy', text),
   checkForUpdates: () => invoke<AppUpdateResult>('moyu:app:check-updates'),
   bootstrap: () => invoke<BootstrapPayload>('moyu:bootstrap'),
   usage: (query: UsageQuery) => invoke<UsageReport>('moyu:usage', query),
