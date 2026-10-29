@@ -117,7 +117,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
           <div className="computer-policy__row"><div><strong>服务端空闲休眠</strong><p>由云主机自动保存运行现场</p></div></div><Select label="空闲休眠" disabled={saving || acting || executing || transitioning} value={String(draft.autoSuspendAfterSeconds)} options={IDLE_OPTIONS} onChange={(value) => patch({ autoSuspendAfterSeconds: Number(value) })} />
           <p className="computer-policy__note"><Icon name="folder" size={13} />休眠保留工作文件，唤醒后继续使用。</p>
         </div></section>
-        <div className="computer-workspace"><Icon name="folder" size={14} /><span>工作区<strong title={settings.cloud.workspaceDir}>{settings.cloud.workspaceDir || '默认工作目录'}</strong></span><small>所有 Bot 共享此执行环境</small></div>
+        <div className="computer-workspace"><Icon name="folder" size={14} /><span>云端工作目录<strong title={settings.cloud.remoteWorkspaceDir ?? '/data/moyubot'}>{settings.cloud.remoteWorkspaceDir ?? '/data/moyubot'}</strong></span><small>可在通用设置中修改</small></div>
       </div>
       <section id="computer-panel-terminal" role="tabpanel" aria-labelledby="computer-tab-terminal" hidden={tab !== 'terminal'} className="computer-terminal">
         <header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>云终端</span><small>{settings.cloud.driver === 'mock' ? '演示环境 · 模拟输出' : 'InstaBox · 远程执行'}</small></div><Button size="sm" variant="ghost" icon="trash" disabled={executing || !lines.length} onClick={() => setLines([])}>清空</Button></header>

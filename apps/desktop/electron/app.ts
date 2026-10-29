@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
 import type {
   AgentEvent,
@@ -201,6 +201,7 @@ export class MoyuApp {
     });
 
     ipcMain.handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
+      this.checkCloudDirectoryChange(patch.cloud);
       const next = this.store.updateSettings(patch);
       if (patch.cloud) this.cloud.updateSettings(next.cloud);
       return next;
@@ -289,6 +290,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
 
     ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
+      this.checkCloudDirectoryChange(input.patch);
       if (typeof input.apiKey === 'string') {
         const key = input.apiKey.trim();
         if (key) this.store.secrets.set('cloud:instabox', key);
@@ -347,6 +349,13 @@ export class MoyuApp {
   resolveWorkspaceArtifact(relative: string): string | undefined {
     if (relative.startsWith('@workspace_local/')) return resolveArtifact(path.join(this.store.dataDir, 'local-artifacts'), relative.slice('@workspace_local/'.length));
     return resolveArtifact(this.store.getSettings().cloud.workspaceDir, relative);
+  }
+
+  private checkCloudDirectoryChange(patch?: Partial<AppSettings['cloud']>): void {
+    if (patch?.remoteWorkspaceDir === undefined) return;
+    const directory = normalizeRemoteDirectory(patch.remoteWorkspaceDir);
+    if (directory === (this.store.getSettings().cloud.remoteWorkspaceDir ?? '/data/moyubot')) return;
+    if (['busy', 'waking', 'sleeping'].includes(this.cloud.status().state) || this.store.listConversations().some((item) => (item.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' && this.runtime.isRunning(item.id))) throw new Error('云电脑仍有任务运行或正在切换状态，请结束后再更换工作路径');
   }
 
   private async runTerminalCommand(kind: 'local' | 'cloud', cmd: string, requestId: string = randomUUID()): Promise<ExecResult> {

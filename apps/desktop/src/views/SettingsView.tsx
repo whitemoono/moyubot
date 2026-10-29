@@ -10,6 +10,7 @@ import { ProvidersSettings } from './ProvidersSettings';
 import { BotsView } from './BotsView';
 import { CloudView } from './CloudView';
 import { UsageView } from './UsageView';
+import { WorkspacePathSettings } from '../components/WorkspacePathSettings';
 
 const ACCENTS = ['#f5f5f5', '#737373', '#404040', '#6366f1', '#ec4899', '#06b6d4', '#f97316', '#22c55e'];
 const SECTIONS = [
@@ -62,6 +63,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
               <div className="settings-row"><div><strong>界面密度</strong><p>调整列表和面板的留白。</p></div><Segmented value={settings.ui.density} onChange={(value) => updateUi({ density: value })} options={[{ value: 'comfortable', label: '舒适' }, { value: 'compact', label: '紧凑' }]} /></div>
               <div className="settings-row"><div><strong>面板层次</strong><p>控制背景与内容区域的层次。</p></div><div className="settings-range"><input className="range" aria-label="面板层次" type="range" min={0.2} max={1} step={0.05} value={settings.ui.glassIntensity} onChange={(e) => updateUi({ glassIntensity: Number(e.target.value) })} /><span>{Math.round(settings.ui.glassIntensity * 100)}%</span></div></div>
             </div>
+            <WorkspacePathSettings />
             <h3 className="settings-section-title">交互与动效</h3><div className="settings-rows"><Toggle checked={settings.ui.reduceMotion} onChange={(value) => updateUi({ reduceMotion: value })} label="减少动效" hint="减少界面过渡与角色动画，同时遵循系统设置。" /></div>
             <p className="settings-note"><Icon name="check" size={13} />外观设置会自动保存</p>
           </Panel>

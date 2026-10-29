@@ -102,6 +102,13 @@
 .settings-rows .switch__label { font-size: 12px; }
 .settings-rows .switch__hint { font-size: 10px; margin-top: 5px; }
 .settings-note { display: flex; align-items: center; gap: 6px; color: var(--text-faint); font-size: 10px; margin: 0 2px; }
+.settings-path-row { display: grid; grid-template-columns: minmax(135px, 1fr) minmax(0, 360px); }
+.settings-path-control { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.settings-path-control .input { flex: 1; width: 0; min-width: 0; font-size: 11px; }
+.settings-path-control .input[readonly] { color: var(--text-dim); cursor: text; }
+.settings-path-control .btn { flex-shrink: 0; min-height: 32px; font-size: 11px; }
+.settings-path-note { margin: -8px 2px 0; color: var(--text-faint); font-size: 10px; line-height: 1.7; }
+@media (max-width: 850px) { .settings-path-row { grid-template-columns: minmax(0, 1fr); } }
 .settings-form-group { display: grid; gap: 18px; padding: 18px; border: 1px solid var(--line-strong); border-radius: 11px; }
 .settings-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 10px; color: var(--text-faint); }
 .settings-unsaved { position: absolute; bottom: 16px; left: 200px; right: 16px; display: flex; align-items: center; gap: 8px; padding: 13px 15px; border-radius: 12px; border: 1px solid var(--line-strong); box-shadow: 0 8px 40px #00000030; background: var(--surface); z-index: 5; animation: setting-page-in 160ms ease; }
