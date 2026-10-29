@@ -1,5 +1,5 @@
 // Uses isolated data; clipboard and external links are intercepted. No feedback is sent.
-const { app, BrowserWindow, clipboard, shell } = require('electron');
+const { app, BrowserWindow, clipboard, shell, Menu } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, '.work', 'feedback-smoke', String(Date.now()));
@@ -21,6 +21,7 @@ const input = async (selector, value) => evaluate((selector, value) => {
 }, selector, value);
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   clipboard.writeText = (text) => { copied = text; };
   shell.openExternal = async (url) => { opened.push(url); };
   const { MoyuApp } = require('../apps/desktop/dist-electron/app');
@@ -31,7 +32,8 @@ app.whenReady().then(async () => {
   backend.store.secrets.set('cloud:instabox', 'test-private-cloud-credential');
   backend.start();
   renderer = await startRendererServer(path.join(root, 'apps/desktop/dist'));
-  win = new BrowserWindow({ width: 1460, height: 950, show: false, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win = new BrowserWindow({ width: 1460, height: 950, show: false, frame: false, autoHideMenuBar: true, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win.setMenu(null);
   backend.setWindow(win);
   await win.loadURL(renderer.url);
   win.showInactive();

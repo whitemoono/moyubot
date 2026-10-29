@@ -1,5 +1,5 @@
 // First-launch UI and IPC verification with isolated data; no real cloud account.
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, Menu } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..'), output = path.join(root, '.work', 'onboarding-smoke', String(Date.now()));
 fs.mkdirSync(output, { recursive: true }); app.setPath('userData', path.join(output, 'electron'));
@@ -13,6 +13,7 @@ const input = async (selector, value) => { await evaluate((selector, value) => {
 const capture = async (name) => { await delay(300); fs.writeFileSync(path.join(output, name + '.png'), (await win.webContents.capturePage()).toPNG()); };
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   const { MoyuApp } = require('../apps/desktop/dist-electron/app');
   const { startRendererServer } = require('../apps/desktop/dist-electron/renderer-server');
   const installDirectory = path.join(output, 'install', 'workspace');
@@ -20,7 +21,8 @@ app.whenReady().then(async () => {
   backend.store.updateSettings({ cloud: { driver: 'mock' }, ui: { ...backend.store.getSettings().ui, appearance: 'light' } });
   backend.cloud.updateSettings(backend.store.getSettings().cloud); backend.start();
   renderer = await startRendererServer(path.join(root, 'apps/desktop/dist'));
-  win = new BrowserWindow({ width: 1460, height: 950, show: false, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win = new BrowserWindow({ width: 1460, height: 950, show: false, frame: false, autoHideMenuBar: true, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win.setMenu(null);
   backend.setWindow(win); await win.loadURL(renderer.url); win.showInactive();
   await until(() => !!document.querySelector('[aria-label="首次设置用户名"]'), 'profile step');
   assert.equal(await evaluate(() => document.querySelector('.window-body').inert), true);

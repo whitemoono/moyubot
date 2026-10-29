@@ -39,6 +39,7 @@ function createWindow(): BrowserWindow {
     minHeight: 720,
     show: false,
     frame: false,
+    autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 18, y: 18 },
     backgroundColor: '#111111',
@@ -56,6 +57,7 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  win.setMenu(null);
   win.once('ready-to-show', async () => {
     win.show();
     const capturePath = process.env.MOYU_CAPTURE;
