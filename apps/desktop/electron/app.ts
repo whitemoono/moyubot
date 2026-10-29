@@ -234,8 +234,7 @@ export class MoyuApp {
 
     ipcMain.handle('moyu:bot:save', (_event, bot: Bot): Bot => {
       const next: Bot = { ...bot, updatedAt: Date.now(), createdAt: bot.createdAt || Date.now() };
-      this.store.upsertBot(next);
-      return next;
+      return this.store.upsertBot(next);
     });
 
     ipcMain.handle('moyu:bot:metadata', (_event, botId: string, patch: BotMetadataPatch) => this.store.updateBotMetadata(botId, patch));

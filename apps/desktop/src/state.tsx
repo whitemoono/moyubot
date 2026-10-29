@@ -419,7 +419,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       setActiveBotId(botId);
       const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: botId } : item);
       settingsRef.current = { ...settingsRef.current, activeBotId: botId, workspaces };
-      setSettings(settingsRef.current);
+      setSettings((previous) => ({ ...previous, activeBotId: botId, workspaces }));
       void moyu().saveSettings({ activeBotId: botId, workspaces, activeView: 'chat' });
       setView('chat');
     },
