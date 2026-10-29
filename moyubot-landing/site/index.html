@@ -444,6 +444,13 @@
     .footer nav a { transition: color .3s; }
     .footer nav a:hover { color: var(--blue); }
     .footer .copy { margin-left: auto; }
+    .community { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 12px; }
+    .community-label { margin-right: 4px; font-weight: 700; color: var(--ink); }
+    .community-contact { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; max-width: 100%; padding: 10px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); color: var(--ink-soft); line-height: 1.7; }
+    .community-contact b { color: var(--ink); font-weight: 700; }
+    .community a { transition: background .2s, border-color .2s; }
+    .community a:hover { background: #fff; border-color: var(--blue-2); }
+    .community-number { user-select: all; font-variant-numeric: tabular-nums; }
 
     /* ---------- Responsive ---------- */
     @media (max-width: 960px) {
@@ -750,6 +757,11 @@
           <a href="https://github.com/whitemoono/moyubot/releases" target="_blank" rel="noopener">版本发布</a>
           <a href="https://github.com/whitemoono/moyubot/issues" target="_blank" rel="noopener">反馈问题</a>
         </nav>
+        <div class="community" aria-label="MoyuBot 社区">
+          <span class="community-label">一起摸鱼</span>
+          <a class="community-contact" href="https://t.me/moyubotnya" target="_blank" rel="noopener"><b>Telegram</b><span>@moyubotnya</span><svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <span class="community-contact"><b>QQ 群</b><span class="community-number">2162036353</span></span>
+        </div>
         <p class="copy">© 2026 MoyuBot · 自研代码 MIT · 摸鱼愉快(ฅ´ω`ฅ)</p>
       </footer>
     </section>
