@@ -2,7 +2,7 @@
  * Only the existing encrypted credentials are reused; personal conversations are excluded.
  */
 const {app,BrowserWindow}=require('electron');
-const fs=require('node:fs'),path=require('node:path');
+const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
 const repo=path.resolve(__dirname,'../..'),work=path.join(repo,'.work','film-v2');
 app.setPath('userData',path.join(work,'electron'));
 app.disableHardwareAcceleration();
@@ -25,8 +25,20 @@ app.whenReady().then(async()=>{
  const {MoyuApp}=require(path.join(repo,'apps/desktop/dist-electron/app.js'));
  const {startRendererServer}=require(path.join(repo,'apps/desktop/dist-electron/renderer-server.js'));
  backend=new MoyuApp(data,'0.1.0');global.filmBackend=backend;backend.start();
+ let feed,encoder,frames=0,recordingName;
+ global.startFilmCapture=(name)=>{
+  if(encoder)throw Error('capture already active');
+  recordingName=name;frames=0;
+  const ffmpeg=path.join(repo,'.work/video-tools/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe');
+  const destination=path.join(__dirname,'output','raw',name+'.mp4');fs.mkdirSync(path.dirname(destination),{recursive:true});
+  encoder=spawn(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','rawvideo','-pixel_format','bgra','-video_size','1600x900','-framerate','30','-i','pipe:0','-an','-c:v','libx264','-preset','ultrafast','-crf','14','-pix_fmt','yuv420p','-movflags','+faststart',destination],{stdio:['pipe','ignore','pipe'],windowsHide:true});encoder.stdin.on('error',()=>{});
+  global.filmEncoder=encoder;global.filmFrameCount=()=>frames;global.filmVideoPath=destination;
+  feed=(image)=>{if(!encoder||encoder.stdin.destroyed)return;const bitmap=image.toBitmap();if(bitmap.length!==1600*900*4)return;if(!encoder.stdin.write(bitmap))return;frames++;};
+  win.webContents.beginFrameSubscription(feed);
+ };
+ global.stopFilmCapture=()=>new Promise((resolve,reject)=>{if(!encoder){resolve({frames});return;}win.webContents.endFrameSubscription();const current=encoder;encoder=undefined;current.stdin.end();current.once('close',code=>code===0?resolve({frames,name:recordingName,path:global.filmVideoPath}):reject(Error('FFmpeg stopped with code '+code)));});
  server=await startRendererServer(path.join(repo,'apps/desktop/dist'));
- const win=new BrowserWindow({width:1600,height:900,show:true,frame:false,webPreferences:{preload:path.join(repo,'apps/desktop/dist-electron/preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
+const win=new BrowserWindow({width:1600,height:900,show:false,frame:false,webPreferences:{preload:path.join(repo,'apps/desktop/dist-electron/preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
  backend.setWindow(win);await win.loadURL(server.url);
 });
 app.on('window-all-closed',()=>app.quit());
