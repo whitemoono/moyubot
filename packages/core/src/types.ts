@@ -72,6 +72,10 @@ export interface Workspace {
   kind: WorkspaceKind;
   computerName: string;
   createdAt: number;
+  directory?: string;
+  activeBotId?: string;
+  botGroups?: SidebarBotGroup[];
+  ungroupedGroupIndex?: number;
 }
 
 export type BotMetadataPatch = { name?: string; sidebar?: NonNullable<Bot['sidebar']> };
@@ -205,6 +209,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
+  workspaceId?: string;
   botId: string;
   group?: { memberBotIds: string[] };
   title: string;
@@ -373,6 +378,7 @@ export interface TokenUsage {
 }
 export interface UsageRecord {
   id: string;
+  workspaceId?: string;
   createdAt: number;
   botId: string;
   botName: string;
@@ -386,6 +392,7 @@ export interface UsageRecord {
   usage?: TokenUsage;
 }
 export interface UsageQuery {
+  workspaceId?: string;
   start: number;
   end: number;
   interval: 'hour' | 'day' | 'week' | 'month';

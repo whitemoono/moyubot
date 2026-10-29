@@ -14,7 +14,6 @@ import type {
   ScheduleUpdate,
   TelegramSettings,
   UiSettings,
-  Workspace,
 } from './types';
 import { DEFAULT_CLOUD_COMMAND, DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, safeJsonParse } from './util';
@@ -121,7 +120,7 @@ export function defaultSettings(dataDir: string): AppSettings {
     telegram: { enabled: false, token: '', allowedIds: [] },
     workspaces: [
       { id: 'workspace_cloud', name: '云电脑工作区', kind: 'cloud', computerName: '共享云电脑', createdAt: now },
-      { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', createdAt: now },
+      { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', directory: path.join(dataDir, 'local-workspace'), createdAt: now },
     ],
     activeWorkspaceId: 'workspace_cloud',
     ui: {
@@ -170,6 +169,14 @@ export class Store {
     const settingsFile = path.join(dataDir, 'settings.json');
     if (fs.existsSync(settingsFile)) {
       const parsed = safeJsonParse<Partial<AppSettings>>(fs.readFileSync(settingsFile, 'utf8'), {});
+      // Preserve all original data before the first workspace migration.
+      if (!parsed.workspaces && !fs.existsSync(path.join(dataDir, 'backup-before-workspaces'))) {
+        const backup = path.join(dataDir, 'backup-before-workspaces');
+        fs.mkdirSync(backup, { recursive: true });
+        for (const entry of fs.readdirSync(dataDir, { withFileTypes: true })) {
+          if (['settings.json', 'conversations', 'memories.json', 'schedules.json', 'usage.jsonl'].includes(entry.name)) fs.cpSync(path.join(dataDir, entry.name), path.join(backup, entry.name), { recursive: true });
+        }
+      }
       const base = defaultSettings(dataDir);
       this.settings = {
         ...base,
@@ -196,6 +203,12 @@ export class Store {
     }
 
     this.settings.ui.botGroups = this.listBotGroups();
+    for (const workspace of this.settings.workspaces) {
+      if (workspace.kind === 'cloud' && !workspace.botGroups) workspace.botGroups = this.settings.ui.botGroups;
+      if (workspace.kind === 'local' && !workspace.directory) workspace.directory = path.join(dataDir, 'local-workspace');
+    }
+    if (!this.settings.workspaces.some((item) => item.id === this.settings.activeWorkspaceId)) this.settings.activeWorkspaceId = this.settings.workspaces[0]?.id;
+    this.persistSettings();
     this.loadConversations();
     for (const bot of this.settings.bots) this.botConversation(bot.id);
     this.usage = new UsageLedger(dataDir);
@@ -238,6 +251,10 @@ export class Store {
   }
 
   upsertBot(bot: AppSettings['bots'][number]) {
+    const existing = this.getBot(bot.id);
+    bot = { ...bot, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
+    if (!this.settings.workspaces.some((item) => item.id === bot.workspaceId)) throw new Error('工作区不存在');
+    if (existing && (existing.workspaceId ?? 'workspace_cloud') !== bot.workspaceId) throw new Error('现有 Bot 不能直接转移工作区，请创建独立 Bot');
     const index = this.settings.bots.findIndex((item) => item.id === bot.id);
     if (index >= 0) this.settings.bots[index] = bot;
     else this.settings.bots.push(bot);
@@ -348,10 +365,12 @@ export class Store {
     const ids = [...new Set(memberBotIds)];
     if (ids.length < 2 || ids.length > 12) throw new Error('请选择 2–12 个 Bot');
     if (ids.some((id) => !this.getBot(id))) throw new Error('群成员中的 Bot 不存在');
+    const workspaceId = this.getBot(ids[0]!)!.workspaceId ?? 'workspace_cloud';
+    if (ids.some((id) => (this.getBot(id)!.workspaceId ?? 'workspace_cloud') !== workspaceId)) throw new Error('不能跨工作区创建群聊');
     const name = title.trim();
     if (name.length > 60) throw new Error('群聊名字最多 60 个字符');
     const id = newId('group');
-    const conv: Conversation = { id, botId: id, group: { memberBotIds: ids }, title: name || ids.map((id) => this.getBot(id)!.name).join('、').slice(0, 60), messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+    const conv: Conversation = { id, botId: id, workspaceId, group: { memberBotIds: ids }, title: name || ids.map((id) => this.getBot(id)!.name).join('、').slice(0, 60), messages: [], createdAt: Date.now(), updatedAt: Date.now() };
     this.conversations.set(id, conv);
     this.saveConversation(id);
     return conv;
