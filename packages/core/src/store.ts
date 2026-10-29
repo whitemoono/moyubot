@@ -14,6 +14,7 @@ import type {
   ScheduleUpdate,
   TelegramSettings,
   UiSettings,
+  Workspace,
 } from './types';
 import { DEFAULT_CLOUD_COMMAND, DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, safeJsonParse } from './util';
@@ -104,6 +105,7 @@ export function defaultSettings(dataDir: string): AppSettings {
         wakeOnTask: true,
         createdAt: now,
         updatedAt: now,
+        workspaceId: 'workspace_cloud',
       },
     ],
     cloud: {
@@ -117,6 +119,11 @@ export function defaultSettings(dataDir: string): AppSettings {
       wakeOnDemand: true,
     },
     telegram: { enabled: false, token: '', allowedIds: [] },
+    workspaces: [
+      { id: 'workspace_cloud', name: '云电脑工作区', kind: 'cloud', computerName: '共享云电脑', createdAt: now },
+      { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', createdAt: now },
+    ],
+    activeWorkspaceId: 'workspace_cloud',
     ui: {
       accent: '#f5f5f5',
       appearance: 'dark',
@@ -172,6 +179,8 @@ export class Store {
         telegram: { ...base.telegram, ...parsed.telegram },
         providers: parsed.providers?.length ? parsed.providers : base.providers,
         bots: parsed.bots?.length ? parsed.bots : base.bots,
+        workspaces: parsed.workspaces?.length ? parsed.workspaces : base.workspaces,
+        activeWorkspaceId: parsed.activeWorkspaceId ?? base.activeWorkspaceId,
       };
       // Backfill fields added after a user's settings.json was written.
       this.settings.bots = this.settings.bots.map((bot) => ({
@@ -179,6 +188,7 @@ export class Store {
         ...bot,
         image: { ...base.bots[0]!.image, ...bot.image },
         avatar: { ...base.bots[0]!.avatar, ...bot.avatar },
+        workspaceId: bot.workspaceId || 'workspace_cloud',
       }));
     } else {
       this.settings = defaultSettings(dataDir);

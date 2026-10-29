@@ -62,6 +62,16 @@ export interface Bot {
   updatedAt: number;
   /** Local navigation preferences, independent of model and conversation identity. */
   sidebar?: { pinned?: boolean; hidden?: boolean; unread?: boolean; group?: string };
+  workspaceId?: string;
+}
+
+export type WorkspaceKind = 'local' | 'cloud';
+export interface Workspace {
+  id: string;
+  name: string;
+  kind: WorkspaceKind;
+  computerName: string;
+  createdAt: number;
 }
 
 export type BotMetadataPatch = { name?: string; sidebar?: NonNullable<Bot['sidebar']> };
@@ -273,6 +283,8 @@ export interface AppSettings {
   cloud: CloudHostSettings;
   telegram: TelegramSettings;
   ui: UiSettings;
+  workspaces: Workspace[];
+  activeWorkspaceId?: string;
   activeBotId?: string;
   activeView?: string;
 }
