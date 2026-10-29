@@ -1,4 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import path from 'node:path';
+
+export function normalizeRemoteDirectory(value: string): string {
+  if (typeof value !== 'string' || !value.trim().startsWith('/') || /[\\\x00\r\n]/.test(value)) throw new Error('云电脑工作路径需要是 Linux 绝对路径，例如 /data/moyubot');
+  return path.posix.normalize(value.trim()).replace(/\/$/, '') || '/';
+}
 
 export function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`;

@@ -126,6 +126,8 @@ export interface CloudHostSettings {
   maxRunMinutes?: number;
   /** Folder used for generated images and run artifacts. */
   workspaceDir: string;
+  /** Working directory on the remote Linux computer; workspaceDir stores local artifacts. */
+  remoteWorkspaceDir?: string;
   /** Auto wake before any task/drawing. */
   wakeOnDemand: boolean;
 }

@@ -101,6 +101,7 @@ export class AgentRuntime {
 
 当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}
 ${bot.workspaceId === 'workspace_local' ? '本机工作目录' : '图片保存目录（本机）'}：${workspace}
+${bot.workspaceId === 'workspace_local' ? '' : `云电脑工作目录：${computer.getSettings().remoteWorkspaceDir ?? '/data/moyubot'}。命令默认在此目录执行，相对文件路径以此为起点；用户指定的其他绝对路径仍可访问。`}
 当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
 ${bot.workspaceId === 'workspace_local' ? '执行环境约束：以上角色设定若提及云端 Linux，以本条为准。cloud_exec / cloud_read / cloud_write 是兼容工具名，实际只操作本机 Windows 工作区。命令使用 PowerShell 语法，文件路径位于该工作区目录，不能使用 bash 或云端路径。API 绘图不唤醒云电脑。' : ''}
 ${memoryBlock}${scheduleGuide}`;

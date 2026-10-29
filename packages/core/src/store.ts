@@ -16,7 +16,7 @@ import type {
   UiSettings,
 } from './types';
 import { DEFAULT_CLOUD_COMMAND, DEFAULT_SYSTEM_PROMPT } from './types';
-import { newId, safeJsonParse } from './util';
+import { newId, normalizeRemoteDirectory, safeJsonParse } from './util';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
 
@@ -115,6 +115,7 @@ export function defaultSettings(dataDir: string): AppSettings {
       autoSuspendAfterSeconds: 600,
       idleSuspendMinutes: 3,
       workspaceDir: path.join(dataDir, 'workspace'),
+      remoteWorkspaceDir: '/data/moyubot',
       wakeOnDemand: true,
     },
     telegram: { enabled: false, token: '', allowedIds: [] },
@@ -227,6 +228,7 @@ export class Store {
   }
 
   updateSettings(patch: SettingsPatch): AppSettings {
+    if (patch.cloud?.remoteWorkspaceDir !== undefined) patch = { ...patch, cloud: { ...patch.cloud, remoteWorkspaceDir: normalizeRemoteDirectory(patch.cloud.remoteWorkspaceDir) } };
     this.settings = {
       ...this.settings,
       ...patch,

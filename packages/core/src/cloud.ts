@@ -1,7 +1,7 @@
 import { InstaBoxClient, InstaBoxError } from './instabox';
 import type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 import type { CloudHostSettings, CloudState, CloudStatus, InstaBoxMachineState } from './types';
-import { newId, sleep } from './util';
+import { newId, normalizeRemoteDirectory, shellQuote, sleep } from './util';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -198,7 +198,7 @@ export class MockDriver implements CloudDriver {
     if (/^\s*(uname|whoami|pwd|ls|cat|echo|python3? --version|df)/.test(cmd)) {
       if (cmd.includes('uname')) stdout = `Linux moyubot-shared 6.18.54-fc #1 SMP x86_64 GNU/Linux\n`;
       else if (cmd.includes('whoami')) stdout = `user\n`;
-      else if (cmd.includes('pwd')) stdout = `/data/home\n`;
+      else if (cmd.includes('pwd')) stdout = `${req.cwd ?? '/data/home'}\n`;
       else if (cmd.startsWith('ls')) stdout = `Desktop\nDocuments\nDownloads\nmoyubot\n`;
       else if (cmd.includes('--version')) stdout = `Python 3.13.5\n`;
       else if (cmd.includes('df')) stdout = `Filesystem      Size  Used Avail Use%\n/dev/vda1        16G  2.1G   13G  14% /data\n`;
@@ -325,6 +325,7 @@ export function resolveCloudState(machine: MachineSummary | undefined, busy: boo
 }
 
 export class CloudHost {
+  private preparedDirectories = new Set<string>();
   private instabox: InstaBoxDriver | undefined;
   private readonly mock = new MockDriver();
   private readonly keyProvider: () => string | undefined;
@@ -402,6 +403,7 @@ export class CloudHost {
 
   /** Drop the cached client (e.g. after the API key changed). */
   invalidateDriver(): void {
+    this.preparedDirectories.clear();
     this.instabox = undefined;
     this.machine = undefined;
     void this.refresh();
@@ -618,11 +620,20 @@ export class CloudHost {
   }
 
   async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
+    const directory = normalizeRemoteDirectory(this.settings.remoteWorkspaceDir ?? '/data/moyubot');
     const machine = await this.ensureAwake('在云主机上执行命令');
     this.touch();
     this.setStatus({ state: 'busy' });
     try {
-      return await this.driver.exec(machine.id, { cmd: command, timeoutSeconds: options.timeoutSeconds ?? 120 }, {
+      options.signal?.throwIfAborted();
+      const directoryKey = `${machine.id}:${directory}`;
+      if (!this.preparedDirectories.has(directoryKey)) {
+        const prepared = await this.driver.exec(machine.id, { cmd: `mkdir -p -- ${shellQuote(directory)}`, timeoutSeconds: options.timeoutSeconds ?? 120 }, { signal: options.signal });
+        if (prepared.exitCode !== 0 || prepared.timedOut) throw new Error(`无法创建云电脑工作目录：${prepared.stderr || prepared.stdout || directory}`);
+        this.preparedDirectories.add(directoryKey);
+      }
+      options.signal?.throwIfAborted();
+      return await this.driver.exec(machine.id, { cmd: command, cwd: directory, timeoutSeconds: options.timeoutSeconds ?? 120 }, {
         onStdout: options.onStdout,
         signal: options.signal,
       });
@@ -633,18 +644,21 @@ export class CloudHost {
   }
 
   async readText(remotePath: string): Promise<string> {
+    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
     const machine = await this.ensureAwake('读取云主机文件');
     const bytes = await this.driver.readFile(machine.id, remotePath);
     return new TextDecoder().decode(bytes);
   }
 
   async readBytes(remotePath: string): Promise<{ bytes: Uint8Array; machineId: string }> {
+    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
     const machine = await this.ensureAwake('读取云主机文件');
     const bytes = await this.driver.readFile(machine.id, remotePath);
     return { bytes, machineId: machine.id };
   }
 
   async writeText(remotePath: string, content: string): Promise<void> {
+    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
     const machine = await this.ensureAwake('写入云主机文件');
     await this.driver.writeFile(machine.id, remotePath, content);
     this.touch();
