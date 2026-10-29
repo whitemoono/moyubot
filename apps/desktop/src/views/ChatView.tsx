@@ -380,7 +380,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace } = useMoyu();
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   useEffect(() => setReply(undefined), [conversation?.id]);
@@ -393,7 +393,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
   if (!bot) {
     return (
       <div className="view view--empty">
-        <p>还没有 Bot。先去创建一个，接上任意供应商的 API。</p>
+        <Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={36} /><h2>{activeWorkspace?.name}</h2><p>这个工作区还没有 Bot，创建一个开始工作。</p>
         <Button variant="primary" icon="plus" onClick={() => setView('bots')}>
           创建 Bot
         </Button>
@@ -423,7 +423,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
 
       <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} />
       </div>
-      {messages.length === 0 ? <div className="home-footnote"><Icon name="cloud" size={14} /><span>一台云电脑，和你的所有 Bot 一起工作</span><span className="home-footnote__dot">·</span><span>需要时唤醒，空闲时休眠</span></div> : null}
+      {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}
       {groupInfoOpen && conversation.group ? <Sheet open title={conversation.title} subtitle="成员按以下顺序回复，共享本群的消息与记忆。" onClose={() => setGroupInfoOpen(false)}><div className="group-member-list">{conversation.group.memberBotIds.map((id, index) => { const member = settings.bots.find((item) => item.id === id); return <div className="group-member" key={id}>{member ? <BotAvatar bot={member} animated={false} /> : <Icon name="bots" />}<span><strong>{member?.name ?? '已移除的 Bot'}</strong><small>{member?.model ?? '不再参与回复'}</small></span><small>{index + 1}</small></div>; })}</div></Sheet> : null}
     </section>
   );

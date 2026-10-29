@@ -111,7 +111,7 @@ export function App() {
   return (
     <div className="app">
       <Backdrop />
-      <TitleBar collapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} />
+      <TitleBar collapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((value) => !value)} onToggleTerminal={() => setTerminalOpen((value) => !value)} />
       {!ready ? (
         <div className="splash">
           <img className="splash-logo" src={logoUrl} alt="" />

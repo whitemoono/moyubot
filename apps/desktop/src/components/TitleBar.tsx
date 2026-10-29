@@ -11,7 +11,7 @@ const TITLES: Record<string, string> = {
   settings: '设置',
 };
 
-export function TitleBar({ collapsed, onToggleSidebar }: { collapsed: boolean; onToggleSidebar: () => void }) {
+export function TitleBar({ collapsed, onToggleSidebar, onToggleTerminal }: { collapsed: boolean; onToggleSidebar: () => void; onToggleTerminal: () => void }) {
   const { view, cloud: cloudStatus, local, activeWorkspace, platform, setView } = useMoyu();
   const cloud = activeWorkspace?.kind === 'local' ? local : cloudStatus;
   const isMac = platform === 'darwin';
@@ -31,6 +31,7 @@ export function TitleBar({ collapsed, onToggleSidebar }: { collapsed: boolean; o
         </button>
       </div>
       <div className="titlebar__right">
+        <button type="button" className="titlebar__terminal" aria-label="工作区终端" title="打开或收起工作区终端" onClick={onToggleTerminal}><Icon name="terminal" size={15} /></button>
         {isMac ? null : (
           <div className="win-controls">
             <button type="button" className="win-btn" aria-label="最小化" onClick={() => void moyu().win('minimize')}>
