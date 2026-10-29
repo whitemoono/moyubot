@@ -96,6 +96,11 @@ const EMPTY_SETTINGS: AppSettings = {
     wakeOnDemand: true,
   },
   telegram: { enabled: false, token: '', allowedIds: [] },
+  workspaces: [
+    { id: 'workspace_cloud', name: '云电脑工作区', kind: 'cloud', computerName: '共享云电脑', createdAt: 0 },
+    { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', createdAt: 0 },
+  ],
+  activeWorkspaceId: 'workspace_cloud',
   ui: { accent: '#f5f5f5', appearance: 'dark', reduceMotion: false, density: 'comfortable', glassIntensity: 0.6 },
 };
 
