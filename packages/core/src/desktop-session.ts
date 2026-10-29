@@ -80,8 +80,8 @@ export class DesktopSessions {
       try { await this.host.control.drain(AbortSignal.timeout(30_000)); }
       catch { this.host.control.resume(); throw new Error('Bot 或终端仍在执行电脑操作，请等待结束后接管'); }
       try {
-        this.pending(machineId);
         this.controlledMachine = machineId;
+        this.pending(machineId);
         this.host.beginTask('手动接管电脑'); this.holdingTask = true;
         await this.host.driver.desktopRevoke!(machineId);
         const session = await this.stream(machineId, 'manual');
