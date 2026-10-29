@@ -23,7 +23,8 @@ const SECTIONS = [
 ] as const;
 
 export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
-  const { settings, saveSettings, version, toast, settingsSection: section, setSettingsSection: setSection, closeSettings } = useMoyu();
+  const { settings, saveSettings, version, toast, settingsSection: section, setSettingsSection: setSection, closeSettings, activeWorkspace } = useMoyu();
+  const sections = SECTIONS.map((item) => item.id === 'cloud' && activeWorkspace?.kind === 'local' ? { ...item, label: '本地电脑', hint: '工作区内的 Bot 共用本机 Windows，文件与命令在本地完成。' } : item);
   const dialog = useRef<HTMLDivElement>(null);
   const [providerDirty, setProviderDirty] = useState(false);
   const [cloudDirty, setCloudDirty] = useState(false);
@@ -38,11 +39,11 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
   const close = useCallback(() => { if (providerDirty || cloudDirty) setCloseNotice(true); else finishClose(); }, [providerDirty, cloudDirty, finishClose]);
   useDialogFocus(dialog, close);
   const updateUi = (patch: Partial<AppSettings['ui']>) => void saveSettings({ ui: { ...settings.ui, ...patch } }).catch((error: Error) => toast(error.message, 'error'));
-  const selected = SECTIONS.find((item) => item.id === section)!;
+  const selected = sections.find((item) => item.id === section)!;
   return <div className={`settings-backdrop ${closing ? 'is-closing' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <div className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" ref={dialog}>
       <aside className="settings-navigation"><div className="settings-navigation__title">设置<span>WORKSPACE</span></div>
-        <nav className="settings-tabs" aria-label="设置分类">{SECTIONS.map((item) => <button type="button" key={item.id} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''} onClick={() => { setSection(item.id); setCloseNotice(false); }}><Icon name={item.icon} size={16} />{item.label}</button>)}</nav>
+        <nav className="settings-tabs" aria-label="设置分类">{sections.map((item) => <button type="button" key={item.id} aria-current={section === item.id ? 'page' : undefined} className={section === item.id ? 'is-active' : ''} onClick={() => { setSection(item.id); setCloseNotice(false); }}><Icon name={item.icon} size={16} />{item.label}</button>)}</nav>
         <div className="settings-navigation__footer"><Icon name="shield" size={14} /><span>本地工作空间<small>MoyuBot · v{version}</small></span></div>
       </aside>
       <div className={`settings-main settings-main--${section}`}>

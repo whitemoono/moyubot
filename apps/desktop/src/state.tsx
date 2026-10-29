@@ -359,14 +359,15 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const selectWorkspace = useCallback((workspaceId: string) => {
     const target = settingsRef.current.workspaces?.find((item) => item.id === workspaceId);
     if (!target) return;
-    const next = target.activeBotId ?? settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
+    const preferred = settingsRef.current.bots.find((item) => item.id === target.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? conversations.find((item) => item.group && item.id === target.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
+    const next = preferred ?? settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
     const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: selectedBotRef.current } : item);
     settingsRef.current = { ...settingsRef.current, activeWorkspaceId: workspaceId, workspaces };
     selectedBotRef.current = next ?? '';
     setSettings(settingsRef.current);
     setActiveBotId(next ?? ''); setConversation(null); setMemories([]); setSettingsOpen(false); setView('chat');
     void moyu().saveSettings({ activeWorkspaceId: workspaceId, workspaces, activeBotId: next, activeView: 'chat' }).catch((error: Error) => toast(error.message, 'error'));
-  }, [toast]);
+  }, [toast, conversations]);
 
   useEffect(() => {
     if (!activeBotId) return;

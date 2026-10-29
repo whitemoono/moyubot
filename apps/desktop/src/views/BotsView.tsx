@@ -20,7 +20,7 @@ export function BotsView({ onCreate, embedded = false }: { onCreate: () => void;
     <div className={embedded ? 'settings-bots' : 'view'}>
       <header className="view-head">
         <div>
-          {embedded ? <span className="settings-bots__count">{settings.bots.length} 个 Bot<span>独立人格 · 模型与权限</span></span> : <><h1>Bot 管理</h1><p>每个 Bot 有自己的供应商、模型、人格与权限；它们共用同一台按需唤醒的云电脑。</p></>}
+          {embedded ? <span className="settings-bots__count">{settings.bots.length} 个 Bot<span>{activeWorkspace?.name} · 模型与权限</span></span> : <><h1>Bot 管理</h1><p>每个 Bot 有自己的供应商、模型、人格与权限，共用当前工作区的电脑。</p></>}
         </div>
         <Button variant="primary" icon="plus" onClick={onCreate}>
           新建 Bot

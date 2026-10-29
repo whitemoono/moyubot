@@ -113,7 +113,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
       </div>
       {workspaces.length > 1 ? <div className="workspace-switcher" role="group" aria-label="工作区">
         {workspaces.map((workspace) => <button type="button" key={workspace.id} className={workspace.id === activeWorkspace?.id ? 'is-active' : ''} aria-pressed={workspace.id === activeWorkspace?.id} onClick={() => selectWorkspace(workspace.id)}>
-          <Icon name={workspace.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{workspace.kind === 'local' ? '本地' : '云电脑'}</span><small>{workspace.kind === 'local' ? 'Windows' : 'Linux'}</small>
+          <Icon name={workspace.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{workspace.kind === 'local' ? '本地' : '云电脑'}</span>
         </button>)}
       </div> : null}
       {pinnedBots.length ? <div className="messenger-pins" aria-label="置顶 Bot">
@@ -159,7 +159,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
       }}>
         {FEATURES.map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => { if (item.id === 'settings') openSettings('profile'); else if (item.id === 'usage') openSettings('usage'); else setView(item.id); setMenuOpen(false); }}>
-          <Icon name={item.icon} size={16} /><span><strong>{item.label}</strong></span><Icon name="chevron" size={12} />
+          <Icon name={item.icon} size={16} /><span><strong>{item.id === 'cloud' && activeWorkspace?.kind === 'local' ? '本地电脑' : item.label}</strong></span><Icon name="chevron" size={12} />
         </button>)}
       </div>, document.body) : null}
     </aside>
