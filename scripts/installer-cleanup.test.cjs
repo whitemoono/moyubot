@@ -61,7 +61,7 @@ FunctionEnd
 `;
   fs.writeFileSync(path.join(folder, 'test.nsi'), script);
   const run = (command, args, cwd = folder) => {
-    const result = spawnSync(command, args, { cwd, encoding: 'utf8', windowsHide: true, timeout: 60000 });
+    const result = spawnSync(command, args, { cwd, env: { ...process.env, TEMP: path.resolve('.work/build-temp'), TMP: path.resolve('.work/build-temp') }, encoding: 'utf8', windowsHide: true, timeout: 60000 });
     assert.equal(result.status, 0, `${command}: ${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`);
   };
   run(compiler, ['/V2', 'test.nsi']);
