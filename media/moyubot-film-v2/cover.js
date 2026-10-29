@@ -16,9 +16,9 @@ const glow=c.createRadialGradient(1505,height*.44,30,1505,height*.44,800);glow.a
 c.save();c.translate(0,offset);c.strokeStyle='#9cbdff10';c.lineWidth=1;for(let x=0;x<1920;x+=80)line(x,0,x,1080,'#9cbdff10',1);for(let y=0;y<1080;y+=80)line(0,y,1920,y,'#9cbdff10',1);
 // Large diagonal sweep gives the character area a separate blue field.
 c.beginPath();c.moveTo(1230,-100);c.lineTo(1920,-100);c.lineTo(1920,1180);c.lineTo(910,1180);c.closePath();c.fillStyle='#4d6dff13';c.fill();
-c.drawImage(logo,99,71,76,76);text('MoyuBot',197,124,43,'#fff',750);rr(428,82,203,48,24,'#e7ff7220','#dfff7255');text('开源 · 免费下载',451,114,23,'#deff80',700);
+c.drawImage(logo,99,71,76,76);text('MoyuBot',197,124,43,'#fff',750);rr(428,82,276,48,24,'#e7ff7220','#dfff7255');text('开源 AI 桌面助手',451,114,23,'#deff80',700);
 // Hook and two-line primary title, kept within a generous crop-safe area.
-text('Grok',93,381,213,'#fff',900,'Arial,sans-serif');text('？',585,379,184,'#dfff72',900);
+text('Grok',93,381,213,'#fff',900,'Arial,sans-serif');text('？',700,379,184,'#dfff72',900);
 rr(100,421,86,8,4,'#cfff6c');text('让 AI 上班',94,604,133,'#fff',900);text('你负责摸鱼',94,772,133,'#dfff72',900);
 text('7 个 AI 搭子，替你动手干活',105,865,38,'#c1d2ee',600);
 rr(102,935,285,60,13,'#f1f5ff');text('v0.1.0 已上线',124,976,31,'#162b56',800);text('moyubot.net',422,976,31,'#b9d0f7',600,'Consolas,monospace');
@@ -34,3 +34,4 @@ c.save();c.translate(1728,691);c.rotate(-.12);c.beginPath();c.moveTo(0,0);c.line
 c.restore();window.COVER_READY=true;return canvas;}
 window.cover={draw};draw();
 })().catch(e=>{window.COVER_ERROR=String(e);console.error(e);});
+
