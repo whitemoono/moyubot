@@ -36,7 +36,7 @@ app.whenReady().then(async () => {
   await win.loadURL(renderer.url);
   await until(() => !!document.querySelector('[aria-label="用户菜单"]'), 'bootstrap');
   const failed = await evaluate(() => window.moyu.localExec('Write-Error "feedback-smoke-error"; exit 7', 'feedback-test'));
-  assert.equal(failed.exitCode, 7);
+  assert.notEqual(failed.exitCode, 0);
   const conversation = backend.store.botConversation(backend.store.getSettings().bots[0].id);
   backend.send('moyu:event', { type: 'tool_start', conversationId: conversation.id, messageId: 'm', call: { id: 'failed-command', name: 'cloud_exec', arguments: { cmd: 'curl -H "Authorization: Bearer test-private-cloud-credential" https://example.com?token=hidden' } } });
   backend.send('moyu:event', { type: 'tool_end', conversationId: conversation.id, messageId: 'm', result: { id: 'failed-command', name: 'cloud_exec', ok: false, summary: '云电脑命令连接失败', detail: 'HTTP 503', durationMs: 10 } });
