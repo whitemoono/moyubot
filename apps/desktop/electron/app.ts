@@ -105,7 +105,6 @@ export class MoyuApp {
     fs.mkdirSync(localSettings.workspaceDir, { recursive: true });
     this.local = new LocalHost(localSettings, (status) => {
       this.send('moyu:local', status);
-      this.send('moyu:event', { type: 'cloud', status } satisfies AgentEvent);
     });
 
     this.cloud = new CloudHost({
@@ -226,7 +225,7 @@ export class MoyuApp {
     });
 
     ipcMain.handle('moyu:bot:metadata', (_event, botId: string, patch: BotMetadataPatch) => this.store.updateBotMetadata(botId, patch));
-    ipcMain.handle('moyu:bot-group:update', (_event, name: string, action: BotGroupAction) => this.store.updateBotGroup(name, action));
+    ipcMain.handle('moyu:bot-group:update', (_event, name: string, action: BotGroupAction, workspaceId?: string) => this.store.updateBotGroup(name, action, workspaceId));
     ipcMain.handle('moyu:bot:copy-conversation', (_event, botId: string) => {
       if (!this.store.getBot(botId)) throw new Error('Bot 不存在');
       const id = this.store.botConversation(botId).id;

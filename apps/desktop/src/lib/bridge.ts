@@ -8,7 +8,6 @@ import type {
   BotGroupAction,
   BootstrapPayload,
   CloudStatus,
-  Workspace,
   Conversation,
   ExecResult,
   MemoryFact,
@@ -41,7 +40,7 @@ export interface MoyuBridge {
   listModels(providerId: string, draft?: ProviderConfig, key?: string): Promise<string[]>;
   saveBot(bot: Bot): Promise<Bot>;
   updateBotMetadata(botId: string, patch: BotMetadataPatch): Promise<Bot>;
-  updateBotGroup(name: string, action: BotGroupAction): Promise<AppSettings>;
+  updateBotGroup(name: string, action: BotGroupAction, workspaceId?: string): Promise<AppSettings>;
   copyConversationId(botId: string): Promise<string>;
   deleteBot(botId: string): Promise<void>;
   send(input: SendMessageInput): Promise<SendMessageResult>;

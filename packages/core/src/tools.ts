@@ -146,7 +146,7 @@ export function toolNamesFor(bot: Bot): string[] {
 
 export function schemasFor(bot: Bot): ToolSchema[] {
   const allowed = new Set(toolNamesFor(bot));
-  return TOOL_SCHEMAS.filter((tool) => allowed.has(tool.name));
+  return TOOL_SCHEMAS.filter((tool) => allowed.has(tool.name)).map((tool) => bot.workspaceId !== 'workspace_local' || !tool.name.startsWith('cloud_') ? tool : { ...tool, description: tool.name === 'cloud_exec' ? '在本机 Windows 工作区运行 PowerShell 命令（兼容工具名），不使用云电脑。' : tool.name === 'cloud_read' ? '读取本机工作区目录内的文本文件，可使用相对路径。' : '写入本机工作区目录内的文件，可使用相对路径。' });
 }
 
 function requireString(args: Record<string, unknown>, key: string): string {
@@ -244,13 +244,14 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
     ...result,
   });
   const args = call.arguments ?? {};
+  const computerLabel = ctx.bot.workspaceId === 'workspace_local' ? '本机工作区' : '云电脑';
   try {
     switch (call.name) {
       case 'cloud_exec': {
         const cmd = requireString(args, 'cmd');
         const timeoutSeconds = Math.min(Math.max(Number(args.timeoutSeconds ?? 120) || 120, 5), 900);
         if (ctx.requestApproval) {
-          const approved = await ctx.requestApproval(call, `在云电脑执行：${summarize(cmd, 240)}`);
+          const approved = await ctx.requestApproval(call, `在${computerLabel}执行：${summarize(cmd, 240)}`);
           if (!approved) return finish({ ok: false, summary: '已拒绝执行', detail: cmd });
         }
         ctx.cloud.beginTask('在云电脑执行命令');
@@ -289,7 +290,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const remotePath = requireString(args, 'path');
         const content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content ?? '');
         if (ctx.requestApproval) {
-          const approved = await ctx.requestApproval(call, `写入云电脑文件：${remotePath}（${content.length} 字符）`);
+          const approved = await ctx.requestApproval(call, `写入${computerLabel}文件：${remotePath}（${content.length} 字符）`);
           if (!approved) return finish({ ok: false, summary: '已拒绝写入' });
         }
         ctx.cloud.beginTask('写入云电脑文件');
@@ -304,7 +305,8 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const prompt = requireString(args, 'prompt');
         const aspect = (typeof args.aspect === 'string' ? args.aspect : ctx.bot.image.aspect) as BotImageAspect;
         const usesCloud = ctx.bot.image.backend === 'cloud';
-        const shouldWake = usesCloud || ctx.bot.image.wakeHost;
+        if (usesCloud && ctx.bot.workspaceId === 'workspace_local') throw new Error('本地工作区请使用供应商 API 绘图；现有云端绘图脚本仅适用于云电脑工作区');
+        const shouldWake = ctx.bot.workspaceId !== 'workspace_local' && (usesCloud || ctx.bot.image.wakeHost);
         if (shouldWake) {
           ctx.cloud.beginTask('生成图片');
           await ctx.cloud.ensureAwake('生成图片');

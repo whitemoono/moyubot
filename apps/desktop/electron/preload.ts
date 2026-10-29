@@ -35,7 +35,7 @@ const api = {
   listModels: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<string[]>('moyu:provider:models', providerId, draft, key),
   saveBot: (bot: Bot) => invoke<Bot>('moyu:bot:save', bot),
   updateBotMetadata: (botId: string, patch: BotMetadataPatch) => invoke<Bot>('moyu:bot:metadata', botId, patch),
-  updateBotGroup: (name: string, action: BotGroupAction) => invoke<AppSettings>('moyu:bot-group:update', name, action),
+  updateBotGroup: (name: string, action: BotGroupAction, workspaceId?: string) => invoke<AppSettings>('moyu:bot-group:update', name, action, workspaceId),
   copyConversationId: (botId: string) => invoke<string>('moyu:bot:copy-conversation', botId),
   deleteBot: (botId: string) => invoke<void>('moyu:bot:delete', botId),
 

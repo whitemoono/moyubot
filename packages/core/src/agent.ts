@@ -56,7 +56,11 @@ export class AgentRuntime {
   }
 
   private computerFor(bot: Bot): ComputerHost {
-    return this.computers[bot.workspaceId ?? 'workspace_cloud'] ?? this.cloud;
+    const id = bot.workspaceId ?? 'workspace_cloud';
+    if (id === 'workspace_cloud') return this.cloud;
+    const computer = this.computers[id];
+    if (!computer) throw new Error('工作区执行器不可用，无法执行任务');
+    return computer;
   }
 
   isRunning(conversationId: string): boolean {
@@ -98,6 +102,7 @@ export class AgentRuntime {
 当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}
 本地工作区（生成图片会存到这里）：${workspace}
 当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
+${bot.workspaceId === 'workspace_local' ? '执行环境约束：以上角色设定若提及云端 Linux，以本条为准。cloud_exec / cloud_read / cloud_write 是兼容工具名，实际只操作本机 Windows 工作区。命令使用 PowerShell 语法，文件路径位于该工作区目录，不能使用 bash 或云端路径。API 绘图不唤醒云电脑。' : ''}
 ${memoryBlock}${scheduleGuide}`;
   }
 
@@ -309,7 +314,7 @@ ${memoryBlock}${scheduleGuide}`;
             createSchedule: (input) => this.store.createSchedule(bot.id, input),
             listTasks: (includeClosed) => this.store.listSchedules().filter((task) => task.botId === bot.id && (includeClosed || !task.closedAt && !task.completedAt)),
             updateTask: (id, patch) => this.store.updateSchedule(bot.id, id, patch),
-            emitStatus: (status, note) => this.emit({ type: 'cloud', status, note }),
+            emitStatus: (status, note) => { if ((bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud') this.emit({ type: 'cloud', status, note }); },
             signal: abort.signal,
           });
 
