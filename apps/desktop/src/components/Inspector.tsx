@@ -26,8 +26,11 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
   const awake = cloud.state === 'ready' || cloud.state === 'busy';
   const transitioning = pending || cloud.state === 'waking' || cloud.state === 'sleeping';
   const resting = ['suspended', 'off', 'stopped'].includes(cloud.state);
+  const dozing = resting || cloud.state === 'sleeping';
+  const booting = cloud.state === 'waking';
+  const computerActivity = dozing ? 'sleeping' : booting ? 'waking' : cloud.state === 'busy' ? 'working' : cloud.state === 'error' ? 'error' : 'idle';
   const files = [...new Map((conversation?.messages.flatMap((message) => message.attachments ?? []) ?? []).map((file) => [file.path ?? file.id, file])).values()];
-  const computerLabel = resting ? '电脑正在休眠' : cloud.state === 'ready' ? '电脑已就绪' : cloud.state === 'busy' ? '电脑正在工作' : cloud.state === 'error' ? '电脑连接异常' : meta.hint;
+  const computerLabel = resting ? '电脑正在休眠' : booting ? '电脑正在开机' : cloud.state === 'ready' ? '电脑已就绪' : cloud.state === 'busy' ? '电脑正在工作' : cloud.state === 'error' ? '电脑连接异常' : meta.hint;
   const onlineLabel = isLocal ? '本地执行，无需云电脑' : `本次在线 ${formatDuration(cloud.awakeMs)}`;
 
   const remember = async () => {
@@ -64,8 +67,8 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
       </div>
       <div className="inspector-content" key={tab} id={`inspector-panel-${tab}`} role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={0}>
         {tab === 'computer' ? <div className="inspector-computer">
-          <div className={`computer-preview ${resting ? 'is-resting' : ''} ${transitioning ? 'is-transitioning' : ''}`} role="status" aria-live="polite">
-            <div className="computer-character" aria-hidden="true"><span className="computer-character__eyes" />{resting ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}</div>
+          <div className={`computer-preview ${dozing ? 'is-resting' : ''} ${booting ? 'is-booting' : ''}`} role="status" aria-live="polite">
+            <div className="computer-character" aria-hidden="true">{bot ? <BotAvatar bot={bot} activity={computerActivity} className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
             <strong>{computerLabel}</strong>
           </div>
           <p className="computer-caption">{isLocal ? '本机 Windows' : cloud.machine?.name ?? settings.cloud.machineName}<small> · 工作区内所有 Bot 共用</small></p>

@@ -12,6 +12,7 @@ export const BOT_ACTIVITY = {
   scheduling: { label: '正在安排任务', motion: 'working' },
   organizing: { label: '正在整理上下文', motion: 'progress' },
   waiting: { label: '等待你的确认', motion: 'listening' },
+  sleeping: { label: '电脑休眠中', motion: 'sleeping' },
   waking: { label: '正在唤醒电脑', motion: 'waking' },
   done: { label: '回复完成', motion: 'happy' },
   error: { label: '遇到问题', motion: 'alerting' },
