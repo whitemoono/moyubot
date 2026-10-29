@@ -419,7 +419,7 @@ svg { flex-shrink: 0; }
 .sidebar--messenger .messenger-toolbar .icon-btn { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: var(--bg); color: var(--text); }
 .sidebar--messenger .messenger-toolbar .icon-btn:hover { background: var(--surface-raised); transform: translateY(-1px); }
 .workspace-switcher { display: flex; gap: 4px; margin: 10px 0 4px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.workspace-switcher button { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; padding: 7px 7px; border-radius: 9px; color: var(--text-faint); font-size: 10px; transition: background 160ms ease, color 160ms ease; }
+.workspace-switcher button { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; flex: 1; padding: 7px 7px; border-radius: 9px; color: var(--text-faint); font-size: 10px; transition: background 160ms ease, color 160ms ease; }
 .workspace-switcher button:hover { color: var(--text); background: var(--hover); }
 .workspace-switcher button.is-active { color: var(--text); background: var(--selected); }
 .workspace-switcher button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
