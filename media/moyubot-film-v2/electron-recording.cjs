@@ -35,7 +35,8 @@ app.whenReady().then(async()=>{
   const destination=path.join(__dirname,'output','raw',name+'.mp4');fs.mkdirSync(path.dirname(destination),{recursive:true});
   encoder=spawn(ffmpeg,['-y','-hide_banner','-loglevel','error','-f','rawvideo','-pixel_format','bgra','-video_size',`${width}x${height}`,'-framerate','30','-i','pipe:0','-an','-c:v','libx264','-preset','ultrafast','-crf','14','-pix_fmt','yuv420p','-movflags','+faststart',destination],{stdio:['pipe','ignore','pipe'],windowsHide:true});encoder.stdin.on('error',()=>{});
   global.filmEncoder=encoder;global.filmFrameCount=()=>frames;global.filmVideoPath=destination;global.filmFrameInfo=()=>({size:frameSize,errors:frameErrors});
-  feed=(image)=>{if(!encoder||encoder.stdin.destroyed)return;const bitmap=image.toBitmap();if(bitmap.length!==width*height*4){frameErrors++;return;}if(!encoder.stdin.write(bitmap))return;frames++;};
+  const started=Date.now();
+  feed=(image)=>{if(!encoder||encoder.stdin.destroyed)return;const target=Math.floor((Date.now()-started)*30/1000)+1;if(frames>=target)return;const bitmap=image.toBitmap();if(bitmap.length!==width*height*4){frameErrors++;return;}encoder.stdin.write(bitmap);frames++;};
   win.webContents.beginFrameSubscription(feed);
  };
  global.stopFilmCapture=()=>new Promise((resolve,reject)=>{if(!encoder){resolve({frames});return;}win.webContents.endFrameSubscription();const current=encoder;encoder=undefined;current.stdin.end();current.once('close',code=>code===0?resolve({frames,name:recordingName,path:global.filmVideoPath}):reject(Error('FFmpeg stopped with code '+code)));});
