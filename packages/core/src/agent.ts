@@ -284,6 +284,7 @@ ${memoryBlock}${scheduleGuide}`;
         message.toolCalls = [...(message.toolCalls ?? []), ...pendingCalls];
         history.push({ role: 'assistant', content: message.content.slice(contentBefore), toolCalls: pendingCalls });
 
+        const desktopImages: { mimeType: string; dataUrl: string }[] = [];
         for (const call of pendingCalls) {
           if (abort.signal.aborted) throw new Error('任务已停止');
           this.emit({ type: 'tool_start', conversationId, messageId: message.id, call });
@@ -343,9 +344,10 @@ ${memoryBlock}${scheduleGuide}`;
           });
           if (result.ok && call.name === 'desktop_action' && result.artifactPath) {
             const screenshot = resolveArtifact(this.computerFor(bot).getSettings().workspaceDir, result.artifactPath);
-            if (screenshot) history.push({ role: 'user', content: '这是 desktop_action 返回的桌面截图。请根据可辨识内容继续；无法识别画面时不要猜测坐标。', images: [{ mimeType: 'image/png', dataUrl: `data:image/png;base64,${fs.readFileSync(screenshot).toString('base64')}` }] });
+            if (screenshot) desktopImages.push({ mimeType: 'image/png', dataUrl: `data:image/png;base64,${fs.readFileSync(screenshot).toString('base64')}` });
           }
         }
+        if (desktopImages.length) history.push({ role: 'user', content: '这是 desktop_action 返回的桌面截图（按调用顺序）。请根据可辨识内容继续；无法识别画面时不要猜测坐标。', images: desktopImages });
       }
     } catch (error) {
       if (abort.signal.aborted) {
