@@ -23,6 +23,7 @@ import type {
 
 export interface ConversationSummary {
   id: string;
+  workspaceId?: string;
   botId: string;
   group?: Conversation['group'];
   title: string;

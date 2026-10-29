@@ -137,6 +137,7 @@ export function defaultSettings(dataDir: string): AppSettings {
 
 export interface ConversationSummary {
   id: string;
+  workspaceId?: string;
   botId: string;
   group?: Conversation['group'];
   title: string;
@@ -341,7 +342,7 @@ export class Store {
     for (const entry of fs.readdirSync(dir)) {
       if (!entry.endsWith('.json')) continue;
       const conv = safeJsonParse<Conversation | null>(fs.readFileSync(path.join(dir, entry), 'utf8'), null);
-      if (conv?.id) this.conversations.set(conv.id, conv);
+      if (conv?.id) this.conversations.set(conv.id, { ...conv, workspaceId: conv.workspaceId ?? this.getBot(conv.group?.memberBotIds[0] ?? conv.botId)?.workspaceId ?? 'workspace_cloud' });
     }
   }
 
@@ -352,6 +353,7 @@ export class Store {
       .map((conv) => ({
         id: conv.id,
         botId: conv.botId,
+        workspaceId: conv.workspaceId ?? this.getBot(conv.botId)?.workspaceId ?? 'workspace_cloud',
         group: conv.group,
         title: conv.title,
         updatedAt: conv.updatedAt,
@@ -404,6 +406,7 @@ export class Store {
     const conv: Conversation = {
       id: newId('conv'),
       botId,
+      workspaceId: this.getBot(botId)!.workspaceId ?? 'workspace_cloud',
       title: this.getBot(botId)!.name,
       messages: [],
       createdAt: Date.now(),

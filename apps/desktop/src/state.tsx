@@ -179,7 +179,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const workspaces = settings.workspaces ?? [];
   const activeWorkspace = workspaces.find((item) => item.id === settings.activeWorkspaceId) ?? workspaces[0];
   const workspaceBots = useMemo(() => settings.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id), [settings.bots, activeWorkspace?.id]);
-  const bot = useMemo(() => workspaceBots.find((item) => item.id === activeBotId) ?? workspaceBots[0], [workspaceBots, activeBotId]);
+  const workspaceConversations = conversations.filter((item) => (item.workspaceId ?? 'workspace_cloud') === activeWorkspace?.id);
+  const bot = useMemo(() => workspaceBots.find((item) => item.id === activeBotId) ?? workspaceBots.find((item) => conversations.find((conv) => conv.id === activeBotId)?.group?.memberBotIds.includes(item.id)) ?? workspaceBots[0], [workspaceBots, activeBotId, conversations]);
 
   const loadConversations = useCallback(async () => {
     const list = await moyu().conversations();
@@ -197,7 +198,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateBotGroup = useCallback(async (name: string, action: BotGroupAction) => {
-    setSettings(await moyu().updateBotGroup(name, action));
+    setSettings(await moyu().updateBotGroup(name, action, settingsRef.current.activeWorkspaceId));
   }, []);
 
   const patchMessage = useCallback((messageId: string, patch: (message: Message) => Message) => {
@@ -232,7 +233,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         setSettingsOpen(restoredSettings);
         if (boot.settings.activeView === 'bots' || boot.settings.activeView === 'cloud') setSettingsSection(boot.settings.activeView);
         const workspaceId = boot.settings.activeWorkspaceId ?? 'workspace_cloud';
-        const initialBot = boot.settings.bots.find((item) => item.id === boot.settings.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? boot.settings.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
+        const preferred = boot.settings.workspaces.find((item) => item.id === workspaceId)?.activeBotId ?? boot.settings.activeBotId;
+        const initialBot = boot.settings.bots.find((item) => item.id === preferred && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? boot.conversations.find((item) => item.id === preferred && item.group && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? boot.settings.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
         setActiveBotId(initialBot ?? '');
         setConversations(boot.conversations);
         runningRef.current = new Set(boot.runningConversations);
@@ -356,11 +358,14 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const selectWorkspace = useCallback((workspaceId: string) => {
     const target = settingsRef.current.workspaces?.find((item) => item.id === workspaceId);
     if (!target) return;
-    const next = settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId);
-    setSettings((previous) => ({ ...previous, activeWorkspaceId: workspaceId }));
-    setActiveBotId(next?.id ?? ''); setConversation(null); setMemories([]); setSettingsOpen(false); setView('chat');
-    void moyu().saveSettings({ activeWorkspaceId: workspaceId, activeBotId: next?.id, activeView: 'chat' });
-  }, []);
+    const next = target.activeBotId ?? settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
+    const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: selectedBotRef.current } : item);
+    settingsRef.current = { ...settingsRef.current, activeWorkspaceId: workspaceId, workspaces };
+    selectedBotRef.current = next ?? '';
+    setSettings(settingsRef.current);
+    setActiveBotId(next ?? ''); setConversation(null); setMemories([]); setSettingsOpen(false); setView('chat');
+    void moyu().saveSettings({ activeWorkspaceId: workspaceId, workspaces, activeBotId: next, activeView: 'chat' }).catch((error: Error) => toast(error.message, 'error'));
+  }, [toast]);
 
   useEffect(() => {
     if (!activeBotId) return;
@@ -392,14 +397,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     (botId: string, preserveSettings = false) => {
       if (!preserveSettings) setSettingsOpen(false);
       const target = settingsRef.current.bots.find((item) => item.id === botId && (item.workspaceId ?? 'workspace_cloud') === settingsRef.current.activeWorkspaceId);
+      const group = conversations.find((item) => item.id === botId && item.group && (item.workspaceId ?? 'workspace_cloud') === settingsRef.current.activeWorkspaceId);
+      if (!target && !group && settingsRef.current.bots.some((item) => item.id === botId)) return;
       if (target?.sidebar?.unread) void updateBotMetadata(botId, { sidebar: { unread: false } }).catch((error: Error) => toast(error.message, 'error'));
       selectedBotRef.current = botId;
       if (conversationRef.current?.botId !== botId) { setConversation(null); setMemories([]); }
       setActiveBotId(botId);
-      void moyu().saveSettings({ activeBotId: botId, activeView: 'chat' });
+      const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: botId } : item);
+      setSettings((previous) => ({ ...previous, workspaces }));
+      void moyu().saveSettings({ activeBotId: botId, workspaces, activeView: 'chat' });
       setView('chat');
     },
-    [updateBotMetadata, toast],
+    [updateBotMetadata, toast, conversations],
   );
 
   const sendMessage = useCallback(
@@ -497,7 +506,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   const saveBot = useCallback(
     async (nextBot: Bot, options?: { stayInSettings?: boolean }) => {
-      const saved = await moyu().saveBot(nextBot);
+      const saved = await moyu().saveBot({ ...nextBot, workspaceId: nextBot.workspaceId ?? settingsRef.current.activeWorkspaceId });
       setSettings((prev) => {
         const exists = prev.bots.some((item) => item.id === saved.id);
         return { ...prev, bots: exists ? prev.bots.map((item) => (item.id === saved.id ? saved : item)) : [...prev.bots, saved] };
@@ -513,13 +522,13 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       await moyu().deleteBot(botId);
       setSettings((prev) => ({ ...prev, bots: prev.bots.filter((item) => item.id !== botId) }));
       if (selectedBotRef.current === botId) {
-        const next = settings.bots.find((item) => item.id !== botId);
+        const next = workspaceBots.find((item) => item.id !== botId);
         if (next) selectBot(next.id, true);
         else { setActiveBotId(''); setConversation(null); setMemories([]); setView('chat'); setSettingsSection('bots'); setSettingsOpen(true); }
       }
       toast('Bot 已删除');
     },
-    [toast, settings.bots, selectBot],
+    [toast, workspaceBots, selectBot],
   );
 
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
@@ -622,7 +631,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
 
   const value: MoyuContextValue = {
     ready,
-    settings,
+    settings: { ...settings, bots: workspaceBots, ui: { ...settings.ui, botGroups: [...new Map([...(activeWorkspace?.botGroups ?? []), ...workspaceBots.flatMap((item) => item.sidebar?.group ? [{ name: item.sidebar.group }] : [])].map((item) => [item.name, item])).values()], ungroupedGroupIndex: activeWorkspace?.ungroupedGroupIndex } },
     cloud,
     secrets,
     view,
@@ -645,13 +654,13 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     selectBot,
     createGroup,
     conversation,
-    conversations,
+    conversations: workspaceConversations,
     running: conversation ? runningConversations.has(conversation.id) : false,
     runningBotIds: new Set(conversations.filter((item) => runningConversations.has(item.id)).map((item) => item.botId)),
     compacting: conversation ? compactingConversations.has(conversation.id) : false,
     botActivities,
     approval,
-    schedules,
+    schedules: schedules.filter((item) => workspaceBots.some((bot) => bot.id === item.botId)),
     memories,
     toasts,
     logs,
