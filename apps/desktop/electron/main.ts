@@ -4,11 +4,13 @@ import { pathToFileURL } from 'node:url';
 import { BrowserWindow, Menu, app, net, protocol } from 'electron';
 import { resolveArtifact } from '@moyu/core';
 import { MoyuApp } from './app';
+import { startRendererServer } from './renderer-server';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5273';
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
 let moyuApp: MoyuApp | undefined;
 let mainWindow: BrowserWindow | undefined;
+let rendererServer: Awaited<ReturnType<typeof startRendererServer>> | undefined;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -79,12 +81,12 @@ function createWindow(): BrowserWindow {
       }
     });
   } else {
-    void win.loadFile(path.join(__dirname, '../dist/index.html'));
+    void win.loadURL(rendererServer!.url);
   }
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   const dataDir = process.env.MOYU_DATA_DIR ?? path.join(app.getPath('userData'), 'moyu');
@@ -100,6 +102,7 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(file).href);
   });
 
+  if (!isDev) rendererServer = await startRendererServer(path.join(__dirname, '../dist'));
   mainWindow = createWindow();
   moyuApp.setWindow(mainWindow);
 
@@ -123,7 +126,7 @@ app.on('before-quit', (event) => {
   void moyuApp.desktop.dispose().catch(() => {
     // Recovery record blocks automation on next launch until revocation succeeds.
     console.error('[moyu] desktop control cleanup deferred until next launch');
-  }).finally(() => { desktopCleaned = true; app.quit(); });
+  }).finally(() => { rendererServer?.close(); desktopCleaned = true; app.quit(); });
 });
 
 process.on('uncaughtException', (error) => {
