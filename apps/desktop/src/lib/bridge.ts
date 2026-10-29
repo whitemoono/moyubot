@@ -34,6 +34,8 @@ export interface ConversationSummary {
 }
 
 export interface MoyuBridge {
+  setupDirectory(directory: string): Promise<AppSettings>;
+  finishSetup(skipCloud: boolean): Promise<AppSettings>;
   feedbackDiagnostics(): Promise<DiagnosticEntry[]>;
   clearFeedbackDiagnostics(): Promise<void>;
   copyFeedback(text: string): Promise<void>;

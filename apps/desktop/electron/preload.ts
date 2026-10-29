@@ -28,6 +28,8 @@ import type { ConversationSummary } from '@moyu/core';
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
 const api = {
+  setupDirectory: (directory: string) => invoke<AppSettings>('moyu:setup:directory', directory),
+  finishSetup: (skipCloud: boolean) => invoke<AppSettings>('moyu:setup:finish', skipCloud),
   feedbackDiagnostics: () => invoke<DiagnosticEntry[]>('moyu:feedback:diagnostics'),
   clearFeedbackDiagnostics: () => invoke<void>('moyu:feedback:clear'),
   copyFeedback: (text: string) => invoke<void>('moyu:feedback:copy', text),
