@@ -20,7 +20,7 @@ export function Onboarding() {
   const [key, setKey] = useState('');
   const [baseUrl, setBaseUrl] = useState(settings.cloud.baseUrl);
   const [machineName, setMachineName] = useState(settings.cloud.machineName);
-  const [skipCloud, setSkipCloud] = useState(!secrets.cloudKey);
+  const [skipCloud, setSkipCloud] = useState(settings.onboarding?.cloudSkipped ?? !secrets.cloudKey);
   const [directory, setDirectory] = useState(settings.workspaces.find((workspace) => workspace.kind === 'local')?.directory ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -49,7 +49,7 @@ export function Onboarding() {
         setKey('');
       }
       setSkipCloud(skip);
-      await saveSettings({ onboarding: { step: 2 } });
+      await saveSettings({ onboarding: { step: 2, cloudSkipped: skip } });
       setStep(2);
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }

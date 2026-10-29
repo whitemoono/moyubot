@@ -286,7 +286,7 @@ export interface UiSettings {
 export interface AppSettings {
   version: number;
   userName?: string;
-  onboarding?: { step: 0 | 1 | 2; completedAt?: number };
+  onboarding?: { step: 0 | 1 | 2; cloudSkipped?: boolean; completedAt?: number };
   providers: ProviderConfig[];
   bots: Bot[];
   cloud: CloudHostSettings;
