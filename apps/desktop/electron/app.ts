@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { BrowserWindow, app, clipboard, ipcMain, safeStorage, shell } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
 import type {
@@ -101,7 +101,7 @@ export class MoyuApp {
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
-    const localSettings = { ...this.store.getSettings().cloud, workspaceDir: path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };
+    const localSettings = { ...this.store.getSettings().cloud, workspaceDir: this.store.getSettings().workspaces.find((item) => item.kind === 'local')?.directory ?? path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };
     fs.mkdirSync(localSettings.workspaceDir, { recursive: true });
     this.local = new LocalHost(localSettings, (status) => {
       this.send('moyu:local', status);
@@ -162,6 +162,17 @@ export class MoyuApp {
 
   private registerIpc(): void {
     ipcMain.handle('moyu:app:check-updates', () => checkForUpdates(this.version));
+    ipcMain.handle('moyu:local:directory', async () => {
+      if (this.local.status().state === 'busy') throw new Error('本机仍有任务运行，请完成后再更换目录');
+      const result = await dialog.showOpenDialog({ title: '选择本地工作区目录', defaultPath: this.local.getSettings().workspaceDir, properties: ['openDirectory', 'createDirectory'] });
+      if (!result.canceled && result.filePaths[0]) {
+        if (this.local.status().state === 'busy') throw new Error('本机有任务运行，暂时不能更换目录');
+        const directory = result.filePaths[0];
+        this.store.updateSettings({ workspaces: this.store.getSettings().workspaces.map((item) => item.kind === 'local' ? { ...item, directory } : item) });
+        this.local.updateSettings({ ...this.local.getSettings(), workspaceDir: directory });
+      }
+      return this.store.getSettings();
+    });
     ipcMain.handle('moyu:bootstrap', (): BootstrapPayload => {
       const settings = this.store.getSettings();
       const providerKeys: Record<string, boolean> = {};
@@ -313,7 +324,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
 
     ipcMain.handle('moyu:artifact:open', async (_event, relPath: string) => {
-      const file = resolveArtifact(this.store.getSettings().cloud.workspaceDir, relPath);
+      const file = this.resolveWorkspaceArtifact(relPath);
       if (file) await shell.openPath(file);
     });
 
@@ -330,6 +341,11 @@ export class MoyuApp {
         else win.maximize();
       } else win.close();
     });
+  }
+
+  resolveWorkspaceArtifact(relative: string): string | undefined {
+    if (relative.startsWith('@workspace_local/')) return resolveArtifact(this.local.getSettings().workspaceDir, relative.slice('@workspace_local/'.length));
+    return resolveArtifact(this.store.getSettings().cloud.workspaceDir, relative);
   }
 
 

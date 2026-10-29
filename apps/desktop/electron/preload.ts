@@ -49,6 +49,7 @@ const api = {
 
   cloud: () => invoke<CloudStatus>('moyu:cloud'),
   local: () => invoke<CloudStatus>('moyu:local'),
+  chooseLocalDirectory: () => invoke<AppSettings>('moyu:local:directory'),
   cloudAction: (action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop') => invoke<CloudStatus>('moyu:cloud:action', action),
   cloudExec: (cmd: string) => invoke<ExecResult>('moyu:cloud:exec', cmd),
   localExec: (cmd: string) => invoke<ExecResult>('moyu:local:exec', cmd),

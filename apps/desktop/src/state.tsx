@@ -36,6 +36,7 @@ interface MoyuContextValue {
   workspaces: Workspace[];
   activeWorkspace: Workspace | undefined;
   selectWorkspace: (workspaceId: string) => void;
+  chooseLocalDirectory: () => Promise<void>;
   secrets: { providerKeys: Record<string, boolean>; cloudKey: boolean; telegramToken: boolean; encrypted: boolean };
   view: View;
   setView: (view: View) => void;
@@ -680,6 +681,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     workspaces,
     activeWorkspace,
     selectWorkspace,
+    chooseLocalDirectory: async () => { setSettings(await moyu().chooseLocalDirectory()); },
     saveProviderKey,
     refreshSchedules,
     addSchedule,

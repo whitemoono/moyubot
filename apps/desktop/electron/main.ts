@@ -95,7 +95,7 @@ app.whenReady().then(() => {
   protocol.handle('moyu-asset', async (request) => {
     const url = new URL(request.url);
     const relative = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    const file = resolveArtifact(workspaceDir, relative);
+    const file = moyuApp?.resolveWorkspaceArtifact(relative);
     if (!file) return new Response('Not found', { status: 404 });
     return net.fetch(pathToFileURL(file).href);
   });

@@ -53,6 +53,7 @@ export interface MoyuBridge {
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   cloud(): Promise<CloudStatus>;
   local(): Promise<CloudStatus>;
+  chooseLocalDirectory(): Promise<AppSettings>;
   cloudAction(action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus>;
   cloudExec(cmd: string): Promise<ExecResult>;
   localExec(cmd: string): Promise<ExecResult>;

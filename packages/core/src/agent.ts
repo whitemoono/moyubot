@@ -318,6 +318,7 @@ ${memoryBlock}${scheduleGuide}`;
             signal: abort.signal,
           });
 
+          if (result.artifactPath && bot.workspaceId === 'workspace_local') result.artifactPath = '@workspace_local/' + result.artifactPath;
           message.toolResults = [...(message.toolResults ?? []), result];
           this.emit({ type: 'tool_end', conversationId, messageId: message.id, result });
           if (result.artifactPath) {
