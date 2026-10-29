@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, app, clipboard, ipcMain, safeStorage, shell } from 'electron';
-import { AgentRuntime, CloudHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, LocalHost, ScheduleRunner, Store, resolveArtifact } from '@moyu/core';
 import { checkForUpdates } from './updates';
 import type {
   AgentEvent,
@@ -86,6 +86,7 @@ interface PendingApproval {
 export class MoyuApp {
   readonly store: Store;
   readonly cloud: CloudHost;
+  readonly local: LocalHost;
   readonly runtime: AgentRuntime;
   readonly scheduler: ScheduleRunner;
   private win: BrowserWindow | undefined;
@@ -100,6 +101,12 @@ export class MoyuApp {
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
+    const localSettings = { ...this.store.getSettings().cloud, workspaceDir: path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };
+    fs.mkdirSync(localSettings.workspaceDir, { recursive: true });
+    this.local = new LocalHost(localSettings, (status) => {
+      this.send('moyu:local', status);
+      this.send('moyu:event', { type: 'cloud', status } satisfies AgentEvent);
+    });
 
     this.cloud = new CloudHost({
       settings: this.store.getSettings().cloud,
@@ -116,6 +123,7 @@ export class MoyuApp {
     this.runtime = new AgentRuntime({
       store: this.store,
       cloud: this.cloud,
+      computers: { workspace_cloud: this.cloud, workspace_local: this.local },
       emit: (event) => this.send('moyu:event', event),
       requestApproval: (request) => this.waitForApproval(request),
     });
@@ -252,6 +260,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
 
     ipcMain.handle('moyu:cloud', (): CloudStatus => this.cloud.status());
+    ipcMain.handle('moyu:local', (): CloudStatus => this.local.status());
     ipcMain.handle('moyu:cloud:action', async (_event, action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus> => {
       try {
         if (action === 'wake' || action === 'start') await this.cloud.ensureAwake('手动唤醒');
@@ -266,6 +275,7 @@ export class MoyuApp {
     ipcMain.handle('moyu:cloud:exec', async (_event, cmd: string): Promise<ExecResult> => {
       return this.cloud.exec(cmd, { timeoutSeconds: 60 });
     });
+    ipcMain.handle('moyu:local:exec', async (_event, cmd: string): Promise<ExecResult> => this.local.exec(cmd, { timeoutSeconds: 60 }));
 
     ipcMain.handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
       if (typeof input.apiKey === 'string') {
@@ -328,6 +338,7 @@ export class MoyuApp {
     this.offSchedules();
     this.scheduler.stop();
     this.cloud.dispose();
+    this.local.dispose();
     for (const pending of this.approvals.values()) {
       clearTimeout(pending.timer);
       pending.resolve(false);

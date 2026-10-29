@@ -48,8 +48,10 @@ const api = {
   createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
 
   cloud: () => invoke<CloudStatus>('moyu:cloud'),
+  local: () => invoke<CloudStatus>('moyu:local'),
   cloudAction: (action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop') => invoke<CloudStatus>('moyu:cloud:action', action),
   cloudExec: (cmd: string) => invoke<ExecResult>('moyu:cloud:exec', cmd),
+  localExec: (cmd: string) => invoke<ExecResult>('moyu:local:exec', cmd),
   saveCloud: (patch: Partial<AppSettings['cloud']>, apiKey?: string) =>
     invoke<CloudStatus>('moyu:cloud:save', { patch, apiKey }),
 
@@ -76,6 +78,11 @@ const api = {
     const handler = (_event: unknown, payload: CloudStatus) => listener(payload);
     ipcRenderer.on('moyu:cloud', handler);
     return () => ipcRenderer.removeListener('moyu:cloud', handler);
+  },
+  onLocal: (listener: (status: CloudStatus) => void) => {
+    const handler = (_event: unknown, payload: CloudStatus) => listener(payload);
+    ipcRenderer.on('moyu:local', handler);
+    return () => ipcRenderer.removeListener('moyu:local', handler);
   },
   platform: process.platform,
   isElectron: true,

@@ -8,6 +8,7 @@ import type {
   BotGroupAction,
   BootstrapPayload,
   CloudStatus,
+  Workspace,
   Conversation,
   ExecResult,
   MemoryFact,
@@ -51,8 +52,10 @@ export interface MoyuBridge {
   botConversation(botId: string): Promise<Conversation>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   cloud(): Promise<CloudStatus>;
+  local(): Promise<CloudStatus>;
   cloudAction(action: 'wake' | 'sleep' | 'refresh' | 'start' | 'stop'): Promise<CloudStatus>;
   cloudExec(cmd: string): Promise<ExecResult>;
+  localExec(cmd: string): Promise<ExecResult>;
   saveCloud(patch: Partial<AppSettings['cloud']>, apiKey?: string): Promise<CloudStatus>;
   schedules(): Promise<Schedule[]>;
   updateSchedule(botId: string, id: string, patch: ScheduleUpdate): Promise<Schedule>;
@@ -67,6 +70,7 @@ export interface MoyuBridge {
   win(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   onEvent(listener: (event: AgentEvent) => void): () => void;
   onCloud(listener: (status: CloudStatus) => void): () => void;
+  onLocal(listener: (status: CloudStatus) => void): () => void;
   platform: string;
   isElectron: boolean;
 }
