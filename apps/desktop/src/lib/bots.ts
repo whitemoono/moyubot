@@ -1,10 +1,10 @@
 import type { Bot, ProviderConfig } from '@moyu/core';
 
 export const BOT_TOOLS = [
-  { id: 'cloud_exec', label: '云电脑命令', hint: '在共享 Linux 里执行 shell' },
-  { id: 'cloud_read', label: '读取云端文件', hint: '读取云电脑上的文本文件' },
-  { id: 'cloud_write', label: '写云机文件', hint: '把结果写进云电脑' },
-  { id: 'generate_image', label: '绘图', hint: '按需唤醒云主机出图' },
+  { id: 'cloud_exec', label: '执行电脑命令', hint: '在所属工作区的电脑上执行命令' },
+  { id: 'cloud_read', label: '读取电脑文件', hint: '读取所属工作区的文本文件' },
+  { id: 'cloud_write', label: '写入电脑文件', hint: '把结果保存到所属工作区' },
+  { id: 'generate_image', label: '绘图', hint: '使用图像 API 或已配置的云端绘图脚本' },
   { id: 'remember', label: '写长期记忆', hint: '记住偏好与重要事项' },
   { id: 'recall', label: '查长期记忆', hint: '关键词检索记忆' },
   { id: 'schedule_task', label: '定时任务', hint: '通过对话创建、查询、修改和启停任务' },

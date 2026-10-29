@@ -32,6 +32,12 @@ const SUGGESTIONS = [
   { icon: 'folder' as IconName, title: '整理工作文件', text: '在云电脑 /data/moyubot 下建一个 weekly 目录，写一份本周工作摘要模板并读回来确认。' },
   { icon: 'clock' as IconName, title: '安排定时任务', text: '创建一个定时任务：每个工作日 9 点唤醒云电脑，检查 /data/moyubot 下最新文件并汇报。' },
 ];
+const LOCAL_SUGGESTIONS = [
+  SUGGESTIONS[0]!,
+  { icon: 'terminal' as IconName, title: '运行一段代码', text: '在本机 Windows 工作区用 PowerShell 检查系统版本和当前目录，并检查 Python 是否可用，然后总结。' },
+  { icon: 'folder' as IconName, title: '整理工作文件', text: '在当前本地工作区新建 weekly 目录，写一份本周工作摘要模板并读回来确认。' },
+  { icon: 'clock' as IconName, title: '安排定时任务', text: '创建一个定时任务：每个工作日 9 点检查本地工作区最新文件并汇报，在本机运行。' },
+];
 
 function jumpToMessage(id: string, reduceMotion: boolean) {
   reduceMotion ||= window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -348,7 +354,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
         </div>
       </div>
       {home ? <div className="starter-actions" aria-label="灵感建议">
-        {SUGGESTIONS.map((item) => <button type="button" key={item.title} onClick={() => { setText(item.text); textarea.current?.focus(); }}>
+        {(bot.workspaceId === 'workspace_local' ? LOCAL_SUGGESTIONS : SUGGESTIONS).map((item) => <button type="button" key={item.title} onClick={() => { setText(item.text); textarea.current?.focus(); }}>
           <Icon name={item.icon} size={16} /><span>{item.title}</span>
         </button>)}
       </div> : null}

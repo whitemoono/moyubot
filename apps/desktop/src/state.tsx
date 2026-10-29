@@ -189,6 +189,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     return list;
   }, []);
 
+  // Settings replies may arrive after a workspace switch. Apply data changes
+  // without restoring the selection that was active when the request started.
+  const applySavedSettings = useCallback((next: AppSettings) => {
+    setSettings((previous) => ({
+      ...next,
+      activeWorkspaceId: previous.activeWorkspaceId,
+      activeBotId: previous.activeBotId,
+      activeView: previous.activeView,
+      workspaces: next.workspaces.map((workspace) => ({ ...workspace, activeBotId: previous.workspaces.find((item) => item.id === workspace.id)?.activeBotId })),
+    }));
+  }, []);
+
   const updateBotMetadata = useCallback(async (botId: string, patch: BotMetadataPatch) => {
     const saved = await moyu().updateBotMetadata(botId, patch);
     setSettings((previous) => {
@@ -199,8 +211,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateBotGroup = useCallback(async (name: string, action: BotGroupAction) => {
-    setSettings(await moyu().updateBotGroup(name, action, settingsRef.current.activeWorkspaceId));
-  }, []);
+    applySavedSettings(await moyu().updateBotGroup(name, action, settingsRef.current.activeWorkspaceId));
+  }, [applySavedSettings]);
 
   const patchMessage = useCallback((messageId: string, patch: (message: Message) => Message) => {
     setConversation((prev) => {
@@ -362,7 +374,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     const preferred = settingsRef.current.bots.find((item) => item.id === target.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id ?? conversations.find((item) => item.group && item.id === target.activeBotId && (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
     const next = preferred ?? settingsRef.current.bots.find((item) => (item.workspaceId ?? 'workspace_cloud') === workspaceId)?.id;
     const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: selectedBotRef.current } : item);
-    settingsRef.current = { ...settingsRef.current, activeWorkspaceId: workspaceId, workspaces };
+    settingsRef.current = { ...settingsRef.current, activeWorkspaceId: workspaceId, activeBotId: next, workspaces };
     selectedBotRef.current = next ?? '';
     setSettings(settingsRef.current);
     setActiveBotId(next ?? ''); setConversation(null); setMemories([]); setSettingsOpen(false); setView('chat');
@@ -406,7 +418,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       if (conversationRef.current?.botId !== botId) { setConversation(null); setMemories([]); }
       setActiveBotId(botId);
       const workspaces = settingsRef.current.workspaces.map((item) => item.id === settingsRef.current.activeWorkspaceId ? { ...item, activeBotId: botId } : item);
-      setSettings((previous) => ({ ...previous, workspaces }));
+      settingsRef.current = { ...settingsRef.current, activeBotId: botId, workspaces };
+      setSettings(settingsRef.current);
       void moyu().saveSettings({ activeBotId: botId, workspaces, activeView: 'chat' });
       setView('chat');
     },
@@ -513,7 +526,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         const exists = prev.bots.some((item) => item.id === saved.id);
         return { ...prev, bots: exists ? prev.bots.map((item) => (item.id === saved.id ? saved : item)) : [...prev.bots, saved] };
       });
-      if (!options?.stayInSettings) selectBot(saved.id);
+      if (!options?.stayInSettings && saved.workspaceId === settingsRef.current.activeWorkspaceId) selectBot(saved.id);
       toast(`已保存 ${saved.name}`);
     },
     [toast, selectBot],
@@ -536,8 +549,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const scoped = patch.bots ? { ...patch, bots: [...settingsRef.current.bots.filter((item) => (item.workspaceId ?? 'workspace_cloud') !== settingsRef.current.activeWorkspaceId), ...patch.bots] } : patch;
     const next = await moyu().saveSettings(scoped);
-    setSettings(next);
-  }, []);
+    applySavedSettings(next);
+  }, [applySavedSettings]);
 
   const saveCloud = useCallback(
     async (patch: Partial<AppSettings['cloud']>, apiKey?: string) => {
@@ -682,7 +695,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     workspaces,
     activeWorkspace,
     selectWorkspace,
-    chooseLocalDirectory: async () => { setSettings(await moyu().chooseLocalDirectory()); },
+    chooseLocalDirectory: async () => { applySavedSettings(await moyu().chooseLocalDirectory()); },
     saveProviderKey,
     refreshSchedules,
     addSchedule,
