@@ -184,6 +184,20 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'run_script',
+    description:
+      '用一段 JS 脚本编排多个子代理，适合"同一件事要对 N 个目标各做一遍"或"先粗筛再精读"。可用原语：agent(任务, {background}) 派一个子代理并拿到它的结论；parallel([() => ...]) 并发跑；pipeline(数组, 阶段1, 阶段2, ...) 让每项独立走完整条链；phase(标题)、log(内容) 打进度；args 是传入的对象。默认只读——脚本里的子代理只能读文件、抓网页、搜索；只有 write:true 才拿完整工具集（可执行命令/写文件，逐步审批不适用）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        script: { type: 'string', description: '脚本体。用 return 交出结果（例如 return results）' },
+        args: { type: 'object', description: '传给脚本的 args 对象，脚本里用 args.xxx 读' },
+        write: { type: 'boolean', description: 'true 时脚本里的子代理获得完整工具集（可改动文件与系统），默认只读' },
+      },
+      required: ['script'],
+    },
+  },
+  {
     name: 'spawn_agent',
     description:
       '把一个自包含的调研任务交给独立的子智能体。子智能体只有只读能力（读文件、抓网页、搜索、回忆），不能执行命令、不能写文件、不能建定时任务，也不会继承本次对话的历史——所以要把它需要的背景和目标写全。适合通读大量文件、横向对比多个来源、分头核查多个主题；不适合需要改动任何东西的任务。传 tasks 数组可并行派发最多 4 个互不依赖的子任务。',
@@ -225,6 +239,8 @@ export interface ToolContext {
   /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。 */
   setGoal?: (objective: string) => { id: string; objective: string };
   updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string }) => { status: string; note?: string };
+  /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
+  runScript?: (script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
   signal?: AbortSignal;
 }
 
@@ -406,6 +422,19 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'run_script': {
+        if (!ctx.runScript) throw new Error('当前运行时不支持工作流编排');
+        const script = requireString(args, 'script');
+        const write = args.write === true;
+        const workflowArgs = args.args && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args as Record<string, unknown> : undefined;
+        const outcome = await ctx.runScript(script, workflowArgs, write);
+        const text = typeof outcome.result === 'string' ? outcome.result : JSON.stringify(outcome.result ?? null, null, 2);
+        return finish({
+          ok: true,
+          summary: `工作流完成 · ${outcome.agents} 个子代理 · ${outcome.phases.length} 个阶段 · ${outcome.seconds}s${write ? ' · 完整权限' : ' · 只读'}`,
+          detail: pruneOutput(`返回值：\n${text}\n\n阶段：${outcome.phases.join(' → ') || '（未声明）'}`, 16000, 0.6),
+        });
+      }
       case 'set_goal': {
         if (!ctx.setGoal) throw new Error('当前运行时不支持跨轮目标');
         const objective = requireString(args, 'objective');

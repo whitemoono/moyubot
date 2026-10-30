@@ -15,6 +15,7 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   list_tasks: { label: '查询任务', icon: 'clock' },
   update_task: { label: '管理任务', icon: 'clock' },
   spawn_agent: { label: '子智能体', icon: 'users' },
+  run_script: { label: '工作流', icon: 'grid' },
 };
 
 export function ReplyToolCard({ call, result, message }: { call: ToolCall; result?: ToolResult; message: Pick<Message, 'streaming' | 'stopped'> }) {
@@ -32,12 +33,15 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
        ...(Array.isArray(call.arguments.tasks) ? call.arguments.tasks.filter((item): item is string => typeof item === 'string') : [])]
       .filter((text) => text.trim())
     : [];
-  const input = command || (subagentTasks.length ? subagentTasks.map((text, index) => `${index + 1}. ${text}`).join('\n') : JSON.stringify(call.arguments, null, 2));
+  const input = command || (subagentTasks.length ? subagentTasks.map((text, index) => `${index + 1}. ${text}`).join('\n') : call.name === 'run_script' ? String(call.arguments.script ?? '') : JSON.stringify(call.arguments, null, 2));
   const output = result?.detail || result?.summary;
   const status = result ? result.ok ? '已完成' : '执行失败' : message.stopped ? '已停止' : running ? '执行中' : '未完成';
+  const scriptLine = call.name === 'run_script' ? (String(call.arguments.script ?? '').trim().split('\n').find((line) => line.trim()) ?? '') : '';
   const summary = subagentTasks.length
     ? `${subagentTasks.length} 个子任务 · ${subagentTasks[0]!.slice(0, 40)}`
-    : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
+    : scriptLine
+      ? scriptLine.slice(0, 60)
+      : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
 
   useEffect(() => {
     if (!copied) return;

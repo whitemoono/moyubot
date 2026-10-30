@@ -20,6 +20,7 @@ import type { GeneratedImage } from './providers';
 import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
 import { newId, pruneOutput, summarize } from './util';
+import { runWorkflow } from './workflow';
 import { contextWindow, outputBudget, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
 import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generation';
@@ -483,6 +484,24 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             },
             setGoal: (objective) => this.store.setGoal({ conversationId, botId: bot.id, objective }),
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
+            runScript: async (script, args, write) => {
+              if (write && executingMode === 'plan') throw new Error('计划模式下不能运行带写权限的工作流，先提交计划并获得批准');
+              if (write) this.emit({ type: 'log', level: 'warn', text: '工作流以完整工具权限运行（write: true）：脚本里的子代理可以执行命令、写文件，逐步审批不适用' });
+              return runWorkflow(
+                {
+                  conversationId,
+                  signal,
+                  emit: (text, level) => this.emit({ type: 'log', level: level ?? 'info', text }),
+                  runAgent: async (task, options) => {
+                    const child = this.childBotFor(bot, write ? 'full' : 'readonly');
+                    const result = await this.runChild(child, task, options.background, { conversationId, taskBudget, signal }, (params.depth ?? 0) + 1);
+                    if (!result.ok) throw new Error(result.error ?? '子代理没有产出结论');
+                    return result.text ?? '';
+                  },
+                },
+                { script, args, maxSeconds: Math.min(600, duration) },
+              );
+            },
             signal,
           });
 
@@ -566,7 +585,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     if (tasks.length > SUBAGENT_MAX_TASKS) throw new Error(`一次最多并行 ${SUBAGENT_MAX_TASKS} 个子任务`);
     // A cloned Bot, not a new one: everything the runLoop reads (provider, model, workspace,
     // temperature) stays identical, and only the capability surface changes.
-    const child: Bot = { ...parent.bot, tools: SUBAGENT_TOOLS, mcpServerIds: [], skillIds: [], approvalPolicy: 'never' };
+    const child: Bot = this.childBotFor(parent.bot, 'readonly');
     const startedAt = Date.now();
     this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: parent.callId, status: 'start', tasks });
     const children = await Promise.all(tasks.map((task) => this.runChild(child, task, background, parent, depth)));
@@ -575,6 +594,16 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
       seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
     });
     return children.map(({ task, ok, text, error }) => ({ task, ok, text: text ?? '', error }));
+  }
+
+  /**
+   * 子代理的工具面由 power 决定：readonly 只给调研工具；full 继承父会话工具集，
+   * 但永远去掉 run_script 自己（脚本不能再套脚本，否则上限形同虚设）。
+   */
+  private childBotFor(bot: Bot, power: 'readonly' | 'full'): Bot {
+    if (power === 'readonly') return { ...bot, tools: SUBAGENT_TOOLS, mcpServerIds: [], skillIds: [], approvalPolicy: 'never' };
+    const tools = toolNamesFor(bot).filter((name) => name !== 'run_script');
+    return { ...bot, tools, mcpServerIds: bot.mcpServerIds ?? [], skillIds: bot.skillIds ?? [], approvalPolicy: 'never' };
   }
 
   private async runChild(

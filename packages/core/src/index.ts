@@ -17,6 +17,8 @@ export type { DesktopStream, DesktopStatus } from './instabox';
 export type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
 export { AgentRuntime, resolveArtifact } from './agent';
 export { runTool, schemasFor, toolNamesFor, TOOL_SCHEMAS } from './tools';
+export { runWorkflow } from './workflow';
+export type { WorkflowDeps, WorkflowOptions, WorkflowResult } from './workflow';
 export type { ToolContext, ToolSchema } from './tools';
 export { createChatProvider, PROVIDER_PRESETS, generateImageWithProvider } from './providers';
 export { setProviderFetch } from './providers/transport';

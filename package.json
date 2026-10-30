@@ -25,6 +25,7 @@
     "test:subagents": "pnpm --filter @moyu/core build && node --test scripts/subagent.test.mjs",
     "test:pruning": "pnpm --filter @moyu/core build && node --test scripts/tool-pruning.test.mjs",
     "test:plan-mode": "pnpm --filter @moyu/core build && node --test scripts/plan-mode.test.mjs",
+    "test:workflow": "pnpm --filter @moyu/core build && node --test scripts/workflow.test.mjs",
     "seed": "node scripts/seed-demo.mjs",
     "dist": "pnpm build && pnpm --filter @moyu/desktop dist"
   },
