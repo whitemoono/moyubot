@@ -11,6 +11,7 @@ import type {
   CloudStatus,
   Conversation,
   Goal,
+  AskRequest,
   MemoryFact,
   Message,
   Schedule,
@@ -74,6 +75,11 @@ interface MoyuContextValue {
   /** 当前会话还在推进的跨轮目标；不自动续跑，只负责让人和模型都记得它。 */
   goal: Goal | undefined;
   subagents: Record<string, SubagentProgress>;
+  /** 待回答的开放提问；null 表示没有。 */
+  question: AskRequest | null;
+  answerQuestion: (decision: { requestId: string; answer: string }) => Promise<void>;
+  /** 手动压缩当前会话的历史（command-compact）。 */
+  compactConversation: () => Promise<void>;
   completeGoal: () => Promise<void>;
   conversations: ConversationSummary[];
   running: boolean;
@@ -177,6 +183,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [goal, setGoal] = useState<Goal | undefined>(undefined);
   const [subagents, setSubagents] = useState<Record<string, SubagentProgress>>({});
+  const [question, setQuestion] = useState<AskRequest | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
   const [compactingConversations, setCompacting] = useState<Set<string>>(new Set());
@@ -252,8 +259,25 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
-  const completeGoal = useCallback(async () => {
+  const answerQuestion = useCallback(async (decision: { requestId: string; answer: string }) => {
+    setQuestion((prev) => prev?.id === decision.requestId ? null : prev);
+    try { await moyu().answerQuestion(decision); }
+    catch (error) { toast((error as Error).message, 'error'); }
+  }, [toast]);
+
+  const compactConversation = useCallback(async () => {
     const current = conversationRef.current;
+    if (!current || runningRef.current.has(current.id)) return;
+    try {
+      const context = await moyu().compactConversation(current.id);
+      if (conversationRef.current?.id === current.id) setConversation((prev) => prev?.id === current.id ? { ...prev, context } : prev);
+      toast('历史已压缩，较早对话并入摘要');
+    } catch (error) {
+      toast((error as Error).message, 'error');
+    }
+  }, [toast]);
+
+  const completeGoal = useCallback(async () => {    const current = conversationRef.current;
     if (!current) return;
     try {
       await moyu().updateGoal(current.id, { status: 'complete' });
@@ -415,6 +439,14 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
           (event.children ?? []).forEach((child, index) => { merged[index] = { task: child.task, state: child.ok ? 'done' : 'error' }; });
           return { ...previous, [event.callId]: { ...current, tasks: event.tasks, children: merged } };
         });
+        return;
+      }
+      if (event.type === 'question') {
+        setQuestion(event.request);
+        return;
+      }
+      if (event.type === 'question_done') {
+        setQuestion((prev) => prev?.id === event.requestId ? null : prev);
         return;
       }
       if (event.type === 'context_compaction') {
@@ -819,6 +851,9 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     completeGoal,
     goal,
     subagents,
+    question,
+    answerQuestion,
+    compactConversation,
     updateBotGroup,
     deleteBot,
     saveSettings,

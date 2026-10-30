@@ -10,6 +10,7 @@ import type {
   Conversation,
   Goal,
   MemoryFact,
+  TodoList,
   Message,
   Schedule,
   ScheduleInput,
@@ -164,6 +165,7 @@ export class Store {
   private scheduleList: Schedule[] = [];
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
   private goalList: Goal[] = [];
+  private todoLists: TodoList[] = [];
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
   constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string }) {
@@ -225,6 +227,7 @@ export class Store {
     this.loadMemories();
     this.loadSchedules();
     this.loadGoals();
+    this.loadTodos();
   }
 
   private dir(name: string): string {
@@ -655,6 +658,44 @@ export class Store {
   removeMemory(id: string): void {
     this.memories = this.memories.filter((fact) => fact.id !== id);
     writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+  }
+
+  // ----- todos -----
+  private loadTodos(): void {
+    const file = path.join(this.dataDir, 'todos.json');
+    if (!fs.existsSync(file)) return;
+    this.todoLists = safeJsonParse<TodoList[]>(fs.readFileSync(file, 'utf8'), []);
+  }
+
+  listTodos(conversationId: string): TodoList | undefined {
+    const list = this.todoLists.find((item) => item.conversationId === conversationId);
+    return list ? { ...list, items: list.items.map((item) => ({ ...item })) } : undefined;
+  }
+
+  /** 模型每次提交完整清单（整体替换，不是追加）；空数组 = 清空。 */
+  writeTodos(conversationId: string, botId: string, items: { content: string; done: boolean }[]): TodoList {
+    const conversation = this.getConversation(conversationId);
+    if (!conversation) throw new Error('会话不存在');
+    if (conversation.subagent) throw new Error('子智能体的临时会话不能维护任务清单');
+    if (items.length > 20) throw new Error('任务清单最多 20 项');
+    const cleaned = items.map((item) => {
+      const content = String(item?.content ?? '').trim();
+      if (!content) throw new Error('清单项不能为空');
+      if (content.length > 200) throw new Error('单个清单项最多 200 字');
+      return { content, done: item.done === true };
+    });
+    if (!cleaned.length) {
+      this.persistTodos(this.todoLists.filter((item) => item.conversationId !== conversationId));
+      return { conversationId, botId, items: [], updatedAt: Date.now() };
+    }
+    const record: TodoList = { conversationId, botId, items: cleaned, updatedAt: Date.now() };
+    this.persistTodos([...this.todoLists.filter((item) => item.conversationId !== conversationId), record]);
+    return { ...record, items: record.items.map((item) => ({ ...item })) };
+  }
+
+  private persistTodos(next: TodoList[]): void {
+    writeJsonAtomic(path.join(this.dataDir, 'todos.json'), next);
+    this.todoLists = next;
   }
 
   // ----- goals -----

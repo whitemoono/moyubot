@@ -52,6 +52,47 @@ function ApprovalSheet() {
   );
 }
 
+function QuestionSheet() {
+  const { question, answerQuestion } = useMoyu();
+  const [draft, setDraft] = useState('');
+  useEffect(() => { setDraft(''); }, [question?.id]);
+  if (!question) return null;
+  const send = () => { if (draft.trim()) void answerQuestion({ requestId: question.id, answer: draft }); };
+  return (
+    <Sheet
+      open
+      title="Bot 需要你的回答"
+      subtitle="它查不到，或需要你拍板"
+      onClose={() => void answerQuestion({ requestId: question.id, answer: '' })}
+      footer={
+        <>
+          <span className="spacer" />
+          <Button variant="ghost" onClick={() => void answerQuestion({ requestId: question.id, answer: '' })}>
+            跳过
+          </Button>
+          <Button variant="primary" icon="send" disabled={!draft.trim()} onClick={send}>
+            发送回答
+          </Button>
+        </>
+      }
+    >
+      <p className="approval__summary">{question.question}</p>
+      <textarea
+        className="question__input"
+        value={draft}
+        rows={4}
+        autoFocus
+        placeholder="输入你的回答；留空发送 = 跳过"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send(); }
+        }}
+      />
+      <p className="inline-hint">Ctrl + Enter 发送。跳过后 Bot 会按现有信息继续，并说明它做了什么假设。</p>
+    </Sheet>
+  );
+}
+
 function Toasts() {
   const { toasts } = useMoyu();
   if (!toasts.length) return null;
@@ -132,7 +173,7 @@ export function App() {
           {inspectorOpen && view === 'chat' ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
         </div>
       )}
-      {settingUp ? <Onboarding /> : <ApprovalSheet />}
+      {settingUp ? <Onboarding /> : <><ApprovalSheet /><QuestionSheet /></>}
       {ready && settingsOpen ? <SettingsView key={activeWorkspace?.id} onCreateBot={() => setCreatingBot(true)} /> : null}
       {creatingBot ? <CreateBotDialog onClose={() => setCreatingBot(false)} /> : null}
       <Toasts />

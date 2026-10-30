@@ -17,6 +17,8 @@ import type {
   Conversation,
   ExecResult,
   Goal,
+  AskRequest,
+  ConversationContext,
   MemoryFact,
   ProviderTestResult,
   ProviderConfig,
@@ -80,6 +82,8 @@ export interface MoyuBridge {
   setConversationMode(id: string, mode: 'execute' | 'plan'): Promise<Conversation>;
   activeGoal(conversationId: string): Promise<Goal | undefined>;
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
+  answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
+  compactConversation(id: string): Promise<ConversationContext>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   updateGroupChat(id: string, action: GroupChatAction): Promise<{ group: Conversation; settings: AppSettings }>;
   setGroupChatsCollapsed(workspaceId: string, collapsed: boolean): Promise<AppSettings>;

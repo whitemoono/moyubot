@@ -325,6 +325,28 @@ export interface Goal {
   updatedAt: number;
 }
 
+/** 会话内轻量任务清单：模型每次提交完整清单（整体替换），人一眼看到还剩什么。 */
+export interface TodoList {
+  conversationId: string;
+  botId: string;
+  items: { content: string; done: boolean }[];
+  updatedAt: number;
+}
+
+/** 开放提问：模型信息不足时问用户，等一段文字回答（区别于"是/否"审批）。 */
+export interface AskRequest {
+  id: string;
+  conversationId: string;
+  botId: string;
+  question: string;
+  createdAt: number;
+}
+
+export interface AskDecision {
+  requestId: string;
+  answer: string;
+}
+
 export interface Schedule {
   id: string;
   botId: string;
@@ -448,6 +470,8 @@ export type AgentEvent =
   /** 单个子任务的实时状态：界面据此显示"第几个在跑、第几个已完成"。 */
   | { type: 'subagent'; conversationId: string; callId: string; status: 'child'; index: number; task: string; state: 'running' | 'done' | 'error' }
   | { type: 'subagent'; conversationId: string; callId: string; status: 'done'; tasks: string[]; children?: { conversationId: string; task: string; ok: boolean; text?: string; error?: string }[]; seconds?: number }
+  | { type: 'question'; request: AskRequest }
+  | { type: 'question_done'; requestId: string; answer: string; cancelled: boolean }
   | { type: 'context_usage'; conversationId: string; systemTokens: number; toolTokens: number; historyTokens: number; windowTokens: number; reserveTokens: number }
   | { type: 'usage'; conversationId: string; messageId: string; usage: TokenUsage }
   | { type: 'cloud'; status: CloudStatus; note?: string }

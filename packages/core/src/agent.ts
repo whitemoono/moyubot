@@ -8,9 +8,11 @@ import { ProviderError, OutputLimitError } from './providers';
 import type {
   AgentEvent,
   ApprovalRequest,
+  AskRequest,
   Bot,
   ChatImageInput,
   Conversation,
+  ConversationContext,
   Message,
   SendMessageInput,
   SendMessageResult,
@@ -19,9 +21,9 @@ import type {
 import type { GeneratedImage } from './providers';
 import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
-import { newId, pruneOutput, summarize } from './util';
+import { newId, formatDuration, pruneOutput, summarize, truncate } from './util';
 import { runWorkflow } from './workflow';
-import { contextWindow, outputBudget, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
+import { contextWindow, outputBudget, forceCompact, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
 import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generation';
 
@@ -43,6 +45,8 @@ export interface AgentRuntimeDeps {
   computers?: Record<string, ComputerHost>;
   emit: (event: AgentEvent) => void;
   requestApproval: (request: ApprovalRequest, signal?: AbortSignal) => Promise<boolean>;
+  /** 开放提问：等用户的一段文字回答；缺省时 ask_user 工具不可用。 */
+  requestAnswer?: (request: AskRequest, signal?: AbortSignal) => Promise<string>;
   maxSteps?: number;
 }
 
@@ -58,6 +62,7 @@ export class AgentRuntime {
   private readonly computers: Record<string, ComputerHost>;
   private readonly emit: (event: AgentEvent) => void;
   private readonly requestApproval: AgentRuntimeDeps['requestApproval'];
+  private readonly requestAnswer: AgentRuntimeDeps['requestAnswer'];
   private readonly maxSteps: number;
   private runs = new Map<string, RunState>();
   private runCompletions = new Map<string, Promise<void>>();
@@ -69,6 +74,7 @@ export class AgentRuntime {
     this.computers = deps.computers ?? {};
     this.emit = deps.emit;
     this.requestApproval = deps.requestApproval;
+    this.requestAnswer = deps.requestAnswer;
     this.maxSteps = deps.maxSteps ?? DEFAULT_TASK_LIMITS.maxSteps;
   }
 
@@ -123,7 +129,30 @@ ${bot.workspaceId === 'workspace_local' ? '' : `云电脑工作目录：${comput
 当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
 ${bot.workspaceId === 'workspace_local' ? '执行环境约束：以上角色设定若提及云端 Linux，以本条为准。cloud_exec / cloud_read / cloud_write 是兼容工具名，实际只操作本机 Windows 工作区。命令使用 PowerShell 语法，文件路径位于该工作区目录，不能使用 bash 或云端路径。API 绘图不唤醒云电脑。' : ''}
 任务执行：工具成功后继续处理结果，完成用户要求的检查后及时给出结论，不反复规划或重复读取相同内容。大文件按合理大小分步写入或编辑，单次工具参数避免包含过长文件；调用被截断时，该轮所有工具都未执行，需重新生成完整参数，不能拼接残缺 JSON。已有成功结果不得重复执行。
-${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
+${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.workspaceInstructionsFor(workspace)}`;
+  }
+
+  /**
+   * 工作区指令（AGENTS.md / CLAUDE.md）：用户放在工作区根目录的约定，按 mtime 缓存，
+   * 每步重算系统提示也不重复读盘。与系统提示冲突时以系统提示为准。
+   */
+  private readonly workspaceInstructions = new Map<string, { mtimeMs: number; content: string }>();
+  private workspaceInstructionsFor(dir: string | undefined): string {
+    if (!dir || typeof dir !== 'string') return '';
+    for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+      const file = path.join(dir, name);
+      try {
+        const stat = fs.statSync(file);
+        if (!stat.isFile() || stat.size > 64_000) continue;
+        const cached = this.workspaceInstructions.get(file);
+        if (!cached || cached.mtimeMs !== stat.mtimeMs) {
+          this.workspaceInstructions.set(file, { mtimeMs: stat.mtimeMs, content: truncate(fs.readFileSync(file, 'utf8').trim(), 24_000) });
+        }
+        const content = this.workspaceInstructions.get(file)?.content;
+        if (content) return `\n\n工作区指令（来自 ${name}；这是用户维护的工作区约定，与系统提示冲突时以系统提示为准）：\n${content}`;
+      } catch { /* 文件不存在就跳过 */ }
+    }
+    return '';
   }
 
   private attachmentsFrom(images: ChatImageInput[] | undefined) {
@@ -224,6 +253,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         }
       } catch (failure) {
         error = (failure as Error).message;
+        console.error('[moyu-group-debug]', error, (failure as Error).stack?.split('\n').slice(0, 4).join(' | '));
         if (first.streaming) {
           first.streaming = false; first.error = error;
           this.store.appendMessage(conversationId, first);
@@ -263,7 +293,14 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     const history: AgentMessage[] = params.group ? messagesFor(conversation.messages.slice(conversation.messages.findIndex((item) => item.id === params.userMessage.id), -1), bot.id) : messagesFor([params.userMessage]);
     // Volatile data goes at the tail of the current user turn, never in the system
     // prompt, so the cache prefix (system + prior history) stays byte-identical.
-    if (history[0]?.role === 'user') history[0] = { ...history[0], content: `${history[0].content}\n\n[当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}]` };
+    if (history[0]?.role === 'user') {
+      // 易变数据放在本轮 user 消息尾部而不是 system，保住 system + 历史 的缓存前缀。
+      const index = conversation.messages.findIndex((item) => item.id === params.userMessage.id);
+      const previous = index > 0 ? conversation.messages[index - 1] : undefined;
+      const gap = previous ? Date.now() - previous.createdAt : 0;
+      const elapsed = Number.isFinite(gap) && gap > 0 ? `；距上一条消息 ${formatDuration(gap)}` : '';
+      history[0] = { ...history[0], content: `${history[0].content}\n\n[当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}${elapsed}]` };
+    }
     const taskContext: TaskContext = {};
     const memoryScope = params.group ? conversationId : bot.id;
     // Plan mode lives on the conversation, so it survives restarts and covers every run.
@@ -302,11 +339,16 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         external = new Set(tools.filter(tool => tool.name.startsWith('mcp_') || tool.name === 'load_skill').map(tool => tool.name));
       };
       // Recomputed per step so a goal set mid-run is visible on the next step without a restart.
-      const goalPrompt = () => {
+            const goalPrompt = () => {
         const goal = this.store.activeGoal(conversationId);
         return goal
           ? `\n\n当前目标（跨轮持续，用户下一轮回来时仍然有效）：${goal.objective}\n做到终点用 update_goal 标 complete；做不动就写清卡在哪、缺什么，标 blocked——不要在没核实的情况下声称完成。`
           : '';
+      };
+      const todoPrompt = () => {
+        const list = this.store.listTodos(conversationId);
+        if (!list?.items.length) return '';
+        return `\n\n当前任务清单（用 todo_write 整体维护，做完一项勾一项）：\n${list.items.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.content}`).join('\n')}`;
       };
       let finished = false;
       let firstChunkAt: number | undefined;
@@ -346,13 +388,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
           if (['anthropic-budget', 'gemini-budget'].includes(reasoning.reasoningControl ?? '') && reasoning.thinkingBudgetTokens && reasoning.thinkingBudgetTokens >= outputTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');
           const context = await prepareContext({
             store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
-            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : '') + goalPrompt(), tools,
+            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : '') + goalPrompt() + todoPrompt(), tools,
             signal, emit: params.silent ? () => {} : this.emit, recovery, outputTokens, taskBudget, taskContext,
           });
           callStart = Date.now();
           try {
             turnReasoning = '';
-            outcome = await trackedChat(this.store, bot, conversationId, 'chat', provider, { model: bot.model, ...context, tools, temperature: bot.temperature,
+            outcome = await trackedChat(this.store, bot, conversationId, 'chat', provider, { model: bot.model, ...context, temperature: bot.temperature,
               maxTokens: outputTokens, reasoning, signal }, handlers, message.id, taskBudget);
             break;
           } catch (error) {
@@ -484,6 +526,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             },
             setGoal: (objective) => this.store.setGoal({ conversationId, botId: bot.id, objective }),
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
+            writeTodos: (items) => { this.store.writeTodos(conversationId, bot.id, items); },
+            askUser: this.requestAnswer
+              ? (question) => this.requestAnswer!({ id: newId('ask'), conversationId, botId: bot.id, question, createdAt: Date.now() }, signal)
+              : undefined,
             runScript: async (callId, script, args, write) => {
               if (write && executingMode === 'plan') throw new Error('计划模式下不能运行带写权限的工作流，先提交计划并获得批准');
               if (write) this.emit({ type: 'log', level: 'warn', text: '工作流以完整工具权限运行（write: true）：脚本里的子代理可以执行命令、写文件，逐步审批不适用' });
@@ -650,6 +696,20 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         : { conversationId: conversation.id, task, ok: true as const, text };
     if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: outcome.ok ? 'done' : 'error' });
     return outcome;
+  }
+
+    /**
+   * 手动压缩（界面按钮触发）：不看预算，把最后一条用户消息之前的历史并进摘要。
+   * 生成中禁止，避免和正在推进的任务上下文互相踩。
+   */
+  async compactConversation(conversationId: string): Promise<ConversationContext> {
+    const conversation = this.store.getConversation(conversationId);
+    if (!conversation) throw new Error('会话不存在');
+    if (this.isRunning(conversationId)) throw new Error('会话正在生成中，请等它结束再压缩');
+    const bot = this.store.getBot(conversation.botId);
+    if (!bot) throw new Error('Bot 不存在');
+    const { provider } = this.providerFor(bot);
+    return forceCompact({ store: this.store, bot, conversation, provider, signal: new AbortController().signal, emit: (event) => this.emit(event) });
   }
 
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {

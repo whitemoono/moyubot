@@ -27,6 +27,8 @@ import type {
   UsageQuery,
   UsageReport,
   Goal,
+  AskRequest,
+  ConversationContext,
 } from '@moyu/core';
 import type { ConversationSummary } from '@moyu/core';
 
@@ -73,6 +75,8 @@ const api = {
   setConversationMode: (id: string, mode: 'execute' | 'plan') => invoke<Conversation>('moyu:conversation:mode', id, mode),
   activeGoal: (conversationId: string) => invoke<Goal | undefined>('moyu:goal', conversationId),
   updateGoal: (conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => invoke<Goal>('moyu:goal:update', conversationId, patch),
+  answerQuestion: (decision: { requestId: string; answer: string }) => invoke<void>('moyu:answer', decision),
+  compactConversation: (id: string) => invoke<ConversationContext>('moyu:conversation:compact', id),
   createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
   updateGroupChat: (id: string, action: GroupChatAction) => invoke<{ group: Conversation; settings: AppSettings }>('moyu:group:update', id, action),
   setGroupChatsCollapsed: (workspaceId: string, collapsed: boolean) => invoke<AppSettings>('moyu:group:collapse', workspaceId, collapsed),

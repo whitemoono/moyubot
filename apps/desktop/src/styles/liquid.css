@@ -2043,6 +2043,27 @@ select {
   color: var(--text);
 }
 
+/* ask_user：开放提问的回答框 */
+.question__input {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 88px;
+}
+
+.question__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .approval__cmd {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);

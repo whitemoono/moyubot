@@ -1,7 +1,7 @@
 import type { Store } from './store';
 import type { AgentMessage, ChatProvider, ToolSchema } from './providers';
 import { ProviderError, OutputLimitError } from './providers';
-import type { AgentEvent, Bot, Conversation, Message } from './types';
+import type { AgentEvent, Bot, Conversation, ConversationContext, Message } from './types';
 import { pruneOutput } from './util';
 import { trackedChat } from './usage';
 import { modelProfile, modelSettings, type TaskOutputBudget } from './generation';
@@ -166,13 +166,15 @@ interface PrepareArgs {
 }
 
 /** Keeps the full transcript on disk; only model input gets replaced by a durable summary. */
-export async function prepareContext(args: PrepareArgs): Promise<{ system: string; messages: AgentMessage[] }> {
-  const { store, bot, provider, conversation, userMessageId, system, tools, signal, emit } = args;
+export async function prepareContext(args: PrepareArgs): Promise<{ system: string; messages: AgentMessage[]; tools: ToolSchema[] }> {
+  const { store, bot, provider, conversation, userMessageId, system, signal, emit } = args;
   const coveredLive = args.taskContext?.liveMessages ?? 0;
   const live = coveredLive ? [args.live[0], ...args.live.slice(coveredLive + 1)] : args.live;
   const window = contextWindow(store, bot);
   const reserve = args.outputTokens ?? Math.min(4096, Math.floor(window * .2));
-  const overhead = estimateTokens(JSON.stringify(tools));
+  // 工具列表可被"瘦身"（截短 description），所以用可变变量；预算口径与返回给 provider 的列表一致。
+  let effectiveTools = args.tools;
+  let overhead = estimateTokens(JSON.stringify(effectiveTools));
   // Compaction threshold: Bot override > model setting > historical 90% of the window.
   // A threshold at or above the window simply means "use the full window".
   const compactionLimit = bot.generation?.compactionThresholdTokens ?? modelSettings(store.getProvider(bot.providerId), bot.model).compactionThresholdTokens;
@@ -195,10 +197,27 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   const summary = args.taskContext?.summary ?? conversation.context?.summary;
   const viewer = conversation.group ? bot.id : undefined;
   const initial = [...messagesFor(older, viewer), ...live];
+  // 小窗口 + 工具多：工具列表本身就可能挤爆预算。先试完整描述，装不下就按阶梯截短
+  // （名字和参数保留，模型仍能调用），瘦身后的列表随返回值交给 provider，预算口径与实际输入一致。
+  // 触发条件必须看完整 initial（含历史），只看当前轮会漏掉"压缩路径装不下"的场景。
+  if (estimateTokens(system) + overhead + historyTokens(initial) > budget) {
+    for (const maxChars of [110, 60]) {
+      const slim = effectiveTools.map((tool) => {
+        const description = String(tool.description ?? '');
+        return description.length > maxChars ? { ...tool, description: `${description.slice(0, maxChars - 1)}…` } : tool;
+      });
+      const slimOverhead = estimateTokens(JSON.stringify(slim));
+      if (estimateTokens(system) + slimOverhead + historyTokens(initial) <= budget) {
+        effectiveTools = slim;
+        overhead = slimOverhead;
+        break;
+      }
+    }
+  }
   if (!args.recovery && estimateTokens(summarySystem(system, summary)) + overhead + historyTokens(initial) <= budget) {
     const fittedSystem = summarySystem(system, summary);
     reportUsage(fittedSystem, initial);
-    return { system: fittedSystem, messages: initial };
+    return { system: fittedSystem, messages: initial, tools: effectiveTools };
   }
   // 超预算时先试零成本的原地精简，再考虑付一次模型往返去做摘要：阶梯由宽到窄，
   // 第一个能装进预算的宽度就够用，保留的信息严格多于「丢掉整轮 + 重写摘要」。
@@ -214,7 +233,7 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
       emit({ type: 'context_pruned', conversationId: conversation.id, pruned: attempt.prunedCount, savedTokens: unprunedTokens - prunedTokens });
       emit({ type: 'log', level: 'info', text: `上下文接近上限，已精简 ${attempt.prunedCount} 条较早的工具输出（省回约 ${unprunedTokens - prunedTokens} tokens），未触发历史摘要` });
       reportUsage(prunableSystem, attempt.messages);
-      return { system: prunableSystem, messages: attempt.messages };
+      return { system: prunableSystem, messages: attempt.messages, tools: effectiveTools };
     }
   }
 
@@ -332,9 +351,74 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
     if (args.taskContext) Object.assign(args.taskContext, { summary: accumulated, throughMessageId: next.throughMessageId, liveMessages: coveredLive + liveCutoff - 1 });
     emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'done', context: liveCutoff === 1 && !coveredLive ? next : undefined });
     reportUsage(nextSystem, messages);
-    return { system: nextSystem, messages };
+    return { system: nextSystem, messages, tools: effectiveTools };
   } catch (error) {
     emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'error' });
     throw error;
   }
+}
+
+export interface ForceCompactArgs {
+  store: Store;
+  bot: Bot;
+  conversation: Conversation;
+  provider: ChatProvider;
+  signal: AbortSignal;
+  emit: (event: AgentEvent) => void;
+}
+
+/**
+ * 用户主动压缩（command-compact）：不看预算，把最后一条用户消息之前的全部历史并入摘要。
+ * 与自动压缩共用同一套摘要格式与安全过滤；历史太短时明确拒绝，不浪费一次模型调用。
+ */
+export async function forceCompact(args: ForceCompactArgs): Promise<ConversationContext> {
+  const { store, bot, conversation, provider, signal, emit } = args;
+  const messages = conversation.messages;
+  if (messages.length < 2) throw new Error('还没有可压缩的历史');
+    let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]!.role === 'user') { lastUserIndex = index; break; }
+  }
+  const older = messages.slice(0, lastUserIndex < 0 ? messages.length : lastUserIndex).filter((message) => !message.streaming);
+  if (!older.length) throw new Error('还没有可压缩的历史');
+  const source = transcript(older);
+  if (estimateTokens(source) < 400) throw new Error('历史还很短，不值得压缩');
+
+  const window = contextWindow(store, bot);
+  const summaryAllowance = Math.min(1800, Math.floor(window * .15));
+  let text = '';
+  await trackedChat(store, bot, conversation.id, 'compaction', provider, {
+    model: bot.model,
+    system: SUMMARY_INSTRUCTION + (conversation.context?.summary ? '\n旧摘要会单独给出，请把它的内容合并进新摘要，不要丢失仍然有效的信息。' : ''),
+    messages: [{ role: 'user', content: `已有摘要：${conversation.context?.summary || '（无）'}\n新增历史片段：\n${source}` }],
+    tools: [],
+    temperature: 0,
+    maxTokens: Math.min(outputBudget(store, bot, true), Math.floor(window * .5)),
+    reasoning: Object.fromEntries([['outputTokenParameter', modelSettings(store.getProvider(bot.providerId), bot.model).outputTokenParameter]]),
+    signal,
+  }, {
+    onText: (chunk) => { text += chunk; if (text.length > 32000) throw new SummaryFormatError('摘要正文过长'); },
+    onToolCall: () => { throw new SummaryFormatError('摘要请求不允许调用工具'); },
+  }, undefined, undefined);
+  const parsed = parseSummary(text, summaryAllowance);
+  const next: ConversationContext = {
+    summary: parsed.summary,
+    throughMessageId: older[older.length - 1]?.id ?? conversation.context?.throughMessageId ?? '',
+    compactedMessages: (conversation.context?.compactedMessages ?? 0) + older.length,
+    updatedAt: Date.now(),
+    model: bot.model,
+  };
+  const facts = new Set<string>();
+  parsed.memories.forEach((fact) => facts.add(fact));
+  for (const fact of [...facts].slice(-24)) {
+    if (!/(?:sk-[a-z0-9_-]{16,}|ghp_[a-z0-9]{20,}|github_pat_|-----BEGIN .*PRIVATE KEY|(?:api[_ -]?key|token|密码|密钥)\s*[:：=]\s*\S+)/i.test(fact)) {
+      store.addMemory(conversation.group ? conversation.id : bot.id, fact, false, 'automatic');
+    }
+  }
+  const previous = conversation.context;
+  conversation.context = next;
+  try { store.saveConversation(conversation.id); }
+  catch (error) { conversation.context = previous; throw error; }
+  emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'done', context: next });
+  return next;
 }

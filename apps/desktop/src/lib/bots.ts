@@ -12,6 +12,8 @@ export const BOT_TOOLS = [
   { id: 'web_search', label: '网页搜索', hint: '返回标题/链接/摘要，默认 DuckDuckGo' },
   { id: 'spawn_agent', label: '子智能体', hint: '派只读的调研分身，并行分头查，不继承本对话历史' },
   { id: 'run_script', label: '工作流编排', hint: '用脚本并行调度多个子代理；写权限需脚本显式声明' },
+  { id: 'todo_write', label: '任务清单', hint: '维护本会话的待办清单，做完一项勾一项' },
+  { id: 'ask_user', label: '向用户提问', hint: '信息不足时停下来问你，等文字回答' },
   { id: 'install_mcp', label: '安装 MCP', hint: '对话里安装 MCP 服务并绑定（敏感操作，需确认）' },
   { id: 'install_skill', label: '安装 Skill', hint: '从工作区目录安装技能并绑定（需确认）' },
 ];

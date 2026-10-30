@@ -27,6 +27,9 @@ import type {
   SendMessageInput,
   SendMessageResult,
   ScheduleUpdate,
+  AskRequest,
+  AskDecision,
+  ConversationContext,
   UsageQuery,
 } from '@moyu/core';
 import { createChatProvider } from '@moyu/core';
@@ -159,7 +162,8 @@ export class MoyuApp {
       cloud: this.cloud,
       computers: { workspace_cloud: this.cloud, workspace_local: this.local },
       emit: (event) => this.send('moyu:event', event),
-      requestApproval: (request, signal) => this.waitForApproval(request, signal),
+            requestApproval: (request, signal) => this.waitForApproval(request, signal),
+      requestAnswer: (request, signal) => this.waitForAnswer(request, signal),
     });
 
     this.scheduler = new ScheduleRunner({
@@ -230,8 +234,7 @@ export class MoyuApp {
     if (event.type === 'log' && ['error', 'warn'].includes(event.level)) this.diagnostics.record({ source: '应用', message: event.text });
   }
 
-  private waitForApproval(request: ApprovalRequest, signal?: AbortSignal): Promise<boolean> {
-    signal?.throwIfAborted();
+  private waitForApproval(request: ApprovalRequest, signal?: AbortSignal): Promise<boolean> {    signal?.throwIfAborted();
     this.send('moyu:event', { type: 'approval', request } satisfies AgentEvent);
     return new Promise<boolean>((resolve) => {
       const settle = (approved: boolean) => { signal?.removeEventListener('abort', canceled); resolve(approved); };
@@ -247,6 +250,29 @@ export class MoyuApp {
         settle(false);
       }, 120_000);
       this.approvals.set(request.id, { resolve: settle, timer });
+      signal?.addEventListener('abort', canceled, { once: true });
+    });
+  }
+
+    /** 开放提问：等用户的一段文字。5 分钟没答按"跳过"处理，不悬死任务。 */
+  private asks = new Map<string, { resolve: (answer: string) => void; timer: NodeJS.Timeout }>();
+
+  private waitForAnswer(request: AskRequest, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted();
+    this.send('moyu:event', { type: 'question', request } satisfies AgentEvent);
+    return new Promise<string>((resolve) => {
+      const settle = (answer: string) => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', canceled);
+        this.asks.delete(request.id);
+        resolve(answer);
+      };
+      const canceled = () => {
+        this.send('moyu:event', { type: 'question_done', requestId: request.id, answer: '', cancelled: true } satisfies AgentEvent);
+        settle('');
+      };
+      const timer = setTimeout(canceled, 300_000);
+      this.asks.set(request.id, { resolve: settle, timer });
       signal?.addEventListener('abort', canceled, { once: true });
     });
   }
@@ -456,6 +482,15 @@ export class MoyuApp {
       pending.resolve(decision.approved);
       this.send('moyu:event', { type: 'approval_done', requestId: decision.requestId, approved: decision.approved } satisfies AgentEvent);
     });
+    handle('moyu:answer', (_event, decision: AskDecision) => {
+      const pending = this.asks.get(decision.requestId);
+      if (!pending) throw new Error('这个问题已经不在等待中');
+      this.asks.delete(decision.requestId);
+      const answer = typeof decision.answer === 'string' ? decision.answer.slice(0, 8000) : '';
+      pending.resolve(answer);
+      this.send('moyu:event', { type: 'question_done', requestId: decision.requestId, answer, cancelled: !answer.trim() } satisfies AgentEvent);
+    });
+    handle('moyu:conversation:compact', (_event, id: string): Promise<ConversationContext> => this.runtime.compactConversation(id));
 
     handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
     handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));

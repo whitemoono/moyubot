@@ -164,7 +164,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'set_goal',
     description:
-      '把一件需要跨多轮才能做完的事记成本会话的目标：用户下一轮回来时你会记得它。要写清可验收的完成条件，不要写成待办清单；一个会话同时只有一个进行中的目标，新目标会取代旧的。',
+      '把一件需要跨多轮才能做完的事记成本会话目标：要写清可验收的完成条件，不要写成待办清单；一个会话同时只有一个进行中的目标，新目标取代旧的。',
     parameters: {
       type: 'object',
       properties: { objective: { type: 'string', description: '目标与完成条件，最多 2000 字' } },
@@ -173,7 +173,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'update_goal',
-    description: '收尾当前目标。真的做到才标 complete；做不动就写清卡在哪、缺什么，标 blocked。不要用"已完成"糊弄没核实的进度。',
+    description: '收尾当前目标：真的做到才标 complete；做不动就写清卡在哪、缺什么，标 blocked，不要拿没核实的进度糊弄。',
     parameters: {
       type: 'object',
       properties: {
@@ -186,7 +186,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'run_script',
     description:
-      '用一段 JS 脚本编排多个子代理，适合"同一件事要对 N 个目标各做一遍"或"先粗筛再精读"。可用原语：agent(任务, {background}) 派一个子代理并拿到它的结论；parallel([() => ...]) 并发跑；pipeline(数组, 阶段1, 阶段2, ...) 让每项独立走完整条链；phase(标题)、log(内容) 打进度；args 是传入的对象。默认只读——脚本里的子代理只能读文件、抓网页、搜索；只有 write:true 才拿完整工具集（可执行命令/写文件，逐步审批不适用）。',
+      '用一段 JS 脚本编排多个子代理，适合"同一件事对 N 个目标各做一遍"。原语：agent(任务) 派一个子代理并拿结论；parallel([fn, fn]) 并发；pipeline(数组, 阶段, ...) 每项独立走完整条链；phase(标题)/log(内容) 打进度；args 是传入对象。默认只读；write:true 才给完整工具集（可执行命令/写文件，逐步审批不适用）。',
     parameters: {
       type: 'object',
       properties: {
@@ -198,9 +198,34 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'todo_write',
+    description:
+      '维护本会话任务清单，每次提交完整清单（整体替换，不是追加），做完标 done:true。三步以上的多步任务先立清单再动手；简单动作不要用。',
+    parameters: {
+      type: 'object',
+      properties: {
+        todos: {
+          type: 'array',
+          items: { type: 'object', properties: { content: { type: 'string', description: '一句话，可核对' }, done: { type: 'boolean' } }, required: ['content', 'done'] },
+        },
+      },
+      required: ['todos'],
+    },
+  },
+  {
+    name: 'ask_user',
+    description:
+      '向用户提一个开放问题并等文字回答。用于信息不足且查不到、或多个方案要用户拍板；一次只问一个，把背景、选项和你的推荐写进问题。用户可能跳过，那时按现有信息继续并说明假设。',
+    parameters: {
+      type: 'object',
+      properties: { question: { type: 'string', description: '要问的问题，含必要上下文、可选项与你的推荐' } },
+      required: ['question'],
+    },
+  },
+  {
     name: 'spawn_agent',
     description:
-      '把一个自包含的调研任务交给独立的子智能体。子智能体只有只读能力（读文件、抓网页、搜索、回忆），不能执行命令、不能写文件、不能建定时任务，也不会继承本次对话的历史——所以要把它需要的背景和目标写全。适合通读大量文件、横向对比多个来源、分头核查多个主题；不适合需要改动任何东西的任务。传 tasks 数组可并行派发最多 4 个互不依赖的子任务。',
+      '把一个自包含的调研任务交给只读子代理：能读文件/抓网页/搜索，不能执行命令、写文件、建任务，也不继承本对话历史——背景和目标要写全。传 tasks 数组可并行派发最多 4 个独立子任务。适合通读大量文件、对比多来源、分头核查；不适合需要改动任何东西的任务。',
     parameters: {
       type: 'object',
       properties: {
@@ -239,6 +264,10 @@ export interface ToolContext {
   /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。 */
   setGoal?: (objective: string) => { id: string; objective: string };
   updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string }) => { status: string; note?: string };
+  /** 会话内任务清单：整体替换。 */
+  writeTodos?: (items: { content: string; done: boolean }[]) => void;
+  /** 开放提问；resolve 为用户的文字回答，空串 = 用户跳过。 */
+  askUser?: (question: string) => Promise<string>;
   /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
   signal?: AbortSignal;
@@ -422,6 +451,21 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'todo_write': {
+        if (!ctx.writeTodos) throw new Error('当前运行时不支持任务清单');
+        if (!Array.isArray(args.todos)) throw new Error('todos 必须是数组');
+        const items = args.todos.map((item) => ({ content: String((item as { content?: unknown })?.content ?? ''), done: (item as { done?: unknown })?.done === true }));
+        ctx.writeTodos(items);
+        const open = items.filter((item) => !item.done).length;
+        return finish({ ok: true, summary: `任务清单已更新：共 ${items.length} 项，未完成 ${open}`, detail: items.map((item, index) => `${item.done ? '[x]' : '[ ]'} ${index + 1}. ${item.content}`).join('\n') || '（清单已清空）' });
+      }
+      case 'ask_user': {
+        if (!ctx.askUser) throw new Error('当前运行时不支持向用户提问');
+        const question = requireString(args, 'question');
+        const answer = await ctx.askUser(question);
+        if (!answer.trim()) return finish({ ok: false, summary: '用户跳过了这个问题', detail: '不要臆造用户的回答；按现有信息继续，并明确说明你做了什么假设。' });
+        return finish({ ok: true, summary: `用户已回答：${summarize(answer, 80)}`, detail: answer });
+      }
       case 'run_script': {
         if (!ctx.runScript) throw new Error('当前运行时不支持工作流编排');
         const script = requireString(args, 'script');
