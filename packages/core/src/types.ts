@@ -308,6 +308,23 @@ export interface MemoryFact {
   source?: 'manual' | 'automatic';
 }
 
+/**
+ * 跨轮目标：会话级状态，不是 Bot 配置。
+ * moyubot 不做自动续跑（那会无人值守地烧 token），目标只负责让模型和用户都记得
+ * "这一轮还没做完什么"，推进由用户或定时任务发起。
+ */
+export interface Goal {
+  id: string;
+  botId: string;
+  conversationId: string;
+  objective: string;
+  status: 'active' | 'complete' | 'blocked';
+  /** 结束时的一句话交代：完成了什么，或者卡在哪。 */
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Schedule {
   id: string;
   botId: string;

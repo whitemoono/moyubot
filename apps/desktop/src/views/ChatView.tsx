@@ -393,7 +393,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, toast } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, completeGoal, toast } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -433,6 +433,11 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
             <span className="chat__name">{conversation.group ? conversation.title : bot.name}</span>
           </button>
         </h2>
+        {goal ? <div className="chat-goal" role="status" title={`当前目标：${goal.objective}`}>
+          <Icon name="spark" size={13} />
+          <span className="chat-goal__text">{goal.objective}</span>
+          <button type="button" className="chat-goal__done" aria-label="标记目标完成" title="标记目标完成" onClick={() => void completeGoal()}><Icon name="check" size={13} /></button>
+        </div> : null}
       </header>
 
       <div className="chat__stage">

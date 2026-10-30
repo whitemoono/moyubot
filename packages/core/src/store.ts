@@ -8,6 +8,7 @@ import type {
   SidebarBotGroup,
   CloudHostSettings,
   Conversation,
+  Goal,
   MemoryFact,
   Message,
   Schedule,
@@ -161,6 +162,8 @@ export class Store {
   private conversations = new Map<string, Conversation>();
   private memories: MemoryFact[] = [];
   private scheduleList: Schedule[] = [];
+  /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
+  private goalList: Goal[] = [];
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
   constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string }) {
@@ -221,6 +224,7 @@ export class Store {
     this.usage.backfill(this.conversations.values(), this.settings.bots);
     this.loadMemories();
     this.loadSchedules();
+    this.loadGoals();
   }
 
   private dir(name: string): string {
@@ -651,6 +655,73 @@ export class Store {
   removeMemory(id: string): void {
     this.memories = this.memories.filter((fact) => fact.id !== id);
     writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+  }
+
+  // ----- goals -----
+  private loadGoals(): void {
+    const file = path.join(this.dataDir, 'goals.json');
+    if (!fs.existsSync(file)) return;
+    this.goalList = safeJsonParse<Goal[]>(fs.readFileSync(file, 'utf8'), []);
+  }
+
+  private persistGoals(next: Goal[]): void {
+    writeJsonAtomic(path.join(this.dataDir, 'goals.json'), next);
+    this.goalList = next;
+  }
+
+  listGoals(conversationId?: string): Goal[] {
+    return this.goalList
+      .filter((goal) => !conversationId || goal.conversationId === conversationId)
+      .map((goal) => ({ ...goal }));
+  }
+
+  /** 一本会话同时只有一个在推进的目标；新目标覆盖旧的活动目标，历史目标保留可查。 */
+  activeGoal(conversationId: string): Goal | undefined {
+    const goal = this.goalList.find((item) => item.conversationId === conversationId && item.status === 'active');
+    return goal ? { ...goal } : undefined;
+  }
+
+  setGoal(input: { conversationId: string; botId: string; objective: string }): Goal {
+    const conversation = this.getConversation(input.conversationId);
+    if (!conversation) throw new Error('会话不存在');
+    if (conversation.subagent) throw new Error('子智能体的临时会话不能设定目标');
+    const objective = input.objective.trim();
+    if (!objective) throw new Error('目标不能为空');
+    if (objective.length > 2000) throw new Error('目标描述最多 2000 字，请写清可验收的完成条件');
+    const goal: Goal = {
+      id: newId('goal'),
+      botId: input.botId,
+      conversationId: input.conversationId,
+      objective,
+      status: 'active',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    // 只让一本会话有一个活动目标：把之前的活动目标标成 blocked 而不是悄悄丢弃。
+    const next = this.goalList.map((item) =>
+      item.conversationId === input.conversationId && item.status === 'active'
+        ? { ...item, status: 'blocked' as const, note: '被新的目标取代', updatedAt: Date.now() }
+        : item,
+    );
+    this.persistGoals([...next, goal]);
+    return { ...goal };
+  }
+
+  updateGoal(conversationId: string, patch: { status?: Goal['status']; note?: string }): Goal {
+    const index = this.goalList.findIndex((item) => item.conversationId === conversationId && item.status === 'active');
+    if (index < 0) throw new Error('这个会话没有进行中的目标');
+    if (patch.status && !['active', 'complete', 'blocked'].includes(patch.status)) throw new Error('目标状态无效');
+    const current = this.goalList[index]!;
+    const goal: Goal = {
+      ...current,
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.note !== undefined ? { note: patch.note.trim().slice(0, 500) } : {}),
+      updatedAt: Date.now(),
+    };
+    const next = [...this.goalList];
+    next[index] = goal;
+    this.persistGoals(next);
+    return { ...goal };
   }
 
   // ----- schedules -----

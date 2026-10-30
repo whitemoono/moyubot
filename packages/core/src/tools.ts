@@ -162,6 +162,28 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'set_goal',
+    description:
+      '把一件需要跨多轮才能做完的事记成本会话的目标：用户下一轮回来时你会记得它。要写清可验收的完成条件，不要写成待办清单；一个会话同时只有一个进行中的目标，新目标会取代旧的。',
+    parameters: {
+      type: 'object',
+      properties: { objective: { type: 'string', description: '目标与完成条件，最多 2000 字' } },
+      required: ['objective'],
+    },
+  },
+  {
+    name: 'update_goal',
+    description: '收尾当前目标。真的做到才标 complete；做不动就写清卡在哪、缺什么，标 blocked。不要用"已完成"糊弄没核实的进度。',
+    parameters: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['complete', 'blocked'] },
+        note: { type: 'string', description: '一句话交代：完成了什么，或者卡在哪、缺什么' },
+      },
+      required: ['status'],
+    },
+  },
+  {
     name: 'spawn_agent',
     description:
       '把一个自包含的调研任务交给独立的子智能体。子智能体只有只读能力（读文件、抓网页、搜索、回忆），不能执行命令、不能写文件、不能建定时任务，也不会继承本次对话的历史——所以要把它需要的背景和目标写全。适合通读大量文件、横向对比多个来源、分头核查多个主题；不适合需要改动任何东西的任务。传 tasks 数组可并行派发最多 4 个互不依赖的子任务。',
@@ -200,6 +222,9 @@ export interface ToolContext {
   requireApproval?: (summary: string) => Promise<boolean>;
   /** 计划获批后的落库回调。 */
   approvePlan?: (plan: { title: string; steps: string[] }) => void;
+  /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。 */
+  setGoal?: (objective: string) => { id: string; objective: string };
+  updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string }) => { status: string; note?: string };
   signal?: AbortSignal;
 }
 
@@ -381,6 +406,19 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'set_goal': {
+        if (!ctx.setGoal) throw new Error('当前运行时不支持跨轮目标');
+        const objective = requireString(args, 'objective');
+        const goal = ctx.setGoal(objective);
+        return finish({ ok: true, summary: `目标已记录：${summarize(goal.objective, 80)}`, detail: '下一轮对话我会带着这个目标继续。要做完了就调用 update_goal。' });
+      }
+      case 'update_goal': {
+        if (!ctx.updateGoal) throw new Error('当前运行时不支持跨轮目标');
+        const status = String(args.status);
+        if (status !== 'complete' && status !== 'blocked') throw new Error('status 只能是 complete 或 blocked');
+        const goal = ctx.updateGoal({ status, note: typeof args.note === 'string' ? args.note : undefined });
+        return finish({ ok: true, summary: status === 'complete' ? '目标已标记完成' : '目标已标记受阻', detail: goal.note ?? '' });
+      }
       case 'exit_plan_mode': {
         if (ctx.conversationMode !== 'plan') throw new Error('当前不在计划模式，无需提交计划');
         const title = requireString(args, 'plan');

@@ -300,6 +300,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         allowed = new Set(tools.map(tool => tool.name));
         external = new Set(tools.filter(tool => tool.name.startsWith('mcp_') || tool.name === 'load_skill').map(tool => tool.name));
       };
+      // Recomputed per step so a goal set mid-run is visible on the next step without a restart.
+      const goalPrompt = () => {
+        const goal = this.store.activeGoal(conversationId);
+        return goal
+          ? `\n\n当前目标（跨轮持续，用户下一轮回来时仍然有效）：${goal.objective}\n做到终点用 update_goal 标 complete；做不动就写清卡在哪、缺什么，标 blocked——不要在没核实的情况下声称完成。`
+          : '';
+      };
       let finished = false;
       let firstChunkAt: number | undefined;
       let callStart = Date.now();
@@ -338,7 +345,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
           if (['anthropic-budget', 'gemini-budget'].includes(reasoning.reasoningControl ?? '') && reasoning.thinkingBudgetTokens && reasoning.thinkingBudgetTokens >= outputTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');
           const context = await prepareContext({
             store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
-            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : ''), tools,
+            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : '') + goalPrompt(), tools,
             signal, emit: params.silent ? () => {} : this.emit, recovery, outputTokens, taskBudget, taskContext,
           });
           callStart = Date.now();
@@ -474,6 +481,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
               this.store.setConversationMode(conversationId, 'execute', { ...plan, approvedAt: Date.now() });
               this.emit({ type: 'log', level: 'info', text: '计划已批准，本轮后续步骤恢复写权限' });
             },
+            setGoal: (objective) => this.store.setGoal({ conversationId, botId: bot.id, objective }),
+            updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
             signal,
           });
 

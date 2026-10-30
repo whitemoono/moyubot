@@ -10,6 +10,7 @@ import type {
   GroupChatAction,
   CloudStatus,
   Conversation,
+  Goal,
   MemoryFact,
   Message,
   Schedule,
@@ -64,6 +65,9 @@ interface MoyuContextValue {
   runningGroupIds: Set<string>;
   conversation: Conversation | null;
   setConversationMode: (mode: 'execute' | 'plan') => Promise<void>;
+  /** 当前会话还在推进的跨轮目标；不自动续跑，只负责让人和模型都记得它。 */
+  goal: Goal | undefined;
+  completeGoal: () => Promise<void>;
   conversations: ConversationSummary[];
   running: boolean;
   runningBotIds: Set<string>;
@@ -164,6 +168,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [activeBotId, setActiveBotId] = useState<string>('');
   const [local, setLocal] = useState<CloudStatus>({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 });
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [goal, setGoal] = useState<Goal | undefined>(undefined);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
   const [compactingConversations, setCompacting] = useState<Set<string>>(new Set());
@@ -234,6 +239,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await moyu().setConversationMode(current.id, mode);
       if (conversationRef.current?.id === updated.id) setConversation(updated);
+    } catch (error) {
+      toast((error as Error).message, 'error');
+    }
+  }, [toast]);
+
+  const completeGoal = useCallback(async () => {
+    const current = conversationRef.current;
+    if (!current) return;
+    try {
+      await moyu().updateGoal(current.id, { status: 'complete' });
+      setGoal(undefined);
+      toast('目标已标记完成');
     } catch (error) {
       toast((error as Error).message, 'error');
     }
@@ -363,6 +380,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         setRunning(next);
         if (!event.ok && event.error && event.error !== '已停止') toast(event.error, 'error');
         void loadConversations();
+        // 一轮结束时目标可能刚被 set_goal / update_goal 改过，顺手同步一次。
+        if (conversationRef.current?.id === event.conversationId) {
+          void moyu().activeGoal(event.conversationId).then(setGoal).catch(() => {});
+        }
         void moyu().conversation(event.conversationId).then((conv) => {
           if (conv && settingsRef.current.bots.some((item) => item.id === conv.botId) && (conv.botId !== selectedBotRef.current || viewRef.current !== 'chat')) {
             void updateBotMetadata(conv.botId, { sidebar: { unread: true } }).catch((error: Error) => toast(error.message, 'error'));
@@ -442,7 +463,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void loadConversations();
     void Promise.all([settingsRef.current.bots.some((item) => item.id === activeBotId) ? moyu().botConversation(activeBotId) : moyu().conversation(activeBotId), moyu().memories(activeBotId)]).then(([conv, facts]) => {
-      if (conv && !cancelled && selectedBotRef.current === activeBotId) { setConversation(conv); setMemories(facts); }
+      if (conv && !cancelled && selectedBotRef.current === activeBotId) {
+        setConversation(conv); setMemories(facts);
+        void moyu().activeGoal(conv.id).then((value) => { if (!cancelled && selectedBotRef.current === activeBotId) setGoal(value); }).catch(() => {});
+      }
     }).catch((error: Error) => { if (!cancelled) toast(error.message, 'error'); });
     return () => { cancelled = true; };
   }, [activeBotId, loadConversations, toast]);
@@ -771,6 +795,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     saveBot,
     updateBotMetadata,
     setConversationMode,
+    completeGoal,
+    goal,
     updateBotGroup,
     deleteBot,
     saveSettings,
