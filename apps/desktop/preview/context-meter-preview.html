@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ContextMeter 预览</title>
+<style>
+  :root {
+    --text: #ececec; --text-dim: #b4b4b4; --text-faint: #7c7c7c;
+    --line: #ffffff14; --line-strong: #ffffff24; --selected: #ffffff12;
+    --surface: #1b1b1d; --bg: #121213;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 600px at 30% -10%, #22242a, #0e0e10 60%); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 46px; padding: 56px 24px; }
+  .case { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  .case-title { font-size: 12px; color: var(--text-faint); letter-spacing: .3px; }
+  .composer-wrap { position: relative; width: 600px; max-width: 94vw; }
+  .composer { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 12px; border-radius: 26px;
+    background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 6px 26px #00000022; }
+  .composer__input { min-height: 26px; font-size: 13px; color: var(--text); line-height: 1.6; opacity: .85; }
+  .composer__bar { display: flex; align-items: center; justify-content: space-between; }
+  .chip { font-size: 11px; color: var(--text-dim); padding: 4px 8px; border-radius: 8px; background: var(--selected); }
+  .send { width: 30px; height: 30px; border-radius: 50%; background: #5e5e5e; display: grid; place-items: center; color: #fff; font-size: 14px; }
+
+  .ctx-bar-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; padding: 0 6px; }
+  .ctx-seg { position: relative; }
+  .ctx-seg__trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 6px;
+    font-size: 10px; line-height: 1.4; color: var(--text-faint); font-variant-numeric: tabular-nums; border: 0; background: transparent; font-family: inherit; }
+  .ctx-seg__trigger svg { opacity: .8; }
+  .ctx-seg__trigger.open, .ctx-seg__trigger:hover { background: var(--selected); color: var(--text); }
+
+  .ctx-pop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 258px; padding: 12px 14px 11px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 14px 38px #00000050; text-align: left; }
+  .ctx-pop--left { left: 0; width: 216px; }
+  .ctx-pop--center { left: 50%; transform: translateX(-50%); width: 232px; }
+  .ctx-pop--right { left: auto; right: 0; }
+  .ctx-pop__title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 11px; color: var(--text-dim); }
+  .ctx-pop__title b { margin-left: auto; font-weight: 550; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ctx-rows { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+  .ctx-rows > div { display: flex; align-items: baseline; font-size: 11px; }
+  .ctx-rows dt { color: var(--text-faint); }
+  .ctx-rows dd { margin: 0 0 0 auto; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .ctx-pop__head { display: flex; align-items: baseline; gap: 8px; font-size: 11px; color: var(--text-dim); }
+  .ctx-pop__head strong { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ctx-pop__window { font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .ctx-bar { display: flex; gap: 1px; height: 5px; margin: 10px 0 11px; border-radius: 999px; overflow: hidden; background: var(--line); }
+  .ctx-bar__seg { height: 100%; }
+  .ctx-bar__seg--system { background: #8a8a8a; }
+  .ctx-bar__seg--tools { background: #8587f0; }
+  .ctx-bar__seg--messages { background: #5b8def; }
+  .ctx-legend { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+  .ctx-legend li { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
+  .ctx-legend b { margin-left: auto; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ctx-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .ctx-dot--system { background: #8a8a8a; } .ctx-dot--tools { background: #8587f0; } .ctx-dot--messages { background: #5b8def; }
+
+  /* 思考强度滑块 */
+  .effort-picker { position: relative; display: inline-flex; }
+  .effort-picker__trigger { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 8px; border-radius: 8px; font-size: 11px; color: var(--text-dim); background: transparent; border: 0; font-family: inherit; }
+  .effort-picker__trigger:hover, .effort-picker__trigger.open { background: var(--selected); color: var(--text); }
+  .effort-pop { position: absolute; bottom: calc(100% + 8px); right: 0; width: 232px; padding: 13px 14px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 14px 38px #00000050; text-align: left; }
+  .effort-pop__level { text-align: center; font-size: 13px; font-weight: 600; color: #3b82f6; }
+  .effort-pop__model { margin: 4px 0 12px; text-align: center; font-size: 10px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .effort-slider { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 5px; margin: 0; border-radius: 999px; outline: none; }
+  .effort-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 5px #00000033; cursor: pointer; }
+  .effort-pop__stops { display: flex; justify-content: space-between; margin-top: 7px; }
+  .effort-stop { padding: 2px 6px; border-radius: 5px; font-size: 10px; color: var(--text-faint); background: transparent; border: 0; font-family: inherit; }
+  .effort-stop.is-active { color: #3b82f6; font-weight: 600; }
+  .effort-pop__hint { margin: 10px 0 0; font-size: 9px; line-height: 1.5; text-align: center; color: var(--text-faint); }
+</style>
+</head>
+<body>
+  <div class="case">
+    <div class="case-title">状态栏（悬停哪段，弹哪段面板）</div>
+    <div class="composer-wrap">
+      <div class="composer">
+        <div class="composer__input">今天帮我把日志里的报错归类一下…</div>
+        <div class="composer__bar"><span class="chip">deepseek-v4.1 ▾</span><span class="send">↑</span></div>
+      </div>
+      <div class="ctx-bar-row">
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg><span>10 轮 47 步 · 95 tok/s</span></button>
+        </div>
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg><span>5.1M tok · 缓存命中 96%</span></button>
+        </div>
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 12l4.2-4.2"/></svg><span>20%</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="case">
+    <div class="case-title">① 会话统计</div>
+    <div class="composer-wrap">
+      <div class="composer"><div class="composer__input">…</div><div class="composer__bar"><span class="chip">deepseek-v4.1 ▾</span><span class="send">↑</span></div></div>
+      <div class="ctx-bar-row">
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger open"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg><span>10 轮 47 步 · 95 tok/s</span></button>
+          <div class="ctx-pop ctx-pop--left">
+            <div class="ctx-pop__title"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg>会话统计</div>
+            <dl class="ctx-rows">
+              <div><dt>模型用时</dt><dd>23 分 10 秒</dd></div>
+              <div><dt>工具调用用时</dt><dd>2 分 5 秒</dd></div>
+              <div><dt>首 token 平均（TTFT）</dt><dd>3.3 秒</dd></div>
+              <div><dt>输出速度（TPS）</dt><dd>95 tok/s</dd></div>
+            </dl>
+          </div>
+        </div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg><span>5.1M tok · 缓存命中 96%</span></button></div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 12l4.2-4.2"/></svg><span>20%</span></button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="case">
+    <div class="case-title">② Token 用量</div>
+    <div class="composer-wrap">
+      <div class="composer"><div class="composer__input">…</div><div class="composer__bar"><span class="chip">deepseek-v4.1 ▾</span><span class="send">↑</span></div></div>
+      <div class="ctx-bar-row">
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg><span>10 轮 47 步 · 95 tok/s</span></button></div>
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger open"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg><span>5.1M tok · 缓存命中 96%</span></button>
+          <div class="ctx-pop ctx-pop--center">
+            <div class="ctx-pop__title"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg>Token 用量<b>5,128,196 tok</b></div>
+            <dl class="ctx-rows">
+              <div><dt>缓存命中</dt><dd>96%</dd></div>
+              <div><dt>未缓存输入</dt><dd>190,592 tok</dd></div>
+              <div><dt>缓存读取</dt><dd>4,868,096 tok</dd></div>
+              <div><dt>输出</dt><dd>69,508 tok</dd></div>
+            </dl>
+          </div>
+        </div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 12l4.2-4.2"/></svg><span>20%</span></button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="case">
+    <div class="case-title">③ 上下文已用</div>
+    <div class="composer-wrap">
+      <div class="composer"><div class="composer__input">…</div><div class="composer__bar"><span class="chip">deepseek-v4.1 ▾</span><span class="send">↑</span></div></div>
+      <div class="ctx-bar-row">
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg><span>10 轮 47 步 · 95 tok/s</span></button></div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg><span>5.1M tok · 缓存命中 96%</span></button></div>
+        <div class="ctx-seg">
+          <button class="ctx-seg__trigger open"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 12l4.2-4.2"/></svg><span>20%</span></button>
+          <div class="ctx-pop ctx-pop--right">
+            <div class="ctx-pop__head"><span>上下文已用</span><strong>20%</strong><span class="ctx-pop__window">~195K / 1M</span></div>
+            <div class="ctx-bar">
+              <i class="ctx-bar__seg ctx-bar__seg--system" style="width:0.15%"></i>
+              <i class="ctx-bar__seg ctx-bar__seg--tools" style="width:0.99%"></i>
+              <i class="ctx-bar__seg ctx-bar__seg--messages" style="width:13.9%"></i>
+            </div>
+            <ul class="ctx-legend">
+              <li><i class="ctx-dot ctx-dot--system"></i>系统提示词<b>~1.5K</b></li>
+              <li><i class="ctx-dot ctx-dot--tools"></i>工具定义<b>~9.9K</b></li>
+              <li><i class="ctx-dot ctx-dot--messages"></i>对话消息<b>~139K</b></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="case">
+    <div class="case-title">④ 思考强度滑块（模型选择器旁）</div>
+    <div class="composer-wrap">
+      <div class="composer">
+        <div class="composer__input">今天帮我把日志里的报错归类一下…</div>
+        <div class="composer__bar">
+          <span style="display:inline-flex;gap:4px;align-items:center">
+            <span class="chip">deepseek-v4.1 ▾</span>
+            <span class="effort-picker">
+              <button class="effort-picker__trigger open"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>思考 高</span></button>
+              <div class="effort-pop">
+                <div class="effort-pop__level">High</div>
+                <div class="effort-pop__model">DeepSeek-Flash · Qoder</div>
+                <input type="range" class="effort-slider" min="0" max="2" step="1" value="2" readonly style="background: linear-gradient(to right, #3b82f6 100%, var(--line-strong) 100%)" />
+                <div class="effort-pop__stops">
+                  <button class="effort-stop">低</button>
+                  <button class="effort-stop">中</button>
+                  <button class="effort-stop is-active">高</button>
+                </div>
+                <p class="effort-pop__hint">更充分的推理，更慢更贵。在 Bot 设置里可改回「沿用模型配置」。</p>
+              </div>
+            </span>
+          </span>
+          <span class="send">↑</span>
+        </div>
+      </div>
+      <div class="ctx-bar-row">
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l2.8 1.8"/></svg><span>10 轮 47 步 · 95 tok/s</span></button></div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20h16M6 16v-4M12 16V5M18 16V9"/></svg><span>5.1M tok · 缓存命中 96%</span></button></div>
+        <div class="ctx-seg"><button class="ctx-seg__trigger"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 12l4.2-4.2"/></svg><span>20%</span></button></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

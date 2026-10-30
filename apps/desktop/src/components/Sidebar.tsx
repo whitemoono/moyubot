@@ -6,7 +6,7 @@ import { useMoyu } from '../state';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
 import { IconButton } from './Glass';
-import type { View } from '../state';
+import type { SettingsSection, View } from '../state';
 import type { IconName } from './Icon';
 import { BOT_ACTIVITY } from '../lib/bot-activity';
 import { BotContextMenu } from './BotContextMenu';
@@ -19,11 +19,16 @@ import { MobileConnectionDialog } from './MobileConnectionDialog';
 import { GroupContextMenu } from './GroupContextMenu';
 import { GroupChatContextMenu } from './GroupChatContextMenu';
 
-const FEATURES: { id: View | 'usage'; label: string; icon: IconName }[] = [
-  { id: 'bots', label: 'Bot 管理', icon: 'bots' },
-  { id: 'cloud', label: '共享云电脑', icon: 'cloud' },
-  { id: 'usage', label: '用量', icon: 'usage' },
-  { id: 'settings', label: '设置', icon: 'settings' },
+type MenuAction = { kind: 'settings'; section: SettingsSection } | { kind: 'view'; view: View };
+
+const FEATURES: { key: string; label: string; icon: IconName; action: MenuAction }[] = [
+  { key: 'appearance', label: '通用', icon: 'sliders', action: { kind: 'settings', section: 'appearance' } },
+  { key: 'providers', label: '模型供应商', icon: 'spark', action: { kind: 'settings', section: 'providers' } },
+  { key: 'capabilities', label: 'MCP 与 Skills', icon: 'plug', action: { kind: 'settings', section: 'capabilities' } },
+  { key: 'bots', label: 'Bot 管理', icon: 'bots', action: { kind: 'view', view: 'bots' } },
+  { key: 'cloud', label: '共享云电脑', icon: 'cloud', action: { kind: 'view', view: 'cloud' } },
+  { key: 'usage', label: '用量', icon: 'usage', action: { kind: 'settings', section: 'usage' } },
+  { key: 'settings', label: '设置', icon: 'settings', action: { kind: 'settings', section: 'profile' } },
 ];
 
 export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boolean; onExpand: () => void; onCreateBot: () => void }) {
@@ -188,8 +193,8 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
       }}>
         <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setMobileOpen(true); }}><Icon name="plug" size={16}/><span><strong>连接手机</strong></span><Icon name="chevron" size={12}/></button>
-        {FEATURES.map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => { if (item.id === 'settings') openSettings('profile'); else if (item.id === 'usage') openSettings('usage'); else setView(item.id); setMenuOpen(false); }}>
-          <Icon name={item.icon} size={16} /><span><strong>{item.id === 'cloud' && activeWorkspace?.kind === 'local' ? '本地电脑' : item.label}</strong></span><Icon name="chevron" size={12} />
+        {FEATURES.map((item) => <button type="button" role="menuitem" key={item.key} onClick={() => { if (item.action.kind === 'settings') openSettings(item.action.section); else setView(item.action.view); setMenuOpen(false); }}>
+          <Icon name={item.icon} size={16} /><span><strong>{item.key === 'cloud' && activeWorkspace?.kind === 'local' ? '本地电脑' : item.label}</strong></span><Icon name="chevron" size={12} />
         </button>)}
       </div>, document.body) : null}
     </aside>

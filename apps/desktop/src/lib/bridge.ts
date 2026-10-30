@@ -1,5 +1,6 @@
 import type {
   CapabilityStatus,
+  CapabilityImportResult,
   AppUpdateResult,
   AppUpdateProgress,
   AgentEvent,
@@ -38,12 +39,15 @@ export interface ConversationSummary {
 
 export interface MoyuBridge {
   capabilityStatus(workspaceId: string): Promise<CapabilityStatus>;
-  importMcp(workspaceId: string, json: string): Promise<void>;
+  importMcp(workspaceId: string, json: string): Promise<CapabilityImportResult>;
   testMcp(id: string): Promise<void>;
-  importSkill(workspaceId: string): Promise<void>;
+  importSkill(workspaceId: string): Promise<CapabilityImportResult>;
   removeCapability(kind: 'mcp' | 'skill', id: string): Promise<void>;
   setupDirectory(directory: string): Promise<AppSettings>;
   finishSetup(skipCloud: boolean): Promise<AppSettings>;
+  readClipboardText(): Promise<string>;
+  writeClipboardText(text: string): Promise<void>;
+  listTools(): Promise<{ name: string; description: string }[]>;
   feedbackDiagnostics(): Promise<DiagnosticEntry[]>;
   clearFeedbackDiagnostics(): Promise<void>;
   copyFeedback(text: string): Promise<void>;

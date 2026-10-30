@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   CapabilityStatus,
+  CapabilityImportResult,
   AppUpdateResult,
   AppUpdateProgress,
   AgentEvent,
@@ -32,12 +33,15 @@ const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRender
 
 const api = {
   capabilityStatus: (workspaceId: string) => invoke<CapabilityStatus>('moyu:capabilities:status', workspaceId),
-  importMcp: (workspaceId: string, json: string) => invoke<void>('moyu:mcp:import', workspaceId, json),
+  importMcp: (workspaceId: string, json: string) => invoke<CapabilityImportResult>('moyu:mcp:import', workspaceId, json),
   testMcp: (id: string) => invoke<void>('moyu:mcp:test', id),
-  importSkill: (workspaceId: string) => invoke<void>('moyu:skill:import', workspaceId),
+  importSkill: (workspaceId: string) => invoke<CapabilityImportResult>('moyu:skill:import', workspaceId),
   removeCapability: (kind: 'mcp' | 'skill', id: string) => invoke<void>('moyu:capabilities:remove', kind, id),
   setupDirectory: (directory: string) => invoke<AppSettings>('moyu:setup:directory', directory),
   finishSetup: (skipCloud: boolean) => invoke<AppSettings>('moyu:setup:finish', skipCloud),
+  readClipboardText: () => invoke<string>('moyu:clipboard:read'),
+  writeClipboardText: (text: string) => invoke<void>('moyu:clipboard:write', text),
+  listTools: () => invoke<{ name: string; description: string }[]>('moyu:tools:list'),
   feedbackDiagnostics: () => invoke<DiagnosticEntry[]>('moyu:feedback:diagnostics'),
   clearFeedbackDiagnostics: () => invoke<void>('moyu:feedback:clear'),
   copyFeedback: (text: string) => invoke<void>('moyu:feedback:copy', text),

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { spawn } from 'node:child_process';
@@ -113,7 +113,7 @@ export class MoyuApp {
     const secrets = new SafeSecretBox(dataDir);
     this.store = new Store(dataDir, secrets, options);
     this.mobileSync = new MobileSync(this.store, () => this.send('moyu:sync-data', {}), () => this.cloud);
-    this.capabilities = new CapabilityManager(this.store);
+    this.capabilities = new CapabilityManager(this.store, () => this.cloud);
     this.diagnostics = new DiagnosticJournal(dataDir, () => [
       secrets.get('cloud:instabox') ?? '', secrets.get('telegram:token') ?? '',
       ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
@@ -308,6 +308,16 @@ export class MoyuApp {
       if (typeof text !== 'string' || text.length > 200_000) throw new Error('反馈内容过长');
       clipboard.writeText(text);
     });
+    handle('moyu:clipboard:read', (event) => {
+      desktopCaller(event);
+      return clipboard.readText();
+    });
+    handle('moyu:tools:list', () => TOOL_SCHEMAS.map((tool) => ({ name: tool.name, description: tool.description })));
+    handle('moyu:clipboard:write', (event, text: string) => {
+      desktopCaller(event);
+      if (typeof text !== 'string' || text.length > 200_000) throw new Error('文本过长');
+      clipboard.writeText(text);
+    });
     handle('moyu:local:directory', async () => {
       const running = () => this.local.status().state === 'busy' || this.store.listConversations().some((item) => item.workspaceId === 'workspace_local' && this.runtime.isRunning(item.id));
       if (running()) throw new Error('本机仍有任务运行，请完成后再更换目录');
@@ -344,7 +354,14 @@ export class MoyuApp {
       };
     });
 
-    handle('moyu:capabilities:status', (_event, workspaceId: string) => this.capabilities.status(workspaceId));
+    handle('moyu:capabilities:status', async (_event, workspaceId: string) => {
+      const base = this.capabilities.status(workspaceId);
+      if (workspaceId === 'workspace_cloud') {
+        const inventory = await this.capabilities.inventoryCloud().catch(() => ({ servers: [], skills: [] }));
+        return { ...base, cloudServers: inventory.servers, cloudSkills: inventory.skills };
+      }
+      return base;
+    });
     handle('moyu:mcp:import', (_event, workspaceId: string, json: string) => this.capabilities.importMcp(workspaceId, json));
     handle('moyu:mcp:test', (_event, id: string) => this.capabilities.test(id));
     handle('moyu:skill:import', async (_event, workspaceId: string) => {

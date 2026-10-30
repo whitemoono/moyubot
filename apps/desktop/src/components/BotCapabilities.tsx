@@ -22,7 +22,7 @@ export function useCapabilityStatus(workspaceId: string) {
   return status;
 }
 
-const STATES = { disconnected: '未连接', connecting: '连接中', connected: '已连接', error: '连接失败' };
+const STATES = { disconnected: '未连接', connecting: '连接中', connected: '已连接', error: '连接失败', deployed: '已部署' };
 
 export function BotCapabilities({ bot, onChange, disabled = false, inspector = false }: { bot: Bot; onChange: (patch: Pick<Bot, 'mcpServerIds' | 'skillIds'>) => void; disabled?: boolean; inspector?: boolean }) {
   const { settings, openSettings, toast } = useMoyu();
@@ -31,6 +31,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
   const status = useCapabilityStatus(workspaceId);
   const servers = (settings.mcpServers ?? []).filter(s => s.workspaceId === workspaceId);
   const skills = (settings.skills ?? []).filter(s => s.workspaceId === workspaceId);
+  const cloudServers = status.cloudServers ?? [];
+  const cloudSkills = status.cloudSkills ?? [];
   const toggle = (field: 'mcpServerIds' | 'skillIds', id: string, enabled: boolean) => onChange({ [field]: enabled ? [...new Set([...(bot[field] ?? []), id])] : (bot[field] ?? []).filter(x => x !== id) });
   return <div className={`bot-capabilities ${inspector ? 'bot-capabilities--inspector' : ''}`}>
     <section className={inspector ? 'inspector-section' : 'editor-block'}>
@@ -48,6 +50,13 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
           {state?.tools.length ? <details><summary>查看工具</summary><ul>{state.tools.map(tool => <li key={tool.name} title={tool.description}>{tool.name}</li>)}</ul></details> : null}
         </div>;
       })}
+      {cloudServers.length ? <details className="capability-cloud-block capability-cloud-block--fold">
+        <summary className="capability-cloud-title">云电脑已部署 · MCP（{cloudServers.length}）</summary>
+        <div className="capability-cloud-list">{cloudServers.map(server => <div className="capability-item" key={server.id}>
+          <span className="capability-cloud-badge">云端</span>
+          <div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · 由云电脑管理</small></div>
+        </div>)}</div>
+      </details> : null}
     </section>
     <section className={inspector ? 'inspector-section' : 'editor-block'}>
       <div className="inspector-section__head"><h3>Skills</h3>{inspector ? <Button size="sm" variant="ghost" icon="plus" onClick={() => openSettings('capabilities')}>添加</Button> : null}</div>
@@ -58,6 +67,13 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
           <details><summary>技能说明</summary><p>{skill.description}</p></details>
         </div>;
       })}
+      {cloudSkills.length ? <details className="capability-cloud-block capability-cloud-block--fold">
+        <summary className="capability-cloud-title">云电脑已部署 · 技能（{cloudSkills.length}）</summary>
+        <div className="capability-cloud-list">{cloudSkills.map(skill => <div className="capability-item" key={skill.id}>
+          <span className="capability-cloud-badge">云端</span>
+          <div><strong>{skill.name}</strong><small>{skill.path} · {skill.source}</small></div>
+        </div>)}</div>
+      </details> : null}
     </section>
     {!inspector ? <p className="inspector-note">在「设置 → MCP 与 Skills」添加或管理工作区能力。</p> : null}
   </div>;

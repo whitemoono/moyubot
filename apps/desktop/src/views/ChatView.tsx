@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import type { Bot, Message, ToolResult } from '@moyu/core';
 import { assetUrl, moyu } from '../lib/bridge';
 import { formatClock } from '../lib/format';
@@ -11,10 +12,19 @@ import { Select } from '../components/Select';
 import { ContextMeter } from '../components/ContextMeter';
 import { EffortPicker } from '../components/EffortPicker';
 import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
+import { TextEditContextMenu } from '../components/TextEditContextMenu';
+import { MessageContextMenu, type MessageSelectionMenuState } from '../components/MessageContextMenu';
 import type { IconName } from '../components/Icon';
 import { BOT_ACTIVITY, inferMessageActivity } from '../lib/bot-activity';
 import type { BotActivityKind } from '../lib/bot-activity';
 import { replyTurns } from '../lib/reply-flow';
+
+/** 聊天图片放大预览（应用内 lightbox）。 */
+interface ImagePreview {
+  url: string;
+  name?: string;
+  path?: string;
+}
 
 const SUGGESTIONS = [
   { icon: 'image' as IconName, title: '创作一张图', text: '帮我设计一张极简风格的产品海报，主题是「让灵感自由发生」，画幅 16:9。' },
@@ -62,10 +72,23 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
   </div>;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void }) {
+const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
   const { botActivities, setView, settings } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
+
+  // 选中消息文字后右键 → 弹出「复制」菜单（无选区时保持默认行为）。
+  const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    if (!text) return;
+    const anchor = selection?.anchorNode;
+    const focus = selection?.focusNode;
+    if (anchor && focus && event.currentTarget.contains(anchor) && event.currentTarget.contains(focus)) {
+      event.preventDefault();
+      onMsgMenu({ x: event.clientX, y: event.clientY, text });
+    }
+  };
 
   // Syntax highlighting is the costly part of a long message; run it once the
   // stream settles rather than on every delta-derived re-render.
@@ -76,19 +99,22 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 
   if (message.role === 'user') {
     return (
-      <div className="msg msg--user" data-message-id={message.id} tabIndex={-1}>
+      <div className="msg msg--user" data-message-id={message.id} tabIndex={-1} onContextMenu={handleContextMenu}>
         <div className="msg__stack msg__stack--user">
         <div className="bubble bubble--user">
           {message.replyTo ? <ReplyPreview reply={message.replyTo} onClick={() => jumpToMessage(message.replyTo!.messageId, settings.ui.reduceMotion)} /> : null}
           {message.attachments?.length ? (
             <div className="artifact-grid artifact-grid--user">
               {message.attachments.map((attachment) => (
-                <img
+                <button
                   key={attachment.id}
+                  type="button"
                   className="artifact artifact--sm"
-                  src={assetUrl(attachment.path) ?? attachment.dataUrl}
-                  alt={attachment.name}
-                />
+                  title="点击放大查看"
+                  onClick={() => onPreviewImage({ url: assetUrl(attachment.path) ?? attachment.dataUrl ?? '', name: attachment.name, path: attachment.path })}
+                >
+                  <img src={assetUrl(attachment.path) ?? attachment.dataUrl} alt={attachment.name} />
+                </button>
               ))}
             </div>
           ) : null}
@@ -114,7 +140,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
   const long = content.length > 1600;
 
   return (
-    <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1}>
+    <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1} onContextMenu={handleContextMenu}>
       <div className="msg__stack">
       <div className="msg__body" ref={ref}>
         <div className="reply-author">
@@ -141,11 +167,11 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                     key={attachment.id}
                     type="button"
                     className="artifact artifact--auto"
-                    onClick={() => (attachment.path ? void moyu().openArtifact(attachment.path) : undefined)}
-                    title="点击用系统查看器打开"
+                    onClick={() => onPreviewImage({ url: url ?? '', name: attachment.name, path: attachment.path })}
+                    title="点击放大查看"
                   >
                     <img src={url} alt={attachment.name} />
-                    <span className="artifact__hint">打开原图</span>
+                    <span className="artifact__hint">点击放大</span>
                   </button>
                 );
               })}
@@ -175,6 +201,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
   const [images, setImages] = useState<{ name?: string; mimeType: string; dataUrl: string }[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [savingOptions, setSavingOptions] = useState(false);
+  const [editMenu, setEditMenu] = useState<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -284,6 +311,12 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           aria-label={`给 ${recipient} 发送消息`}
           placeholder={compacting ? '正在整理上下文与记忆…' : group ? '发消息，让大家一起聊聊…' : home ? `和 ${bot.name} 说点什么…` : `给 ${bot.name} 发消息`}
           onChange={(event) => setText(event.target.value)}
+          onContextMenu={(event) => {
+            if (event.target === event.currentTarget) {
+              event.preventDefault();
+              setEditMenu({ x: event.clientX, y: event.clientY });
+            }
+          }}
           onPaste={(event) => {
             const files = event.clipboardData.files;
             if (files.length) {
@@ -339,6 +372,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           event.target.value = '';
         }}
       />
+      {editMenu ? <TextEditContextMenu x={editMenu.x} y={editMenu.y} onClose={() => setEditMenu(null)} targetRef={textarea} /> : null}
     </div>
   );
 }
@@ -355,8 +389,17 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, toast } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
+  const [preview, setPreview] = useState<ImagePreview | null>(null);
+  const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
+  const closePreview = useCallback(() => setPreview(null), []);
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closePreview(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview, closePreview]);
   useEffect(() => setReply(undefined), [conversation?.id]);
   const members = conversation?.group?.memberBotIds.map((id) => settings.bots.find((item) => item.id === id)).filter((item): item is Bot => !!item) ?? [];
   const messages = conversation?.messages ?? [];
@@ -391,13 +434,28 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <div className="chat__stage">
       <div className="messages" ref={scrollRef}>
         <div className="messages__inner">
-          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <MessageBubble key={message.id} message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} />)}
+          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <MessageBubble key={message.id} message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} onPreviewImage={setPreview} onMsgMenu={setMsgMenu} />)}
         </div>
       </div>
 
       <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} />
       </div>
       {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}
+
+      {msgMenu ? <MessageContextMenu x={msgMenu.x} y={msgMenu.y} text={msgMenu.text} onClose={() => setMsgMenu(null)} /> : null}
+
+      {preview ? (
+        <div className="lightbox" role="dialog" aria-modal="true" aria-label="图片预览" onClick={closePreview}>
+          <div className="lightbox__stage" onClick={(event) => event.stopPropagation()}>
+            <img src={preview.url} alt={preview.name ?? '图片'} />
+            <div className="lightbox__bar">
+              {preview.name ? <span className="lightbox__name">{preview.name}</span> : null}
+              {preview.path ? <Button size="sm" icon="arrowUp" onClick={() => void moyu().openArtifact(preview.path!).catch((error: Error) => toast(error.message, 'error'))}>打开原图</Button> : null}
+            </div>
+          </div>
+          <button type="button" className="lightbox__close" aria-label="关闭预览" onClick={closePreview}><Icon name="close" size={20} /></button>
+        </div>
+      ) : null}
     </section>
   );
 }

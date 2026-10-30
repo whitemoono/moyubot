@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -7,7 +9,8 @@ import { parse as parseYaml } from 'yaml';
 import type { Store } from './store';
 import type { Bot, CapabilityStatus, McpServerConfig, SkillConfig, ToolCall, ToolResult } from './types';
 import type { ToolSchema } from './tools';
-import { newId } from './util';
+import type { ComputerHost } from './cloud';
+import { newId, shellQuote } from './util';
 
 type Connection = { client: Client; schemas: ToolSchema[]; names: Map<string, string> };
 type Credentials = { env?: Record<string, string>; headers?: Record<string, string> };
@@ -24,12 +27,49 @@ export class CapabilityManager {
   private states = new Map<string, CapabilityStatus['servers'][number]>();
   private loaded = new Map<string, CapabilityStatus['loadedSkills'][number]>();
   private disposed = false;
-  constructor(private store: Store) {}
+  private cloudInventory?: { at: number; servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> };
+  constructor(private store: Store, private cloud: () => Pick<ComputerHost, 'exec' | 'ensureAwake' | 'writeText'> | undefined = () => undefined) {}
+
+  /**
+   * 盘点云电脑上真实部署的 MCP 与技能（读 ~/.claude.json、~/.claude/skills、
+   * ~/.agents/skills、/usr/local/bin/*-mcp），结果缓存 30 秒，避免每次轮询都唤醒云主机。
+   */
+  async inventoryCloud(): Promise<{ servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> }> {
+    const empty = { servers: [], skills: [] };
+    const host = this.cloud();
+    if (!host || this.disposed) return empty;
+    if (this.cloudInventory && Date.now() - this.cloudInventory.at < 30_000) return this.cloudInventory;
+    await host.ensureAwake('盘点云端能力').catch(() => {});
+    const probe = [
+      'node -e \'',
+      'const fs=require("fs"),os=require("os"),path=require("path");',
+      'const h=os.homedir(),out={mcpServers:[],claudeSkills:[],agentSkills:[],mcpBinaries:[]};',
+      'try{const c=JSON.parse(fs.readFileSync(path.join(h,".claude.json"),"utf8")||"{}");',
+      'for(const[n,g]of Object.entries(c.mcpServers||{}))out.mcpServers.push({name:n,transport:g.type==="http"?"http":"stdio",command:g.command,args:g.args,url:g.url})}catch(e){}',
+      'for(const d of [path.join(h,".claude/skills"),path.join(h,".agents/skills")]){',
+      'try{for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory()&&fs.existsSync(path.join(p,"SKILL.md")))(d.includes(".claude")?out.claudeSkills:out.agentSkills).push({name:f,path:p})}}catch(e){}}',
+      'try{out.mcpBinaries=fs.readdirSync("/usr/local/bin").filter(f=>f.endsWith("-mcp"))}catch(e){}',
+      'console.log(JSON.stringify(out))',
+      '\'',
+    ].join('');
+    const result = await host.exec(probe, { timeoutSeconds: 30 }).catch(() => ({ stdout: '', stderr: '', exitCode: 1, timedOut: false }));
+    try {
+      const line = result.stdout.split('\n').map((item) => item.trim()).filter(Boolean).pop() ?? '{}';
+      const data = JSON.parse(line) as { mcpServers?: Array<{ name: string; transport: string; command?: string; url?: string }>; claudeSkills?: Array<{ name: string; path: string }>; agentSkills?: Array<{ name: string; path: string }> };
+      const servers = (data.mcpServers ?? []).map((item, index) => ({ id: `cloud-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '云电脑' }));
+      const skills = [...(data.claudeSkills ?? []).map((item) => ({ ...item, source: '~/.claude/skills' })), ...(data.agentSkills ?? []).map((item) => ({ ...item, source: '~/.agents/skills' }))].map((item, index) => ({ id: `cloud-skill-${index}`, name: item.name, path: item.path, source: item.source }));
+      this.cloudInventory = { at: Date.now(), servers, skills };
+      return this.cloudInventory;
+    } catch {
+      this.cloudInventory = { at: Date.now(), servers: [], skills: [] };
+      return this.cloudInventory;
+    }
+  }
 
   private workspace(id: string) {
     if (!this.store.settings.workspaces.some(w => w.id === id)) throw new Error('工作区不存在');
   }
-  importMcp(workspaceId: string, json: string): void {
+  async importMcp(workspaceId: string, json: string): Promise<{ target: 'cloud' | 'local'; names: string[] }> {
     this.workspace(workspaceId);
     let parsed;
     try { parsed = JSON.parse(json); } catch { throw new Error('MCP JSON 格式无效，请检查逗号和引号'); }
@@ -56,11 +96,44 @@ export class CapabilityManager {
       }
       return { config, auth: { env, headers } };
     });
+    const names = entries.map(([name]) => name);
+    // 云电脑工作区：直接写入云端的 ~/.claude.json，由云电脑自身拉起进程。
+    if (workspaceId === 'workspace_cloud' && this.cloud()) {
+      await this.deployCloudMcp(entries.map(([name, raw]) => [name, raw] as const));
+      return { target: 'cloud', names };
+    }
     for (const { config, auth } of configs) this.store.secrets.set(`mcp:${config.id}`, JSON.stringify(auth));
     this.store.updateSettings({ mcpServers: [...(this.store.settings.mcpServers ?? []), ...configs.map(c => c.config)] });
+    return { target: 'local', names };
   }
 
-  importSkill(workspaceId: string, source: string): void {
+  /** 把 mcpServers 合并写入云电脑 ~/.claude.json（原子替换）。 */
+  private async deployCloudMcp(entries: ReadonlyArray<readonly [string, unknown]>): Promise<void> {
+    const host = this.cloud();
+    if (!host) return;
+    const add: Record<string, unknown> = {};
+    for (const [name, raw] of entries) add[name] = raw;
+    const payload = JSON.stringify(add).replace(/'/g, '\\u0027');
+    const script = [
+      'node -e \'',
+      'const fs=require("fs"),os=require("os"),path=require("path");',
+      'const file=path.join(os.homedir(),".claude.json");',
+      'let conf={};try{conf=JSON.parse(fs.readFileSync(file,"utf8")||"{}")}catch(e){}',
+      `const add=JSON.parse('${payload}');`,
+      'conf.mcpServers={...(conf.mcpServers||{}),...add};',
+      'const tmp=file+".tmp"+Date.now();',
+      'fs.writeFileSync(tmp,JSON.stringify(conf,null,2));',
+      'fs.renameSync(tmp,file);',
+      'console.log("deployed:"+Object.keys(add).join(","))',
+      '\'',
+    ].join('');
+    await host.ensureAwake('上传 MCP 配置到云电脑').catch(() => {});
+    const result = await host.exec(script, { timeoutSeconds: 60 }).catch(() => null);
+    this.cloudInventory = undefined; // 立即重新盘点
+    if (!result || result.exitCode !== 0) throw new Error(`写入云电脑 ~/.claude.json 失败：${result?.stderr || result?.stdout || '未知错误'}`);
+  }
+
+  async importSkill(workspaceId: string, source: string): Promise<{ target: 'cloud' | 'local'; id?: string; name?: string }> {
     this.workspace(workspaceId);
     const root = fs.realpathSync(source);
     const manifest = fs.readFileSync(path.join(root, 'SKILL.md'), 'utf8');
@@ -81,6 +154,12 @@ export class CapabilityManager {
       }
     };
     inspect(root);
+    const name = String(meta.name).trim().replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'skill';
+    // 云电脑工作区：打包上传到 ~/.claude/skills/<name>，由云电脑自身管理。
+    if (workspaceId === 'workspace_cloud' && this.cloud()) {
+      await this.deployCloudSkill(root, name);
+      return { target: 'cloud', name };
+    }
     const id = newId('skill');
     const directory = path.join(this.store.dataDir, 'skills', id);
     const destinationWithinSource = path.relative(root, directory);
@@ -88,6 +167,39 @@ export class CapabilityManager {
     fs.cpSync(root, directory, { recursive: true, dereference: false });
     const skill: SkillConfig = { id, workspaceId, name: meta.name.slice(0, 100), description: meta.description.slice(0, 2000), directory };
     this.store.updateSettings({ skills: [...(this.store.settings.skills ?? []), skill] });
+    return { target: 'local', id, name };
+  }
+
+  /** 把本地技能目录打包上传到云电脑 ~/.claude/skills/<name>。 */
+  private async deployCloudSkill(root: string, name: string): Promise<void> {
+    const host = this.cloud();
+    if (!host) return;
+    await host.ensureAwake('上传技能到云电脑').catch(() => {});
+    const tmp = path.join(os.tmpdir(), `moyu-skill-${Date.now()}.tar`);
+    const tar = process.platform === 'win32' ? 'tar.exe' : 'tar';
+    try {
+      execFileSync(tar, ['-cf', tmp, '-C', root, '.'], { stdio: 'ignore', timeout: 60_000 });
+    } catch (error) {
+      throw new Error(`本地打包失败：${(error as Error).message}`);
+    }
+    const payload = fs.readFileSync(tmp).toString('base64');
+    fs.unlinkSync(tmp);
+    const uploadName = `_uploads/skill-${Date.now()}.b64`;
+    try {
+      await host.writeText(uploadName, payload);
+    } catch (error) {
+      throw new Error(`上传技能到云电脑失败：${(error as Error).message}`);
+    }
+    const command = [
+      `mkdir -p -- ~/.claude/skills/${shellQuote(name)}`,
+      `base64 -d -- ${shellQuote(uploadName)} > /tmp/moyu-skill.tar`,
+      `tar -xf /tmp/moyu-skill.tar -C ~/.claude/skills/${shellQuote(name)}`,
+      `rm -f /tmp/moyu-skill.tar ${shellQuote(uploadName)}`,
+      `test -f ~/.claude/skills/${shellQuote(name)}/SKILL.md`,
+    ].join(' && ');
+    const result = await host.exec(command, { timeoutSeconds: 120 }).catch(() => null);
+    this.cloudInventory = undefined;
+    if (!result || result.exitCode !== 0) throw new Error(`在云电脑解包技能失败：${result?.stderr || result?.stdout || '未知错误'}`);
   }
 
   async remove(kind: 'mcp' | 'skill', id: string): Promise<void> {
