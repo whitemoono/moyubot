@@ -484,17 +484,19 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             },
             setGoal: (objective) => this.store.setGoal({ conversationId, botId: bot.id, objective }),
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
-            runScript: async (script, args, write) => {
+            runScript: async (callId, script, args, write) => {
               if (write && executingMode === 'plan') throw new Error('计划模式下不能运行带写权限的工作流，先提交计划并获得批准');
               if (write) this.emit({ type: 'log', level: 'warn', text: '工作流以完整工具权限运行（write: true）：脚本里的子代理可以执行命令、写文件，逐步审批不适用' });
+              let workflowChildren = 0;
               return runWorkflow(
                 {
                   conversationId,
                   signal,
                   emit: (text, level) => this.emit({ type: 'log', level: level ?? 'info', text }),
                   runAgent: async (task, options) => {
+                    const index = workflowChildren++;
                     const child = this.childBotFor(bot, write ? 'full' : 'readonly');
-                    const result = await this.runChild(child, task, options.background, { conversationId, taskBudget, signal }, (params.depth ?? 0) + 1);
+                    const result = await this.runChild(child, task, options.background, { conversationId, taskBudget, signal }, (params.depth ?? 0) + 1, { callId, index });
                     if (!result.ok) throw new Error(result.error ?? '子代理没有产出结论');
                     return result.text ?? '';
                   },
@@ -588,7 +590,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     const child: Bot = this.childBotFor(parent.bot, 'readonly');
     const startedAt = Date.now();
     this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: parent.callId, status: 'start', tasks });
-    const children = await Promise.all(tasks.map((task) => this.runChild(child, task, background, parent, depth)));
+    const children = await Promise.all(tasks.map((task, index) => this.runChild(child, task, background, parent, depth, { callId: parent.callId, index })));
     this.emit({
       type: 'subagent', conversationId: parent.conversationId, callId: parent.callId, status: 'done', tasks, children,
       seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
@@ -612,6 +614,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     background: string | undefined,
     parent: { conversationId: string; taskBudget: TaskOutputBudget; signal: AbortSignal },
     depth: number,
+    progress?: { callId: string; index: number },
   ): Promise<{ conversationId: string; task: string; ok: boolean; text?: string; error?: string }> {
     const conversation = this.store.createSubagentConversation(child.id, task, depth, parent.conversationId);
     const userMessage: Message = {
@@ -626,6 +629,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
       createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
     };
     this.store.appendMessage(conversation.id, assistantMessage);
+    if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: 'running' });
     const abort = new AbortController();
     const forward = () => abort.abort();
     parent.signal.addEventListener('abort', forward, { once: true });
@@ -639,9 +643,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
       parent.signal.removeEventListener('abort', forward);
     }
     const text = assistantMessage.content.trim();
-    if (assistantMessage.error) return { conversationId: conversation.id, task, ok: false, text, error: assistantMessage.error };
-    if (!text) return { conversationId: conversation.id, task, ok: false, error: assistantMessage.stopped ? '已随父任务停止' : '子智能体没有产出结论' };
-    return { conversationId: conversation.id, task, ok: true, text };
+    const outcome = assistantMessage.error
+      ? { conversationId: conversation.id, task, ok: false as const, text, error: assistantMessage.error }
+      : !text
+        ? { conversationId: conversation.id, task, ok: false as const, error: assistantMessage.stopped ? '已随父任务停止' : '子智能体没有产出结论' }
+        : { conversationId: conversation.id, task, ok: true as const, text };
+    if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: outcome.ok ? 'done' : 'error' });
+    return outcome;
   }
 
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {

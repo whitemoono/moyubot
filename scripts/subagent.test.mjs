@@ -109,6 +109,22 @@ test('children lose every write-capable tool and inherit no parent history', asy
   } finally { await f.cleanup(); }
 });
 
+test('每个子任务都发出逐项进度事件，界面才能显示第几个在跑', async () => {
+  const f = await fixture({ spawnArgs: { tasks: ['调研 A', '调研 B', '调研 C'] } });
+  try {
+    await f.runtime.runUnattended(f.bot.id, '分头调研');
+    const batch = f.events.find((event) => event.type === 'subagent' && event.status === 'start');
+    const childEvents = f.events.filter((event) => event.type === 'subagent' && event.status === 'child');
+    assert.ok(childEvents.every((event) => event.callId === batch.callId), '逐项事件必须挂在同一次工具调用上');
+    assert.deepEqual([...new Set(childEvents.map((event) => event.index))].sort(), [0, 1, 2], '三个子任务都要有各自的序号');
+    for (const index of [0, 1, 2]) {
+      const mine = childEvents.filter((event) => event.index === index).map((event) => event.state);
+      assert.deepEqual(mine, ['running', 'done'], `第 ${index} 个应当是 先 running 再 done，实际 ${mine.join(',')}`);
+    }
+    assert.ok(f.events.some((event) => event.type === 'subagent' && event.status === 'done' && event.children.length === 3));
+  } finally { await f.cleanup(); }
+});
+
 test('parallel tasks fan out, and more than four is refused before any child starts', async () => {
   const f = await fixture({ spawnArgs: { tasks: ['调研 A', '调研 B', '调研 C'] } });
   try {

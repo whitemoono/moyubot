@@ -19,7 +19,7 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
 };
 
 export function ReplyToolCard({ call, result, message }: { call: ToolCall; result?: ToolResult; message: Pick<Message, 'streaming' | 'stopped'> }) {
-  const { toast } = useMoyu();
+  const { toast, subagents } = useMoyu();
   const bodyId = useId();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -37,8 +37,13 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
   const output = result?.detail || result?.summary;
   const status = result ? result.ok ? '已完成' : '执行失败' : message.stopped ? '已停止' : running ? '执行中' : '未完成';
   const scriptLine = call.name === 'run_script' ? (String(call.arguments.script ?? '').trim().split('\n').find((line) => line.trim()) ?? '') : '';
-  const summary = subagentTasks.length
-    ? `${subagentTasks.length} 个子任务 · ${subagentTasks[0]!.slice(0, 40)}`
+  // 逐项进度：优先用事件推来的实时状态；刷新页面后事件没了，就从参数 + 结果退化还原。
+  const progress = subagents[call.id];
+  const rows = progress && Object.keys(progress.children).length
+    ? Object.entries(progress.children).map(([index, child]) => ({ index: Number(index), task: child.task, state: child.state })).sort((left, right) => left.index - right.index)
+    : subagentTasks.map((task, index) => ({ index, task, state: (result ? (result.ok ? 'done' : 'error') : running ? 'running' : 'error') as 'running' | 'done' | 'error' }));
+  const summary = rows.length
+    ? `${rows.filter((row) => row.state === 'done').length}/${rows.length} 完成 · ${rows[0]!.task.slice(0, 36)}`
     : scriptLine
       ? scriptLine.slice(0, 60)
       : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
@@ -68,6 +73,13 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
         <pre><code>{command ? `$ ${command}` : input}</code></pre>
         <button type="button" className="reply-tool__copy" aria-label={copied ? '已复制命令或参数' : '复制命令或参数'} onClick={() => void copy()}><Icon name={copied ? 'check' : 'copy'} size={13} /><span>{copied ? '已复制' : '复制'}</span></button>
       </div>
+      {rows.length ? <div className="reply-tool__children" aria-label="子任务进度">
+        {rows.map((row) => <div className="reply-tool__child" key={row.index}>
+          <span className="reply-tool__dot" data-state={row.state} aria-hidden="true" />
+          <span className="reply-tool__child-task" title={row.task}>{row.task}</span>
+          <span className="reply-tool__child-state">{row.state === 'running' ? '进行中' : row.state === 'done' ? '完成' : '失败'}</span>
+        </div>)}
+      </div> : null}
       {output ? <pre className="reply-tool__output" aria-label="执行结果">{output}</pre> : null}
     </div> : null}
   </section>;

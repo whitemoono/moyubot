@@ -38,6 +38,13 @@
 .reply-tool__copy { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 5px; border-radius: 5px; font-size: 10px; color: var(--text-faint); background: var(--surface); }
 .reply-tool__copy:hover { color: var(--text); background: var(--hover); }
 .reply-tool__output { padding: 13px 16px 15px 34px; border-top: 1px solid var(--line); color: var(--text-dim); }
+/* 子任务逐项进度：复用工具卡的状态点，运行中的那一行提亮，扫一眼就知道进度。 */
+.reply-tool__children { display: grid; gap: 3px; padding: 10px 16px 4px 34px; }
+.reply-tool__child { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; color: var(--text-dim); }
+.reply-tool__child .reply-tool__dot { margin-top: 0; }
+.reply-tool__child-task { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-tool__child-state { flex: none; font-size: 11px; color: var(--text-faint); }
+.reply-tool__child .reply-tool__dot[data-state="running"] ~ .reply-tool__child-task { color: var(--text); }
 .reply-tool__head:focus-visible, .reply-tool__copy:focus-visible, .reply-reasoning summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 @media (max-width: 640px) {
   .reply-tool__input { padding: 12px; gap: 9px; }

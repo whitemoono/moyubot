@@ -240,7 +240,7 @@ export interface ToolContext {
   setGoal?: (objective: string) => { id: string; objective: string };
   updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string }) => { status: string; note?: string };
   /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
-  runScript?: (script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
+  runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
   signal?: AbortSignal;
 }
 
@@ -427,7 +427,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const script = requireString(args, 'script');
         const write = args.write === true;
         const workflowArgs = args.args && typeof args.args === 'object' && !Array.isArray(args.args) ? args.args as Record<string, unknown> : undefined;
-        const outcome = await ctx.runScript(script, workflowArgs, write);
+        const outcome = await ctx.runScript(call.id, script, workflowArgs, write);
         const text = typeof outcome.result === 'string' ? outcome.result : JSON.stringify(outcome.result ?? null, null, 2);
         return finish({
           ok: true,

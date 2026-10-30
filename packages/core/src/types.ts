@@ -444,7 +444,10 @@ export type AgentEvent =
   | { type: 'context_compaction'; conversationId: string; phase: 'start' | 'done' | 'error'; context?: ConversationContext }
   | { type: 'context_pruned'; conversationId: string; pruned: number; savedTokens: number }
   /** 子智能体批次进度。父会话用它画嵌套卡片；子会话内部的 token 增量不外发，避免界面串台。 */
-  | { type: 'subagent'; conversationId: string; callId: string; status: 'start' | 'done'; tasks: string[]; children?: { conversationId: string; task: string; ok: boolean; text?: string; error?: string }[]; seconds?: number }
+  | { type: 'subagent'; conversationId: string; callId: string; status: 'start'; tasks: string[] }
+  /** 单个子任务的实时状态：界面据此显示"第几个在跑、第几个已完成"。 */
+  | { type: 'subagent'; conversationId: string; callId: string; status: 'child'; index: number; task: string; state: 'running' | 'done' | 'error' }
+  | { type: 'subagent'; conversationId: string; callId: string; status: 'done'; tasks: string[]; children?: { conversationId: string; task: string; ok: boolean; text?: string; error?: string }[]; seconds?: number }
   | { type: 'context_usage'; conversationId: string; systemTokens: number; toolTokens: number; historyTokens: number; windowTokens: number; reserveTokens: number }
   | { type: 'usage'; conversationId: string; messageId: string; usage: TokenUsage }
   | { type: 'cloud'; status: CloudStatus; note?: string }

@@ -39,6 +39,12 @@ export interface ContextUsageSnapshot {
   windowTokens: number;
 }
 
+/** 按工具调用 id 聚合的子任务进度：界面用它显示"第几个在跑、第几个已完成"。 */
+export interface SubagentProgress {
+  tasks: string[];
+  children: Record<number, { task: string; state: 'running' | 'done' | 'error' }>;
+}
+
 interface MoyuContextValue {
   ready: boolean;
   settings: AppSettings;
@@ -67,6 +73,7 @@ interface MoyuContextValue {
   setConversationMode: (mode: 'execute' | 'plan') => Promise<void>;
   /** 当前会话还在推进的跨轮目标；不自动续跑，只负责让人和模型都记得它。 */
   goal: Goal | undefined;
+  subagents: Record<string, SubagentProgress>;
   completeGoal: () => Promise<void>;
   conversations: ConversationSummary[];
   running: boolean;
@@ -169,6 +176,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [local, setLocal] = useState<CloudStatus>({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 });
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [goal, setGoal] = useState<Goal | undefined>(undefined);
+  const [subagents, setSubagents] = useState<Record<string, SubagentProgress>>({});
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
   const [compactingConversations, setCompacting] = useState<Set<string>>(new Set());
@@ -394,6 +402,19 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         });
         const selectedId = selectedBotRef.current;
         void moyu().memories(selectedId).then((facts) => { if (selectedId === selectedBotRef.current) setMemories(facts); });
+        return;
+      }
+      if (event.type === 'subagent') {
+        setSubagents((previous) => {
+          const current = previous[event.callId] ?? { tasks: [], children: {} };
+          if (event.status === 'start') return { ...previous, [event.callId]: { tasks: event.tasks, children: {} } };
+          if (event.status === 'child') {
+            return { ...previous, [event.callId]: { ...current, children: { ...current.children, [event.index]: { task: event.task, state: event.state } } } };
+          }
+          const merged = { ...current.children };
+          (event.children ?? []).forEach((child, index) => { merged[index] = { task: child.task, state: child.ok ? 'done' : 'error' }; });
+          return { ...previous, [event.callId]: { ...current, tasks: event.tasks, children: merged } };
+        });
         return;
       }
       if (event.type === 'context_compaction') {
@@ -797,6 +818,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     setConversationMode,
     completeGoal,
     goal,
+    subagents,
     updateBotGroup,
     deleteBot,
     saveSettings,
