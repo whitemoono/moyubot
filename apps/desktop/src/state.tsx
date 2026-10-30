@@ -165,7 +165,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [logs, setLogs] = useState<{ level: string; text: string; ts: number }[]>([]);
   const [platform, setPlatform] = useState('win32');
-  const [version, setVersion] = useState('0.1.1');
+  const [version, setVersion] = useState('0.1.2');
 
   const conversationRef = useRef<Conversation | null>(null);
   conversationRef.current = conversation;

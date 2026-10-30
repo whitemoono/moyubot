@@ -1,6 +1,6 @@
 {
   "name": "@moyu/desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "MoyuBot Windows desktop workspace (Electron + React)",
   "license": "MIT",
@@ -33,6 +33,7 @@
   "build": {
     "appId": "sh.moyubot.desktop",
     "productName": "MoyuBot",
+    "artifactName": "MoyuBot.Setup.${version}.exe",
     "directories": {
       "output": "release"
     },

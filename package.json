@@ -1,6 +1,6 @@
 {
   "name": "moyubot",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, in a focused desktop workspace",
   "license": "MIT",  "packageManager": "pnpm@11.7.0",
