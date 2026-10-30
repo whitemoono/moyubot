@@ -367,7 +367,7 @@ export class Store {
 
   listConversations(botId?: string): ConversationSummary[] {
     return [...this.conversations.values()]
-      .filter((conv) => !conv.mergedInto && !conv.deletedAt && (!botId || conv.botId === botId))
+      .filter((conv) => !conv.mergedInto && !conv.deletedAt && !conv.subagent && (!botId || conv.botId === botId))
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((conv) => ({
         id: conv.id,
@@ -448,7 +448,10 @@ export class Store {
   botConversation(botId: string): Conversation {
     if (!this.getBot(botId)) throw new Error('Bot 不存在');
     const existing = [...this.conversations.values()]
-      .filter((conv) => conv.botId === botId && !conv.mergedInto)
+      // Sub-agent scratch threads share the bot's id but must never be merged into
+      // the bot's single durable thread — that would push throwaway tool output
+      // into the user's real chat history.
+      .filter((conv) => conv.botId === botId && !conv.mergedInto && !conv.subagent)
       .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const canonical = existing[0];
     if (canonical) {
@@ -486,6 +489,33 @@ export class Store {
     return this.botConversation(botId);
   }
 
+  /**
+   * Scratch conversation for a sub-agent. It is registered in memory only, so
+   * appendMessage/getConversation work unchanged, while saveConversation,
+   * listConversations and syncSnapshot all skip it. Nothing reaches disk or the
+   * phone; the parent's tool result is the only durable trace.
+   */
+  createSubagentConversation(botId: string, task: string, depth: number, parentConversationId: string): Conversation {
+    const bot = this.getBot(botId);
+    if (!bot) throw new Error('Bot 不存在');
+    const id = newId('sub');
+    const conv: Conversation = {
+      id,
+      botId,
+      workspaceId: bot.workspaceId ?? 'workspace_cloud',
+      title: `子任务：${task.slice(0, 40)}`,
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      subagent: { task, depth, parentConversationId },
+    };
+    this.conversations.set(id, conv);
+    // Bounded memory: keep the newest scratch threads for drill-in and drop the rest.
+    const scratch = [...this.conversations.values()].filter((item) => item.subagent).sort((a, b) => a.createdAt - b.createdAt);
+    for (const stale of scratch.slice(0, Math.max(0, scratch.length - 8))) this.conversations.delete(stale.id);
+    return conv;
+  }
+
   appendMessage(conversationId: string, message: Message): Conversation {
     const conv = this.getConversation(conversationId);
     if (!conv) throw new Error(`conversation ${conversationId} not found`);
@@ -501,6 +531,7 @@ export class Store {
   saveConversation(id: string): void {
     const conv = this.conversations.get(id);
     if (!conv) return;
+    if (conv.subagent) return; // Sub-agent scratch threads stay in memory; disk and sync never see them.
     writeJsonAtomic(path.join(this.dir('conversations'), `${id}.json`), conv);
   }
 
@@ -517,7 +548,7 @@ export class Store {
     const add = (collection: string, id: string, value: Record<string, any>) => records.push({ collection, id, value: syncValue(collection, value) });
     for (const bot of this.settings.bots) add('bots', bot.id, bot);
     for (const conv of this.conversations.values()) {
-      if (conv.mergedInto) continue;
+      if (conv.mergedInto || conv.subagent) continue; // 子智能体会话不外传：手机侧看不到、也不会写进对端历史
       add('conversations', conv.id, conv);
       for (const message of conv.messages) add('messages', message.id, { ...message, conversationId: conv.id });
     }

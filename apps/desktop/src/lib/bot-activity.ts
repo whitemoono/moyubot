@@ -59,6 +59,7 @@ export function updateActivities(previous: ConversationActivities, event: AgentE
     case 'tool_start': next = { ...before, kind: activityForTool(event.call.name), messageId: event.messageId, toolName: event.call.name }; break;
     case 'tool_end': next = { ...before, kind: event.result.ok ? 'thinking' : 'error', toolName: undefined }; break;
     case 'context_compaction': next = { ...before, kind: event.phase === 'start' ? 'organizing' : event.phase === 'done' ? 'thinking' : 'error' }; break;
+    case 'context_pruned': next = { ...before, kind: 'organizing' }; break;
     case 'approval': next = { ...before, kind: 'waiting', toolName: event.request.toolName, approvalId: event.request.id }; break;
     case 'approval_done': next = { ...before, kind: event.approved ? activityForTool(before.toolName ?? '') : 'thinking', approvalId: undefined }; break;
     case 'run_end': next = { ...before, kind: event.ok ? 'done' : event.error === '已停止' ? 'stopped' : 'error', runId: event.runId, toolName: undefined, approvalId: undefined }; break;

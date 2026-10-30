@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult, WebSearchSettings } from './types';
 import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
-import { newId, summarize, truncate } from './util';
+import { newId, pruneOutput, summarize } from './util';
 
 export interface ToolSchema {
   name: string;
@@ -161,6 +161,19 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'spawn_agent',
+    description:
+      '把一个自包含的调研任务交给独立的子智能体。子智能体只有只读能力（读文件、抓网页、搜索、回忆），不能执行命令、不能写文件、不能建定时任务，也不会继承本次对话的历史——所以要把它需要的背景和目标写全。适合通读大量文件、横向对比多个来源、分头核查多个主题；不适合需要改动任何东西的任务。传 tasks 数组可并行派发最多 4 个互不依赖的子任务。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: '单个子任务的完整指令：目标、要覆盖的文件或网址范围、期望结论格式' },
+        tasks: { type: 'array', items: { type: 'string' }, description: '并行派发的独立子任务，最多 4 个；与 task 二选一' },
+        background: { type: 'string', description: '子智能体看不到的上下文：已知路径、已有结论、约束条件' },
+      },
+    },
+  },
 ];
 
 export interface ToolContext {
@@ -174,8 +187,10 @@ export interface ToolContext {
   createSchedule: (input: ScheduleInput) => Schedule;
   listTasks: (includeClosed: boolean) => Schedule[];
   updateTask: (id: string, patch: ScheduleUpdate) => Schedule;
-  installMcp?: (json: string) => { added: string[] };
-  installSkill?: (directory: string) => { id?: string; name?: string };
+  installMcp?: (json: string) => Promise<{ target: 'cloud' | 'local'; names: string[] }>;
+  installSkill?: (directory: string) => Promise<{ target: 'cloud' | 'local'; id?: string; name?: string }>;
+  /** Runs read-only sub-agents in isolated conversations; implemented by AgentRuntime. */
+  spawnAgents?: (callId: string, tasks: string[], background?: string) => Promise<{ task: string; ok: boolean; text: string; error?: string }[]>;
   webSearch?: WebSearchSettings;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
@@ -340,6 +355,21 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'spawn_agent': {
+        if (!ctx.spawnAgents) throw new Error('当前运行时不支持子智能体');
+        const single = typeof args.task === 'string' && args.task.trim() ? [args.task.trim()] : [];
+        const batch = Array.isArray(args.tasks) ? args.tasks.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.trim()) : [];
+        const tasks = [...new Set([...single, ...batch])];
+        if (!tasks.length) throw new Error('task 或 tasks 至少要有一个非空子任务');
+        const background = typeof args.background === 'string' && args.background.trim() ? args.background.trim() : undefined;
+        const results = await ctx.spawnAgents(call.id, tasks, background);
+        const failed = results.filter((item) => !item.ok).length;
+        return finish({
+          ok: failed < results.length,
+          summary: `${results.length} 个子智能体已返回${failed ? `，${failed} 个未完成` : ''}`,
+          detail: results.map((item, index) => `### 子任务 ${index + 1}：${summarize(item.task, 200)}\n${item.ok ? item.text : `失败：${item.error ?? item.text}`}`).join('\n\n'),
+        });
+      }
       case 'desktop_action': {
         if (ctx.bot.workspaceId === 'workspace_local' || !ctx.cloud.desktopAction || !toolNamesFor(ctx.bot).includes(call.name)) throw new Error('此 Bot 未启用云电脑桌面操作');
         if (ctx.requestApproval) {
@@ -378,7 +408,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
                 : result.exitCode === 0
                   ? `命令执行成功${output ? ` · ${output.split('\n').length} 行输出` : ''}`
                   : `命令退出码 ${result.exitCode}`,
-            detail: truncate(output || '(无输出)', 12000),
+            detail: pruneOutput(output || '(无输出)', 12000, 0.35),
           });
         } finally {
           ctx.cloud.endTask();
@@ -390,7 +420,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         ctx.cloud.beginTask('读取云电脑文件');
         try {
           const text = await ctx.cloud.readText(remotePath);
-          return finish({ ok: true, summary: `读取 ${remotePath}（${text.length} 字符）`, detail: truncate(text, 20000) });
+          return finish({ ok: true, summary: `读取 ${remotePath}（${text.length} 字符）`, detail: pruneOutput(text, 20000, 0.7) });
         } finally {
           ctx.cloud.endTask();
         }
@@ -474,7 +504,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           .replace(/&nbsp;/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
-        return finish({ ok: true, summary: `抓取 ${host}（${text.length} 字符）`, detail: truncate(text, 16000) });
+        return finish({ ok: true, summary: `抓取 ${host}（${text.length} 字符）`, detail: pruneOutput(text, 16000, 0.6) });
       }
       case 'install_mcp': {
         if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用安装 MCP 工具');
@@ -490,8 +520,9 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           if (!command || !path.isAbsolute(command) || !fs.existsSync(command)) throw new Error(`MCP「${name}」的 command 必须是本机存在的绝对路径（当前：${command || '空'}）`);
         }
         if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装 MCP：${servers.map(([name]) => name).join('、')}`))) return finish({ ok: false, summary: '已取消安装 MCP' });
-        const result = ctx.installMcp(json);
-        return finish({ ok: true, summary: `已安装 MCP：${result.added.join('、') || '（无新增）'}`, detail: '已自动绑定到当前 Bot，重启对话或下次请求即可使用' });
+        const result = await ctx.installMcp(json);
+        const cloud = result.target === 'cloud';
+        return finish({ ok: true, summary: cloud ? `已上传 MCP 到云电脑：${result.names.join('、')}` : `已安装 MCP：${result.names.join('、') || '（无新增）'}`, detail: cloud ? '已写入云电脑 ~/.claude.json，由云电脑自身管理；可在「设置 → MCP 与 Skills」查看云端清单' : '已自动绑定到当前 Bot，重启对话或下次请求即可使用' });
       }
       case 'install_skill': {
         if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用安装 Skill 工具');
@@ -501,8 +532,9 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('技能目录必须在当前工作区内');
         if (!fs.existsSync(path.join(resolved, 'SKILL.md'))) throw new Error('目录内没有 SKILL.md');
         if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装技能：${path.basename(resolved)}`))) return finish({ ok: false, summary: '已取消安装技能' });
-        const result = ctx.installSkill(resolved);
-        return finish({ ok: true, summary: `已安装技能：${result.name ?? result.id ?? ''}`, detail: '已自动绑定到当前 Bot' });
+        const result = await ctx.installSkill(resolved);
+        const cloudSkill = result.target === 'cloud';
+        return finish({ ok: true, summary: cloudSkill ? `已上传技能到云电脑：${result.name ?? ''}` : `已安装技能：${result.name ?? result.id ?? ''}`, detail: cloudSkill ? '已部署到云电脑 ~/.claude/skills，由云电脑管理；可在「设置 → MCP 与 Skills」查看云端清单' : '已自动绑定到当前 Bot' });
       }
       case 'web_search': {
         const query = requireString(args, 'query');
@@ -512,7 +544,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         return finish({
           ok: true,
           summary: `搜索「${summarize(query, 40)}」：${hits.length} 条结果`,
-          detail: truncate(hits.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`).join('\n'), 8000),
+          detail: pruneOutput(hits.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`).join('\n'), 8000, 0.7),
         });
       }
       default:

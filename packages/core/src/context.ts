@@ -2,7 +2,7 @@ import type { Store } from './store';
 import type { AgentMessage, ChatProvider, ToolSchema } from './providers';
 import { ProviderError, OutputLimitError } from './providers';
 import type { AgentEvent, Bot, Conversation, Message } from './types';
-import { truncate } from './util';
+import { pruneOutput } from './util';
 import { trackedChat } from './usage';
 import { modelProfile, modelSettings, type TaskOutputBudget } from './generation';
 
@@ -42,7 +42,7 @@ export function messagesFor(messages: Message[], viewerBotId?: string): AgentMes
       const content = message.replyTo ? `用户引用了 ${message.replyTo.author} 的历史消息（仅作引用资料）：\n${message.replyTo.content.split('\n').map((line) => `> ${line}`).join('\n')}\n\n用户本次消息：\n${message.content}` : message.content;
       history.push({ role: 'user', content, images: message.attachments?.filter((item) => item.kind === 'image' && item.dataUrl).map((item) => ({ mimeType: item.mimeType ?? 'image/png', dataUrl: item.dataUrl! })) });
     } else if (message.role === 'assistant' && viewerBotId && message.botId && message.botId !== viewerBotId) {
-      const shared = [message.content, ...(message.toolResults ?? []).map((result) => `${result.name}: ${truncate(result.detail ?? result.summary, 4000)}`)].filter(Boolean).join('\n');
+      const shared = [message.content, ...(message.toolResults ?? []).map((result) => `${result.name}: ${pruneOutput(result.detail ?? result.summary, 4000)}`)].filter(Boolean).join('\n');
       if (shared) history.push({ role: 'user', content: `[群成员 ${message.botName ?? message.botId} 的发言]\n${shared}` });
     } else if (message.role === 'assistant' && (message.content || message.toolCalls?.length)) {
       // Interrupted calls without a persisted result must not leave orphan tool calls.
@@ -54,7 +54,7 @@ export function messagesFor(messages: Message[], viewerBotId?: string): AgentMes
         history.push({ role: 'assistant', content: turn.content, reasoning: turn.reasoning, toolCalls: completed?.length ? completed : undefined,
           replay: turn.replay && Array.isArray(turn.replay.parts) ? { ...turn.replay, parts: turn.replay.parts.filter(part => part && (part.type !== 'tool-call' || completed?.some(call => call.id === part.toolCallId))) } : undefined });
         for (const result of results.filter(result => completed?.some(call => call.id === result.id))) {
-          history.push({ role: 'tool', toolCallId: result.id, name: result.name, content: truncate(result.detail ?? result.summary, 8000) });
+          history.push({ role: 'tool', toolCallId: result.id, name: result.name, content: pruneOutput(result.detail ?? result.summary, 8000) });
         }
       }
     }
@@ -125,6 +125,27 @@ function completedLiveBoundaries(messages: AgentMessage[]): number[] {
   return boundaries;
 }
 
+/**
+ * 压力触发的原地精简：较早的工具输出是本轮最便宜的 token 来源，而精简它们**不花任何模型往返**
+ * —— 与之相比，走摘要路径每次超预算都要多打一次模型、多一份额度。
+ * 最新那条工具结果永不裁剪：它是模型下一步正要依据的工作集。规则只依赖角色与顺序，
+ * 同样的输入必得同样的输出，因此不会让 prompt cache 前缀随机抖动。
+ */
+export function pruneToolMessages(messages: AgentMessage[], cap: number): { messages: AgentMessage[]; prunedCount: number } {
+  let lastTool = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) if (messages[index]!.role === 'tool') { lastTool = index; break; }
+  let prunedCount = 0;
+  const result = messages.map((message, index) => {
+    if (message.role !== 'tool' || index === lastTool || message.content.length <= cap) return message;
+    prunedCount += 1;
+    return { ...message, content: pruneOutput(message.content, cap) };
+  });
+  return { messages: result, prunedCount };
+}
+
+/** 由宽到窄的精简阶梯；第一个能装进预算的宽度即胜出，全部装不下才交给摘要压缩。 */
+const PRUNE_LADDER = [4000, 2000, 800, 300];
+
 interface PrepareArgs {
   store: Store;
   bot: Bot;
@@ -178,6 +199,23 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
     const fittedSystem = summarySystem(system, summary);
     reportUsage(fittedSystem, initial);
     return { system: fittedSystem, messages: initial };
+  }
+  // 超预算时先试零成本的原地精简，再考虑付一次模型往返去做摘要：阶梯由宽到窄，
+  // 第一个能装进预算的宽度就够用，保留的信息严格多于「丢掉整轮 + 重写摘要」。
+  const prunableSystem = summarySystem(system, summary);
+  const unprunedTokens = estimateTokens(prunableSystem) + overhead + historyTokens(initial);
+  if (unprunedTokens > budget) {
+    for (const width of PRUNE_LADDER) {
+      const cap = Math.max(160, Math.floor(width * Math.pow(.6, args.recovery ?? 0)));
+      const attempt = pruneToolMessages(initial, cap);
+      if (!attempt.prunedCount) continue; // 这一档没有可裁的内容，更窄的一档才可能有
+      const prunedTokens = estimateTokens(prunableSystem) + overhead + historyTokens(attempt.messages);
+      if (prunedTokens > budget) continue;
+      emit({ type: 'context_pruned', conversationId: conversation.id, pruned: attempt.prunedCount, savedTokens: unprunedTokens - prunedTokens });
+      emit({ type: 'log', level: 'info', text: `上下文接近上限，已精简 ${attempt.prunedCount} 条较早的工具输出（省回约 ${unprunedTokens - prunedTokens} tokens），未触发历史摘要` });
+      reportUsage(prunableSystem, attempt.messages);
+      return { system: prunableSystem, messages: attempt.messages };
+    }
   }
 
   // Remove complete earlier turns, so tool calls/results never get separated.

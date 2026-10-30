@@ -22,6 +22,8 @@
     "test:providers": "pnpm --filter @moyu/core build && node --test scripts/provider-sdk.test.mjs scripts/output-limits.test.mjs scripts/conversation.test.mjs scripts/usage.test.mjs scripts/capabilities.test.mjs",
     "test:schedules": "pnpm --filter @moyu/core build && node --test scripts/schedules.test.mjs",
     "test:avatars": "node --test scripts/bot-activity.test.mjs",
+    "test:subagents": "pnpm --filter @moyu/core build && node --test scripts/subagent.test.mjs",
+    "test:pruning": "pnpm --filter @moyu/core build && node --test scripts/tool-pruning.test.mjs",
     "seed": "node scripts/seed-demo.mjs",
     "dist": "pnpm build && pnpm --filter @moyu/desktop dist"
   },

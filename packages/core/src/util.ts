@@ -23,6 +23,23 @@ export function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}\n…（已截断 ${text.length - max} 字符）`;
 }
 
+/**
+ * 模型输入用的首尾保留裁剪。`truncate` 只砍尾巴，但工具输出的结论几乎都在结尾
+ * （退出码、最后一个栈帧、JSON 末尾的 error 字段），只留头部恰好丢掉了模型最需要读的那部分。
+ * 省略标记计入 `max` 之内，所以返回值一定不超过调用方给出的额度：标记按最宽情况
+ * （`dropped = text.length`）预留空间，实际 dropped 更小、数字更短，总长只会 ≤ max。
+ */
+export function pruneOutput(text: string, max: number, headRatio = 0.4): string {
+  if (text.length <= max) return text;
+  if (max <= 0) return '';
+  const marker = (dropped: number) => `\n…（中间省略 ${dropped} 字符，已保留首尾）…\n`;
+  const room = max - marker(text.length).length;
+  if (room <= 0) return text.slice(0, max);
+  const head = Math.floor(room * headRatio);
+  const tail = room - head;
+  return `${text.slice(0, head)}${marker(text.length - room)}${text.slice(text.length - tail)}`;
+}
+
 export function safeJsonParse<T>(text: string, fallback: T): T {
   try {
     return JSON.parse(text) as T;

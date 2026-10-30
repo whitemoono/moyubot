@@ -275,6 +275,11 @@ export interface Conversation {
   /** Deleted group chats retain their transcript on disk and leave the active list. */
   deletedAt?: number;
   context?: ConversationContext;
+  /**
+   * 子智能体的临时工作会话：只在主进程内存里存在，不落盘、不进侧栏、不进同步快照。
+   * 它对外的唯一留痕是回给父会话的那条工具结果；depth 用来硬限递归层数。
+   */
+  subagent?: { task: string; depth: number; parentConversationId: string };
 }
 
 export interface ConversationContext {
@@ -385,8 +390,20 @@ export interface SkillConfig {
 }
 
 export interface CapabilityStatus {
-  servers: { id: string; state: 'disconnected' | 'connecting' | 'connected' | 'error'; tools: { name: string; description?: string }[]; error?: string }[];
+  servers: { id: string; state: 'disconnected' | 'connecting' | 'connected' | 'error' | 'deployed'; tools: { name: string; description?: string }[]; error?: string; cloud?: boolean; name?: string; transport?: string; source?: string }[];
   loadedSkills: { botId: string; skillId: string; loadedAt: number }[];
+  /** 云电脑真实部署的 MCP 服务（由云主机盘点而来，非本机配置）。 */
+  cloudServers?: { id: string; name: string; transport: string; command?: string; url?: string; source: string }[];
+  /** 云电脑真实部署的技能（目录盘点）。 */
+  cloudSkills?: { id: string; name: string; path: string; source: string }[];
+}
+
+/** importMcp / importSkill 的结果：云端安装还是本机安装。 */
+export interface CapabilityImportResult {
+  target: 'cloud' | 'local';
+  names?: string[];
+  name?: string;
+  id?: string;
 }
 
 export type AgentEvent =
@@ -400,6 +417,9 @@ export type AgentEvent =
   | { type: 'message_end'; conversationId: string; message: Message }
   | { type: 'run_end'; conversationId: string; runId: string; ok: boolean; error?: string }
   | { type: 'context_compaction'; conversationId: string; phase: 'start' | 'done' | 'error'; context?: ConversationContext }
+  | { type: 'context_pruned'; conversationId: string; pruned: number; savedTokens: number }
+  /** 子智能体批次进度。父会话用它画嵌套卡片；子会话内部的 token 增量不外发，避免界面串台。 */
+  | { type: 'subagent'; conversationId: string; callId: string; status: 'start' | 'done'; tasks: string[]; children?: { conversationId: string; task: string; ok: boolean; text?: string; error?: string }[]; seconds?: number }
   | { type: 'context_usage'; conversationId: string; systemTokens: number; toolTokens: number; historyTokens: number; windowTokens: number; reserveTokens: number }
   | { type: 'usage'; conversationId: string; messageId: string; usage: TokenUsage }
   | { type: 'cloud'; status: CloudStatus; note?: string }

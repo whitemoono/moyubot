@@ -86,7 +86,9 @@ test('chat tools create, list, modify, pause, resume and close only the speaking
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw); requests++;
     const last = body.messages.findLastIndex((message) => message.role === 'user');
-    const command = body.messages[last].content;
+    // AgentRuntime 会把「[当前时间：…]」追加到最后一条 user 消息尾部，用来保住
+    // system + 历史 的 prompt cache 前缀，所以这里必须剥掉那段后缀再比对用户原话。
+    const command = body.messages[last].content.split('\n\n[当前时间：')[0];
     const results = body.messages.slice(last + 1).filter((message) => message.role === 'tool');
     let name, args;
     if (command === 'create' && !results.length) { name = 'schedule_task'; args = { title: '晨间汇报', prompt: '汇报进展', cron: '0 9 * * *' }; }

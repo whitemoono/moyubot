@@ -19,10 +19,21 @@ import type {
 import type { GeneratedImage } from './providers';
 import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
-import { newId, summarize, truncate } from './util';
+import { newId, pruneOutput, summarize } from './util';
 import { contextWindow, outputBudget, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
 import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generation';
+
+/**
+ * Sub-agents get a read-only slice of the tool surface: no command execution, no writes, no
+ * memory/schedule mutation, no MCP or skills, and no nested spawn. They exist to widen research
+ * coverage, not to act on anything.
+ */
+const SUBAGENT_TOOLS = ['cloud_read', 'web_fetch', 'web_search', 'recall'];
+const SUBAGENT_MAX_STEPS = 12;
+const SUBAGENT_MAX_SECONDS = 600;
+const SUBAGENT_MAX_DEPTH = 2;
+const SUBAGENT_MAX_TASKS = 4;
 
 export interface AgentRuntimeDeps {
   capabilities?: CapabilityManager;
@@ -234,6 +245,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     abort: AbortController;
     userMessage: Message;
     group?: boolean;
+    /** Sub-agent runs: share the parent's token budget, and stay off the UI event channel. */
+    taskBudget?: TaskOutputBudget;
+    maxStepsOverride?: number;
+    durationSeconds?: number;
+    silent?: boolean;
+    /** 0 for a user-initiated run; incremented for each sub-agent generation. */
+    depth?: number;
   }): Promise<void> {
     const { bot, conversationId, runId, assistantMessage, abort } = params;
     const message = assistantMessage;
@@ -245,9 +263,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     if (history[0]?.role === 'user') history[0] = { ...history[0], content: `${history[0].content}\n\n[当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}]` };
     const taskContext: TaskContext = {};
     const memoryScope = params.group ? conversationId : bot.id;
-    const taskBudget = new TaskOutputBudget(bot.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
-    const maxSteps = bot.generation?.maxSteps ?? this.maxSteps;
-    const duration = bot.generation?.maxDurationSeconds ?? DEFAULT_TASK_LIMITS.maxDurationSeconds;
+    // Children draw down the parent's budget instead of getting a fresh one: otherwise a model
+    // could multiply its own task ceiling by spawning, and nothing would stop it.
+    const taskBudget = params.taskBudget ?? new TaskOutputBudget(bot.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
+    const maxSteps = params.maxStepsOverride ?? bot.generation?.maxSteps ?? this.maxSteps;
+    const duration = params.durationSeconds ?? bot.generation?.maxDurationSeconds ?? DEFAULT_TASK_LIMITS.maxDurationSeconds;
     const taskDeadline = new AbortController();
     const timer = setTimeout(() => taskDeadline.abort(), duration * 1000);
     const signal = AbortSignal.any([abort.signal, taskDeadline.signal]);
@@ -300,7 +320,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
           const context = await prepareContext({
             store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
             userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : ''), tools,
-            signal, emit: this.emit, recovery, outputTokens, taskBudget, taskContext,
+            signal, emit: params.silent ? () => {} : this.emit, recovery, outputTokens, taskBudget, taskContext,
           });
           callStart = Date.now();
           try {
@@ -400,28 +420,31 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             createSchedule: (input) => this.store.createSchedule(bot.id, input),
             listTasks: (includeClosed) => this.store.listSchedules().filter((task) => task.botId === bot.id && (includeClosed || !task.closedAt && !task.completedAt)),
             updateTask: (id, patch) => this.store.updateSchedule(bot.id, id, patch),
-            installMcp: (json) => {
+            installMcp: async (json) => {
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
               const before = new Set((this.store.settings.mcpServers ?? []).map((item) => item.id));
-              this.capabilities.importMcp(workspaceId, json);
+              const result = await this.capabilities.importMcp(workspaceId, json);
+              if (result.target === 'cloud') return { target: 'cloud' as const, names: result.names };
               const added = (this.store.settings.mcpServers ?? []).filter((item) => !before.has(item.id));
               const current = this.store.getBot(bot.id);
               if (current && added.length) this.store.upsertBot({ ...current, mcpServerIds: [...new Set([...(current.mcpServerIds ?? []), ...added.map((item) => item.id)])], updatedAt: Date.now() });
-              return { added: added.map((item) => item.name) };
+              return { target: 'local' as const, names: added.map((item) => item.name) };
             },
-            installSkill: (directory) => {
+            installSkill: async (directory) => {
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
               const before = new Set((this.store.settings.skills ?? []).map((item) => item.id));
-              this.capabilities.importSkill(workspaceId, directory);
+              const result = await this.capabilities.importSkill(workspaceId, directory);
+              if (result.target === 'cloud') return { target: 'cloud' as const, name: result.name };
               const added = (this.store.settings.skills ?? []).filter((item) => !before.has(item.id));
               const current = this.store.getBot(bot.id);
               if (current && added.length) this.store.upsertBot({ ...current, skillIds: [...new Set([...(current.skillIds ?? []), ...added.map((item) => item.id)])], updatedAt: Date.now() });
-              return { id: added[0]?.id, name: added[0]?.name };
+              return { target: 'local' as const, id: added[0]?.id, name: added[0]?.name };
             },
             emitStatus: (status, note) => { if ((bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud') this.emit({ type: 'cloud', status, note }); },
             webSearch: this.store.getSettings().webSearch,
+            spawnAgents: (callId, tasks, background) => this.spawnAgents({ callId, bot, conversationId, taskBudget, signal, depth: params.depth ?? 0 }, tasks, background),
             signal,
           });
 
@@ -445,7 +468,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             role: 'tool',
             toolCallId: call.id,
             name: call.name,
-            content: truncate(result.ok ? result.detail ?? result.summary : `错误：${result.summary}\n${result.detail ?? ''}`, 8000),
+            content: pruneOutput(result.ok ? result.detail ?? result.summary : `错误：${result.summary}\n${result.detail ?? ''}`, 8000),
           });
           if (result.ok && call.name === 'desktop_action' && result.artifactPath) {
             const screenshot = resolveArtifact(this.computerFor(bot).getSettings().workspaceDir, result.artifactPath);
@@ -467,7 +490,9 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         errorText = error instanceof ProviderError ? error.message : (error as Error).message;
         message.error = errorText;
       }
-      this.emit({ type: 'log', level: abort.signal.aborted ? 'info' : 'error', text: summarize(errorText, 300) });
+      if (!params.silent) {
+        this.emit({ type: 'log', level: abort.signal.aborted ? 'info' : 'error', text: summarize(errorText, 300) });
+      }
     } finally {
       clearTimeout(timer);
       message.streaming = false;
@@ -475,14 +500,81 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
         message.content = message.error ? `（没有回复：${message.error}）` : message.stopped || message.toolCalls?.length ? '' : '（空回复）';
       }
       this.store.appendMessage(conversationId, message);
-      this.emit({ type: 'message_end', conversationId, message });
-      if (!params.group) {
-        this.runs.delete(conversationId);
-        this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
+      if (!params.silent) {
+        this.emit({ type: 'message_end', conversationId, message });
+        if (!params.group) {
+          this.runs.delete(conversationId);
+          this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
+        }
       }
       this.computerFor(bot).touch();
       this.computerFor(bot).armIdleIfNeeded?.();
     }
+  }
+
+  /**
+   * Fans work out to read-only sub-agents, each in its own scratch conversation. Children share
+   * the parent's token budget, abort with the parent, do not inherit this conversation's history,
+   * and are invisible to listConversations / sync / disk — the parent's tool result is the only
+   * durable trace of what they found.
+   */
+  private async spawnAgents(
+    parent: { callId: string; bot: Bot; conversationId: string; taskBudget: TaskOutputBudget; signal: AbortSignal; depth: number },
+    tasks: string[],
+    background?: string,
+  ): Promise<{ task: string; ok: boolean; text: string; error?: string }[]> {
+    const depth = parent.depth + 1;
+    if (depth > SUBAGENT_MAX_DEPTH) throw new Error(`子智能体最多嵌套 ${SUBAGENT_MAX_DEPTH} 层`);
+    if (tasks.length > SUBAGENT_MAX_TASKS) throw new Error(`一次最多并行 ${SUBAGENT_MAX_TASKS} 个子任务`);
+    // A cloned Bot, not a new one: everything the runLoop reads (provider, model, workspace,
+    // temperature) stays identical, and only the capability surface changes.
+    const child: Bot = { ...parent.bot, tools: SUBAGENT_TOOLS, mcpServerIds: [], skillIds: [], approvalPolicy: 'never' };
+    const startedAt = Date.now();
+    this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: parent.callId, status: 'start', tasks });
+    const children = await Promise.all(tasks.map((task) => this.runChild(child, task, background, parent, depth)));
+    this.emit({
+      type: 'subagent', conversationId: parent.conversationId, callId: parent.callId, status: 'done', tasks, children,
+      seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
+    });
+    return children.map(({ task, ok, text, error }) => ({ task, ok, text: text ?? '', error }));
+  }
+
+  private async runChild(
+    child: Bot,
+    task: string,
+    background: string | undefined,
+    parent: { conversationId: string; taskBudget: TaskOutputBudget; signal: AbortSignal },
+    depth: number,
+  ): Promise<{ conversationId: string; task: string; ok: boolean; text?: string; error?: string }> {
+    const conversation = this.store.createSubagentConversation(child.id, task, depth, parent.conversationId);
+    const userMessage: Message = {
+      id: newId('msg'),
+      role: 'user',
+      content: `${task}\n\n你是子智能体，只负责上面这一件事。${background ? `\n已知背景（父任务提供，未经你验证）：\n${background}\n` : ''}\n约束：你只有只读工具，不要尝试改动文件、执行命令或安排任务；你看不到父对话的历史，父任务只会读到你最后这段回答，所以结论必须自足。请按「1）结论 2）依据（文件路径 / URL / 关键片段）3）未覆盖或不确定之处」输出。`,
+      createdAt: Date.now(),
+    };
+    this.store.appendMessage(conversation.id, userMessage);
+    const assistantMessage: Message = {
+      id: newId('msg'), role: 'assistant', botId: child.id, botName: child.name, content: '', model: child.model,
+      createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
+    };
+    this.store.appendMessage(conversation.id, assistantMessage);
+    const abort = new AbortController();
+    const forward = () => abort.abort();
+    parent.signal.addEventListener('abort', forward, { once: true });
+    try {
+      await this.runLoop({
+        bot: child, conversationId: conversation.id, runId: newId('run'), assistantMessage, abort, userMessage,
+        silent: true, depth, taskBudget: parent.taskBudget,
+        maxStepsOverride: SUBAGENT_MAX_STEPS, durationSeconds: SUBAGENT_MAX_SECONDS,
+      });
+    } finally {
+      parent.signal.removeEventListener('abort', forward);
+    }
+    const text = assistantMessage.content.trim();
+    if (assistantMessage.error) return { conversationId: conversation.id, task, ok: false, text, error: assistantMessage.error };
+    if (!text) return { conversationId: conversation.id, task, ok: false, error: assistantMessage.stopped ? '已随父任务停止' : '子智能体没有产出结论' };
+    return { conversationId: conversation.id, task, ok: true, text };
   }
 
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {

@@ -14,6 +14,7 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   schedule_task: { label: '安排任务', icon: 'clock' },
   list_tasks: { label: '查询任务', icon: 'clock' },
   update_task: { label: '管理任务', icon: 'clock' },
+  spawn_agent: { label: '子智能体', icon: 'users' },
 };
 
 export function ReplyToolCard({ call, result, message }: { call: ToolCall; result?: ToolResult; message: Pick<Message, 'streaming' | 'stopped'> }) {
@@ -25,10 +26,18 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
   const open = expanded;
   const tool = TOOLS[call.name] ?? { label: call.name, icon: 'plug' as const };
   const command = call.name === 'cloud_exec' ? String(call.arguments.cmd ?? '') : '';
-  const input = command || JSON.stringify(call.arguments, null, 2);
+  // 子任务清单从调用参数就能还原，运行中即可展示「几个在飞」，不需要额外的事件通道。
+  const subagentTasks = call.name === 'spawn_agent'
+    ? [typeof call.arguments.task === 'string' ? call.arguments.task : '',
+       ...(Array.isArray(call.arguments.tasks) ? call.arguments.tasks.filter((item): item is string => typeof item === 'string') : [])]
+      .filter((text) => text.trim())
+    : [];
+  const input = command || (subagentTasks.length ? subagentTasks.map((text, index) => `${index + 1}. ${text}`).join('\n') : JSON.stringify(call.arguments, null, 2));
   const output = result?.detail || result?.summary;
   const status = result ? result.ok ? '已完成' : '执行失败' : message.stopped ? '已停止' : running ? '执行中' : '未完成';
-  const summary = call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
+  const summary = subagentTasks.length
+    ? `${subagentTasks.length} 个子任务 · ${subagentTasks[0]!.slice(0, 40)}`
+    : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
 
   useEffect(() => {
     if (!copied) return;
