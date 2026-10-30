@@ -7,6 +7,7 @@ import './styles/workspace.css';
 import './styles/settings.css';
 import './styles/usage.css';
 import './styles/terminal-command.css';
+import './styles/reply-flow.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

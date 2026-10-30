@@ -78,13 +78,16 @@ artifact:open · open-external · win
 
 ## 供应商适配（`providers/`）
 
-三者共享同一个 `ChatProvider` 接口（`stream()` 返回异步增量序列 + 最终 usage）。差异被封在适配器里：
+三者共享 `ChatProvider.chat()` 接口，由 `providers/pi.ts` 调用 pi-ai 的协议
+`stream()` 处理响应，返回流式文本、思考、完整工具调用与最终 usage：
 
 - `openai.ts`：`/chat/completions`，`stream: true` 的 SSE `data:` 行；支持 `tool_calls` 增量拼接、`reasoning_content`。
 - `anthropic.ts`：`/messages`，事件类型 `content_block_delta` / `input_json_delta`，工具结果走 `user` 消息里的 `tool_result` 块。
 - `gemini.ts`：`generateContent` + `streamGenerateContent?alt=sse`，`functionCall` / `functionResponse` 映射。
 
-`sse.ts` 是一个手写的行级 SSE 解析器，容忍跨 chunk 截断与 `[DONE]`。
+聊天不再使用手写 SSE 解析器。`sse.ts` 保留其他接口需要的错误读取方法。
+思考签名随每轮模型响应持久化，限定原接口和模型重放；任务循环负责截断恢复和工具执行。
+接入边界、测试与许可见 [模型适配说明](MODEL_ADAPTERS.md)。
 
 绘图单独一条路径 `generateImageWithProvider`：OpenAI 兼容走 `/images/generations`（兼容 b64 与 url 两种返回），Gemini 走 `generateContent` 要求 `responseModalities: ['TEXT','IMAGE']`。
 

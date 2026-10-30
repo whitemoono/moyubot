@@ -10,12 +10,14 @@ import { BotTasks } from './BotTasks';
 import { CloudDesktop } from './CloudDesktop';
 import { BotMemories } from './BotMemories';
 import { CreateGroupDialog } from './CreateGroupDialog';
+import { BotCapabilities } from './BotCapabilities';
 
 const TABS = [{ id: 'details', label: '详情' }, { id: 'library', label: '资料库' }, { id: 'computer', label: '电脑' }] as const;
 type Tab = typeof TABS[number]['id'];
 
 export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: () => void; onCreateBot: () => void; onOpenTerminal: () => void }) {
-  const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, toast, conversation, compacting, setView, runningGroupIds } = useMoyu();
+  const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, toast, conversation, compacting, setView, runningGroupIds, runningBotIds, saveBot } = useMoyu();
+  const [savingCapabilities, setSavingCapabilities] = useState(false);
   const isGroup = !!conversation?.group;
   const isLocal = activeWorkspace?.kind === 'local';
   const cloud = isLocal ? local : cloudStatus;
@@ -80,6 +82,10 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
 
         {tab === 'details' ? <>
           {isGroup ? <section className="inspector-section"><div className="inspector-section__head"><h3>群成员</h3><span>{conversation!.group!.memberBotIds.length} 个</span></div><div className="group-member-list inspector-group-members">{conversation!.group!.memberBotIds.map((id, index) => { const member = settings.bots.find((item) => item.id === id); return <div className="group-member" key={id}>{member ? <BotAvatar bot={member} animated={false} /> : <Icon name="bots" />}<span><strong>{member?.name ?? '已移除的 Bot'}</strong><small>{member?.model ?? '不再参与回复'}</small></span><small>{index + 1}</small></div>; })}</div><p className="inspector-note">按以上顺序回复，共享本群消息与记忆。</p><Button size="sm" variant="ghost" icon="edit" disabled={runningGroupIds.has(conversation!.id)} onClick={() => setEditingGroup(true)}>编辑群聊</Button></section> : <>
+          {bot ? <BotCapabilities key={bot.id} bot={bot} inspector disabled={savingCapabilities || runningBotIds.has(bot.id)} onChange={patch => {
+            setSavingCapabilities(true);
+            void saveBot({ ...bot, ...patch }, { stayInSettings: true }).catch((error: Error) => toast(error.message, 'error')).finally(() => setSavingCapabilities(false));
+          }} /> : null}
           {bot ? <BotTasks key={bot.id} botId={bot.id} /> : null}
           <section className="inspector-section"><h3>关于这个 Bot</h3><dl className="inspector-facts">
             <div><dt>供应商</dt><dd>{provider?.name ?? '未绑定'}</dd></div>

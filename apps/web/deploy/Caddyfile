@@ -1,0 +1,4 @@
+{$PWA_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy pwa:8080
+}

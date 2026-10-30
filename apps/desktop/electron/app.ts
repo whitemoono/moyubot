@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
 import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
-import { checkForUpdates } from './updates';
+import { AppUpdater } from './update-installer';
+import { MobileSync } from './mobile-sync';
+import { spawn } from 'node:child_process';
 import { initializeProviderNetworking } from './provider-network';
 import type {
   AgentEvent,
@@ -28,6 +30,7 @@ import type {
   UsageQuery,
 } from '@moyu/core';
 import { createChatProvider } from '@moyu/core';
+import { CapabilityManager } from '@moyu/core';
 
 class SafeSecretBox implements SecretBox {
   private data: Record<string, string> = {};
@@ -87,6 +90,8 @@ interface PendingApproval {
 }
 
 export class MoyuApp {
+  readonly mobileSync: MobileSync;
+  readonly capabilities: CapabilityManager;
   readonly store: Store;
   readonly diagnostics: DiagnosticJournal;
   private diagnosticCommands = new Map<string, string>();
@@ -100,12 +105,15 @@ export class MoyuApp {
   private version: string;
   private offSchedules: () => void;
   private terminalRuns = new Map<string, AbortController>();
+  readonly updater: AppUpdater;
 
   constructor(dataDir: string, version: string, options?: { localDirectory?: string }) {
     initializeProviderNetworking();
     this.version = version;
     const secrets = new SafeSecretBox(dataDir);
     this.store = new Store(dataDir, secrets, options);
+    this.mobileSync = new MobileSync(this.store, () => this.send('moyu:sync-data', {}), () => this.cloud);
+    this.capabilities = new CapabilityManager(this.store);
     this.diagnostics = new DiagnosticJournal(dataDir, () => [
       secrets.get('cloud:instabox') ?? '', secrets.get('telegram:token') ?? '',
       ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
@@ -146,11 +154,12 @@ export class MoyuApp {
     });
 
     this.runtime = new AgentRuntime({
+      capabilities: this.capabilities,
       store: this.store,
       cloud: this.cloud,
       computers: { workspace_cloud: this.cloud, workspace_local: this.local },
       emit: (event) => this.send('moyu:event', event),
-      requestApproval: (request) => this.waitForApproval(request),
+      requestApproval: (request, signal) => this.waitForApproval(request, signal),
     });
 
     this.scheduler = new ScheduleRunner({
@@ -158,10 +167,33 @@ export class MoyuApp {
       runtime: this.runtime,
       onLog: (level, text) => this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent),
     });
+    this.updater = new AppUpdater({
+      directory: path.join(app.getPath('userData'), 'updates'), version,
+      request: (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init),
+      canInstall: app.isPackaged && process.platform === 'win32' && process.arch === 'x64',
+      beforeInstall: () => {
+        if (this.store.listConversations().some(item => this.runtime.isRunning(item.id)) || this.terminalRuns.size || this.cloud.status().state === 'busy' || this.local.status().state === 'busy') throw new Error('仍有任务或终端命令运行，请先结束后再安装更新');
+      },
+      launch: async (installer) => {
+        this.scheduler.stop();
+        try {
+          // Release manual desktop control before the installer replaces this process.
+          await this.desktop.dispose();
+          if (this.store.listConversations().some(item => this.runtime.isRunning(item.id)) || this.terminalRuns.size) throw new Error('仍有任务运行，请先结束后再安装更新');
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn(installer, ['/S', '--updated', '--force-run', `/D=${path.dirname(app.getPath('exe'))}`], { detached: true, stdio: 'ignore', shell: false });
+            child.once('error', reject);
+            child.once('spawn', () => { child.unref(); resolve(); });
+          });
+        } catch (error) { this.scheduler.start(); throw error; }
+      },
+      quit: () => { app.quit(); },
+    });
   }
 
   start(): void {
     this.registerIpc();
+    this.mobileSync.start();
     this.scheduler.start();
     void this.cloud.refresh();
   }
@@ -198,15 +230,24 @@ export class MoyuApp {
     if (event.type === 'log' && ['error', 'warn'].includes(event.level)) this.diagnostics.record({ source: '应用', message: event.text });
   }
 
-  private waitForApproval(request: ApprovalRequest): Promise<boolean> {
+  private waitForApproval(request: ApprovalRequest, signal?: AbortSignal): Promise<boolean> {
+    signal?.throwIfAborted();
     this.send('moyu:event', { type: 'approval', request } satisfies AgentEvent);
     return new Promise<boolean>((resolve) => {
+      const settle = (approved: boolean) => { signal?.removeEventListener('abort', canceled); resolve(approved); };
+      const canceled = () => {
+        clearTimeout(timer);
+        this.approvals.delete(request.id);
+        this.send('moyu:event', { type: 'approval_done', requestId: request.id, approved: false } satisfies AgentEvent);
+        settle(false);
+      };
       const timer = setTimeout(() => {
         this.approvals.delete(request.id);
         this.send('moyu:event', { type: 'approval_done', requestId: request.id, approved: false } satisfies AgentEvent);
-        resolve(false);
+        settle(false);
       }, 120_000);
-      this.approvals.set(request.id, { resolve, timer });
+      this.approvals.set(request.id, { resolve: settle, timer });
+      signal?.addEventListener('abort', canceled, { once: true });
     });
   }
 
@@ -223,7 +264,12 @@ export class MoyuApp {
     const desktopCaller = (event: Electron.IpcMainInvokeEvent) => {
       if (!this.win || event.sender !== this.win.webContents || event.senderFrame !== event.sender.mainFrame) throw new Error('桌面控制仅允许应用主界面调用');
     };
-    handle('moyu:app:check-updates', () => checkForUpdates(this.version));
+    handle('moyu:mobile-sync', (event, action: string, payload: unknown) => { desktopCaller(event); return this.mobileSync.action(action, payload); });
+    handle('moyu:app:check-updates', (event) => { desktopCaller(event); return this.updater.check(); });
+    handle('moyu:app:update-status', (event) => { desktopCaller(event); return this.updater.status(); });
+    handle('moyu:app:download-update', (event) => { desktopCaller(event); return this.updater.download(); });
+    handle('moyu:app:cancel-update', (event) => { desktopCaller(event); this.updater.cancel(); });
+    handle('moyu:app:install-update', (event) => { desktopCaller(event); return this.updater.install(); });
     handle('moyu:setup:directory', (event, directory: string) => {
       desktopCaller(event);
       if (this.store.getSettings().onboarding?.completedAt) throw new Error('请通过通用设置更换本地工作目录');
@@ -296,6 +342,18 @@ export class MoyuApp {
         platform: process.platform,
         version: this.version,
       };
+    });
+
+    handle('moyu:capabilities:status', (_event, workspaceId: string) => this.capabilities.status(workspaceId));
+    handle('moyu:mcp:import', (_event, workspaceId: string, json: string) => this.capabilities.importMcp(workspaceId, json));
+    handle('moyu:mcp:test', (_event, id: string) => this.capabilities.test(id));
+    handle('moyu:skill:import', async (_event, workspaceId: string) => {
+      const picked = await dialog.showOpenDialog({ title: '选择包含 SKILL.md 的技能目录', properties: ['openDirectory'] });
+      if (!picked.canceled && picked.filePaths[0]) this.capabilities.importSkill(workspaceId, picked.filePaths[0]);
+    });
+    handle('moyu:capabilities:remove', (_event, kind: 'mcp' | 'skill', id: string) => {
+      if (!['mcp', 'skill'].includes(kind)) throw new Error('能力类型无效');
+      return this.capabilities.remove(kind, id);
     });
 
     handle('moyu:settings:save', (_event, patch: Partial<AppSettings>): AppSettings => {
@@ -493,6 +551,9 @@ export class MoyuApp {
 
 
   dispose(): void {
+    this.mobileSync.stop();
+    void this.capabilities.dispose();
+    this.updater.dispose();
     this.terminalRuns.forEach((controller) => controller.abort());
     this.offSchedules();
     this.scheduler.stop();

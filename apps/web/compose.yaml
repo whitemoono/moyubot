@@ -1,0 +1,49 @@
+services:
+  pwa:
+    image: moyubot-pwa:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PWA_PORT:-8090}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      sync:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  sync:
+    image: moyubot-sync:latest
+    build: ./server
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      SYNC_ENABLED: ${SYNC_ENABLED:-false}
+      SYNC_SETUP_KEY: ${SYNC_SETUP_KEY:-}
+      DATA_DIR: /data
+    volumes:
+      - sync_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  sync_data:
+

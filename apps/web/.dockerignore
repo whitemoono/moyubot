@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+*.tar.gz
+deploy/certs
+server/data
+server/*.sqlite*
+*.test.mjs

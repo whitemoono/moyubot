@@ -1,0 +1,13 @@
+.runtime-model {display:block;width:100%;padding:14px;border:1px solid #8883;border-radius:12px;text-align:left;margin:8px 0;overflow-wrap:anywhere;}
+.runtime-model.selected {background:var(--text);color:var(--bg);}
+.runtime-cloud {display:grid;gap:16px;}
+.runtime-cloud form {display:grid;gap:12px;border-top:1px solid #8883;padding-top:18px;}
+.runtime-cloud textarea {resize:vertical;}
+.runtime-cloud label {line-height:1.6;font-size:12px;}
+.runtime-actions {display:flex;gap:14px;}
+.runtime-cloud pre,.runtime-approval pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;padding:14px;background:#8881;border-radius:12px;font-size:12px;}
+.runtime-approval {padding:14px 0;border-bottom:1px solid #8883;}
+.runtime-model-trigger {border:0;background:none;font:inherit;text-align:left;display:flex;gap:8px;align-items:center;min-width:0;}
+.runtime-model-trigger span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.runtime-notice {font-size:12px;padding:8px 16px;border-radius:14px;background:#8881;}
+.synced-message {white-space:pre-wrap;overflow-wrap:anywhere;}

@@ -1,0 +1,776 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CloudHost = exports.LocalHost = exports.MockDriver = exports.InstaBoxDriver = void 0;
+exports.resolveCloudState = resolveCloudState;
+const instabox_1 = require("./instabox");
+const util_1 = require("./util");
+const node_child_process_1 = require("node:child_process");
+const promises_1 = __importDefault(require("node:fs/promises"));
+const node_path_1 = __importDefault(require("node:path"));
+const computer_control_1 = require("./computer-control");
+class InstaBoxDriver {
+    kind = 'instabox';
+    client;
+    constructor(apiKey, baseUrl) {
+        this.client = new instabox_1.InstaBoxClient({ apiKey, baseUrl });
+    }
+    hasCredential() {
+        return this.client.hasKey();
+    }
+    listMachines() {
+        return this.client.listMachines();
+    }
+    getMachine(id) {
+        return this.client.getMachine(id);
+    }
+    updateMachine(id, patch) {
+        return this.client.updateMachine(id, patch);
+    }
+    createMachine(body) {
+        return this.client.createMachine(body);
+    }
+    act(id, action) {
+        return this.client.act(id, action);
+    }
+    waitOperation(id, options) {
+        return this.client.waitOperation(id, options);
+    }
+    waitForState(id, accept, options) {
+        return this.client.waitForState(id, accept, options);
+    }
+    exec(id, req, handlers) {
+        return this.client.exec(id, req, handlers);
+    }
+    writeFile(id, path, content) {
+        return this.client.writeFile(id, path, content);
+    }
+    readFile(id, path) {
+        return this.client.readFile(id, path);
+    }
+    desktopStart(id) { return this.client.desktopStart(id); }
+    desktopStream(id, viewOnly) { return this.client.desktopStream(id, viewOnly); }
+    desktopRevoke(id) { return this.client.desktopRevoke(id); }
+}
+exports.InstaBoxDriver = InstaBoxDriver;
+/**
+ * Offline driver used before an InstaBox key is configured (and by the demo/screenshots).
+ * It mimics the same state machine, wake latency and exec semantics as the real API.
+ */
+class MockDriver {
+    kind = 'mock';
+    machine = {
+        id: `mock_${(0, util_1.newId)('m')}`,
+        name: 'moyubot-shared',
+        state: 'suspended',
+        autoSuspendAfterSeconds: 600,
+        updatedAt: new Date().toISOString(),
+        spec: { vcpus: 4, memMiB: 8192 },
+    };
+    operations = new Map();
+    hasCredential() {
+        return true;
+    }
+    async listMachines() {
+        return [this.machine];
+    }
+    async getMachine(id) {
+        if (id !== this.machine.id)
+            throw new instabox_1.InstaBoxError({ status: 404, code: 'not_found', message: 'mock machine not found' });
+        return { ...this.machine, updatedAt: new Date().toISOString() };
+    }
+    async updateMachine(_id, patch) {
+        if (patch.autoSuspendAfterSeconds !== undefined) {
+            this.machine = { ...this.machine, autoSuspendAfterSeconds: Number(patch.autoSuspendAfterSeconds) };
+        }
+        return { ...this.machine };
+    }
+    async createMachine(body) {
+        this.machine = {
+            ...this.machine,
+            name: String(body.name ?? this.machine.name),
+            state: 'starting',
+            autoSuspendAfterSeconds: Number(body.autoSuspendAfterSeconds ?? 600),
+            updatedAt: new Date().toISOString(),
+        };
+        const operationId = (0, util_1.newId)('op');
+        this.operations.set(operationId, { id: operationId, state: 'running', phase: 'booting', machineId: this.machine.id });
+        void (async () => {
+            await (0, util_1.sleep)(2400);
+            this.machine = { ...this.machine, state: 'running', updatedAt: new Date().toISOString() };
+            this.operations.set(operationId, { id: operationId, state: 'succeeded', phase: 'done', machineId: this.machine.id });
+        })();
+        return { machine: { ...this.machine }, operationId };
+    }
+    async act(id, action) {
+        if (id !== this.machine.id)
+            throw new instabox_1.InstaBoxError({ status: 404, code: 'not_found', message: 'mock machine not found' });
+        if (action === 'suspend' || action === 'resume' || action === 'wake' || action === 'start' || action === 'stop') {
+            this.machine = {
+                ...this.machine,
+                state: action === 'suspend' ? 'suspending' : action === 'stop' ? 'stopping' : action === 'start' ? 'starting' : 'resuming',
+                updatedAt: new Date().toISOString(),
+            };
+            const operationId = (0, util_1.newId)('op');
+            this.operations.set(operationId, { id: operationId, state: 'running', phase: 'mock', machineId: id });
+            void (async () => {
+                await (0, util_1.sleep)(action === 'suspend' ? 900 : 1200);
+                const next = action === 'suspend' ? 'suspended' : action === 'stop' ? 'stopped' : 'running';
+                this.machine = { ...this.machine, state: next, updatedAt: new Date().toISOString() };
+                this.operations.set(operationId, { id: operationId, state: 'succeeded', phase: 'done', machineId: id });
+            })();
+            return { id: operationId, state: 'running', machineId: id };
+        }
+        return { id: (0, util_1.newId)('op'), state: 'succeeded', machineId: id };
+    }
+    async waitOperation(id, options) {
+        const deadline = Date.now() + (options?.timeoutMs ?? 120_000);
+        for (;;) {
+            const op = this.operations.get(id);
+            if (op) {
+                options?.onPhase?.(op.phase ?? '');
+                if (op.state === 'succeeded' || op.state === 'failed')
+                    return op;
+            }
+            if (Date.now() > deadline)
+                throw new instabox_1.InstaBoxError({ status: 0, code: 'timeout', message: 'mock operation timeout' });
+            await (0, util_1.sleep)(300);
+        }
+    }
+    async waitForState(id, accept, options) {
+        const deadline = Date.now() + (options?.timeoutMs ?? 120_000);
+        for (;;) {
+            const machine = await this.getMachine(id);
+            options?.onState?.(machine);
+            if (accept.includes(machine.state))
+                return machine;
+            if (Date.now() > deadline)
+                throw new instabox_1.InstaBoxError({ status: 0, code: 'timeout', message: `mock state ${machine.state}` });
+            await (0, util_1.sleep)(300);
+        }
+    }
+    async exec(id, req, handlers) {
+        if (this.machine.state !== 'running')
+            throw new instabox_1.InstaBoxError({ status: 409, code: 'machine_not_running', message: 'machine is not running' });
+        const cmd = req.cmd ?? (req.argv ?? []).join(' ');
+        await (0, util_1.sleep)(220);
+        const now = new Date().toISOString();
+        let stdout = '';
+        if (/^\s*(uname|whoami|pwd|ls|cat|echo|python3? --version|df)/.test(cmd)) {
+            if (cmd.includes('uname'))
+                stdout = `Linux moyubot-shared 6.18.54-fc #1 SMP x86_64 GNU/Linux\n`;
+            else if (cmd.includes('whoami'))
+                stdout = `user\n`;
+            else if (cmd.includes('pwd'))
+                stdout = `${req.cwd ?? '/data/home'}\n`;
+            else if (cmd.startsWith('ls'))
+                stdout = `Desktop\nDocuments\nDownloads\nmoyubot\n`;
+            else if (cmd.includes('--version'))
+                stdout = `Python 3.13.5\n`;
+            else if (cmd.includes('df'))
+                stdout = `Filesystem      Size  Used Avail Use%\n/dev/vda1        16G  2.1G   13G  14% /data\n`;
+            else
+                stdout = '';
+        }
+        stdout += `[mock ${now}] ${cmd}\n`;
+        handlers?.onStdout?.(stdout);
+        return { stdout, stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    }
+    async writeFile(_id, _path, _content) {
+        await (0, util_1.sleep)(120);
+    }
+    async readFile(_id, _path) {
+        return new Uint8Array();
+    }
+}
+exports.MockDriver = MockDriver;
+/** Local Windows execution environment. It deliberately exposes the same narrow
+ * computer surface as CloudHost so the agent cannot care where a workspace runs. */
+class LocalHost {
+    settings;
+    statusValue;
+    onStatus;
+    activeTasks = 0;
+    processes = new Set();
+    constructor(settings, onStatus) {
+        this.settings = settings;
+        this.onStatus = onStatus;
+        this.statusValue = { state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0, machine: { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null } };
+    }
+    getSettings() { return this.settings; }
+    status() { return this.statusValue; }
+    updateSettings(settings) { this.settings = settings; }
+    beginTask(reason) { this.activeTasks++; this.statusValue = { ...this.statusValue, state: 'busy', pendingReason: reason, lastTransitionAt: Date.now() }; this.onStatus?.(this.statusValue); }
+    endTask() { this.activeTasks = Math.max(0, this.activeTasks - 1); this.statusValue = { ...this.statusValue, state: this.activeTasks ? 'busy' : 'ready', pendingReason: this.activeTasks ? this.statusValue.pendingReason : undefined, lastTransitionAt: Date.now() }; this.onStatus?.(this.statusValue); }
+    touch() { }
+    armIdleIfNeeded() { }
+    async ensureAwake(_reason) { return { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null }; }
+    async exec(command, options = {}) {
+        if (options.signal?.aborted)
+            throw new Error('任务已停止');
+        await promises_1.default.mkdir(this.settings.workspaceDir, { recursive: true });
+        if (options.signal?.aborted)
+            throw new Error('任务已停止');
+        this.beginTask('在本机执行命令');
+        try {
+            return await new Promise((resolve, reject) => {
+                const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $OutputEncoding=[Console]::OutputEncoding;\n${command}\nif ($LASTEXITCODE) { exit $LASTEXITCODE }`;
+                const child = process.platform === 'win32'
+                    ? (0, node_child_process_1.spawn)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { cwd: this.settings.workspaceDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+                    : (0, node_child_process_1.spawn)('/bin/sh', ['-c', command], { cwd: this.settings.workspaceDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+                let stdout = '', stderr = '', timedOut = false, truncated = false;
+                const stop = () => {
+                    if (!child.pid)
+                        return;
+                    if (process.platform === 'win32') {
+                        const killer = (0, node_child_process_1.spawn)('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' });
+                        killer.on('error', () => child.kill());
+                        killer.on('exit', (code) => { if (code !== 0)
+                            child.kill(); });
+                    }
+                    else {
+                        try {
+                            process.kill(-child.pid, 'SIGKILL');
+                        }
+                        catch {
+                            child.kill('SIGKILL');
+                        }
+                    }
+                };
+                this.processes.add(stop);
+                const timeout = setTimeout(() => { timedOut = true; stop(); }, Math.max(1, Math.min(900, options.timeoutSeconds ?? 120)) * 1000);
+                options.signal?.addEventListener('abort', stop, { once: true });
+                if (options.signal?.aborted)
+                    stop();
+                const cleanup = () => { clearTimeout(timeout); options.signal?.removeEventListener('abort', stop); this.processes.delete(stop); };
+                child.stdout.setEncoding('utf8');
+                child.stderr.setEncoding('utf8');
+                child.stdout.on('data', (chunk) => { if (stdout.length < 1024 * 1024) {
+                    stdout += chunk.slice(0, 1024 * 1024 - stdout.length);
+                    options.onStdout?.(chunk);
+                }
+                else
+                    truncated = true; });
+                child.stderr.on('data', (chunk) => { if (stderr.length < 1024 * 1024)
+                    stderr += chunk.slice(0, 1024 * 1024 - stderr.length);
+                else
+                    truncated = true; });
+                child.on('error', (error) => { cleanup(); reject(error); });
+                child.on('close', (code) => { cleanup(); if (options.signal?.aborted)
+                    reject(new Error('任务已停止'));
+                else
+                    resolve({ stdout, stderr, exitCode: code ?? 1, timedOut, truncated }); });
+            });
+        }
+        finally {
+            this.endTask();
+        }
+    }
+    async readText(file) { return promises_1.default.readFile(await this.safePath(file), 'utf8'); }
+    async readBytes(file) { return { bytes: new Uint8Array(await promises_1.default.readFile(await this.safePath(file))), machineId: 'local-windows' }; }
+    async writeText(file, content) { const target = await this.safePath(file); await promises_1.default.mkdir(node_path_1.default.dirname(target), { recursive: true }); await promises_1.default.writeFile(target, content, 'utf8'); }
+    async suspend(_reason) { }
+    dispose() { this.processes.forEach((stop) => stop()); }
+    async safePath(file) {
+        const root = await promises_1.default.realpath(this.settings.workspaceDir);
+        const target = node_path_1.default.resolve(root, file);
+        const inside = (candidate) => { const relative = node_path_1.default.relative(root, candidate); return !relative || relative !== '..' && !relative.startsWith('..' + node_path_1.default.sep) && !node_path_1.default.isAbsolute(relative); };
+        if (!inside(target))
+            throw new Error('路径必须位于本地工作区内');
+        let existing = target;
+        for (;;) {
+            try {
+                if (!inside(await promises_1.default.realpath(existing)))
+                    throw new Error('路径链接指向工作区外');
+                break;
+            }
+            catch (error) {
+                if (error.code !== 'ENOENT')
+                    throw error;
+                existing = node_path_1.default.dirname(existing);
+            }
+        }
+        return target;
+    }
+}
+exports.LocalHost = LocalHost;
+function resolveCloudState(machine, busy) {
+    if (!machine)
+        return 'unconfigured';
+    switch (machine.state) {
+        case 'running':
+            return busy ? 'busy' : 'ready';
+        case 'suspended':
+            return 'suspended';
+        case 'stopped':
+            return 'stopped';
+        case 'creating':
+        case 'starting':
+        case 'resuming':
+            return 'waking';
+        case 'suspending':
+        case 'stopping':
+            return 'sleeping';
+        case 'error':
+        case 'deleted':
+            return 'error';
+        default:
+            return 'off';
+    }
+}
+class CloudHost {
+    control = new computer_control_1.ComputerControl();
+    preparedDirectories = new Set();
+    instabox;
+    mock = new MockDriver();
+    keyProvider;
+    settings;
+    statusValue;
+    wakePromise = null;
+    machine;
+    activeRuns = 0;
+    idleTimer;
+    pollTimer;
+    disposed = false;
+    lastActivityAt = Date.now();
+    awakeSince;
+    onStatus;
+    onLog;
+    constructor(deps) {
+        this.settings = deps.settings;
+        this.onStatus = deps.onStatus;
+        this.onLog = deps.onLog;
+        const apiKey = deps.apiKey;
+        this.keyProvider = typeof apiKey === 'function' ? apiKey : () => apiKey;
+        this.statusValue = {
+            state: 'off',
+            lastTransitionAt: Date.now(),
+            awakeMs: 0,
+            wakeCount: 0,
+        };
+        this.startPolling();
+        void this.refresh();
+    }
+    isConfigured() {
+        return this.settings.driver === 'mock' || Boolean(this.keyProvider()?.trim());
+    }
+    get driver() {
+        if (this.settings.driver === 'mock' || !this.isConfigured())
+            return this.mock;
+        if (!this.instabox) {
+            this.instabox = new InstaBoxDriver(this.keyProvider() ?? '', this.settings.baseUrl);
+        }
+        return this.instabox;
+    }
+    updateSettings(settings) {
+        this.settings = settings;
+        void this.refresh();
+    }
+    getSettings() {
+        return this.settings;
+    }
+    status() {
+        return this.statusValue;
+    }
+    setStatus(patch, note) {
+        this.statusValue = { ...this.statusValue, ...patch, lastTransitionAt: Date.now() };
+        if (this.statusValue.machine?.state === 'running' && !this.awakeSince)
+            this.awakeSince = Date.now();
+        if (this.statusValue.machine?.state !== 'running') {
+            this.awakeSince = undefined;
+            this.statusValue.awakeMs = 0;
+        }
+        this.onStatus?.(this.statusValue);
+        if (note)
+            this.onLog?.('info', note);
+    }
+    startPolling() {
+        this.pollTimer = setInterval(() => {
+            if (this.statusValue.state === 'ready' || this.statusValue.state === 'suspended')
+                void this.refresh();
+        }, 20_000);
+        this.pollTimer.unref?.();
+    }
+    /** Drop the cached client (e.g. after the API key changed). */
+    invalidateDriver() {
+        this.preparedDirectories.clear();
+        this.instabox = undefined;
+        this.machine = undefined;
+        void this.refresh();
+    }
+    async refresh() {
+        if (this.disposed)
+            return this.statusValue;
+        if (!this.isConfigured()) {
+            this.statusValue = { ...this.statusValue, state: 'unconfigured' };
+            this.onStatus?.(this.statusValue);
+            return this.statusValue;
+        }
+        try {
+            if (!this.settings.machineId) {
+                const machines = await this.driver.listMachines();
+                const match = machines.find((m) => m.name === this.settings.machineName) ?? machines[0];
+                if (match) {
+                    this.machine = match;
+                    this.settings = { ...this.settings, machineId: match.id };
+                }
+            }
+            else {
+                this.machine = await this.driver.getMachine(this.settings.machineId);
+            }
+            const state = resolveCloudState(this.machine, this.activeRuns > 0);
+            this.setStatus({
+                state,
+                machine: this.machine
+                    ? {
+                        id: this.machine.id,
+                        name: this.machine.name,
+                        state: this.machine.state,
+                        autoSuspendAfterSeconds: this.machine.autoSuspendAfterSeconds,
+                        updatedAt: this.machine.updatedAt,
+                    }
+                    : undefined,
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.setStatus({ state: 'error', lastError: message });
+            this.onLog?.('warn', `同步云主机状态失败：${message}`);
+        }
+        return this.statusValue;
+    }
+    beginTask(reason) {
+        this.activeRuns += 1;
+        this.lastActivityAt = Date.now();
+        this.statusValue = { ...this.statusValue, pendingReason: reason };
+        if (this.idleTimer)
+            clearTimeout(this.idleTimer);
+        if (this.machine?.state === 'running')
+            this.setStatus({ state: 'busy' });
+    }
+    endTask() {
+        this.activeRuns = Math.max(0, this.activeRuns - 1);
+        this.lastActivityAt = Date.now();
+        if (this.activeRuns === 0) {
+            this.statusValue = { ...this.statusValue, pendingReason: undefined };
+            if (this.machine?.state === 'running')
+                this.setStatus({ state: 'ready' });
+            this.armIdleTimer();
+        }
+    }
+    touch() {
+        this.lastActivityAt = Date.now();
+    }
+    /** Re-arm the local idle-suspend timer when nothing is running. */
+    armIdleIfNeeded() {
+        if (this.activeRuns === 0 && this.machine?.state === 'running')
+            this.armIdleTimer();
+    }
+    armIdleTimer() {
+        if (this.idleTimer)
+            clearTimeout(this.idleTimer);
+        if (this.settings.idleSuspendMinutes <= 0)
+            return;
+        this.idleTimer = setTimeout(() => void this.sleepIfIdle(), this.settings.idleSuspendMinutes * 60_000);
+        this.idleTimer.unref?.();
+    }
+    async sleepIfIdle() {
+        if (this.activeRuns > 0)
+            return false;
+        if (this.statusValue.state !== 'ready' && this.statusValue.state !== 'busy')
+            return false;
+        await this.suspend('空闲自动休眠');
+        return true;
+    }
+    async ensureAwake(reason) {
+        if (this.wakePromise)
+            return this.wakePromise;
+        this.wakePromise = this.wake(reason).finally(() => {
+            this.wakePromise = null;
+        });
+        return this.wakePromise;
+    }
+    async wake(reason) {
+        if (!this.isConfigured()) {
+            throw new Error('云主机尚未配置：请在设置里填入 InstaBox API Key');
+        }
+        const startedAt = Date.now();
+        try {
+            let id = this.settings.machineId;
+            // Startup discovery and server-side autosuspend can race a user action.
+            // Always discover/refresh before deciding to create, resume or start.
+            if (!id) {
+                const machines = await this.driver.listMachines();
+                const match = machines.find((m) => m.name === this.settings.machineName) ?? machines[0];
+                if (match) {
+                    id = match.id;
+                    this.settings = { ...this.settings, machineId: id };
+                }
+            }
+            if (!id) {
+                this.setStatus({ state: 'waking', pendingReason: reason }, `创建云主机：${reason}`);
+                const created = await this.driver.createMachine({
+                    name: this.settings.machineName,
+                    templateId: this.settings.templateId,
+                    autoSuspendAfterSeconds: this.settings.autoSuspendAfterSeconds,
+                    vcpus: this.settings.vcpus,
+                    memMiB: this.settings.memMiB,
+                    persistentDiskGiB: this.settings.persistentDiskGiB,
+                    maxRunMinutes: this.settings.maxRunMinutes,
+                });
+                if (created.machine?.id) {
+                    id = created.machine.id;
+                    this.machine = created.machine;
+                    this.settings = { ...this.settings, machineId: id };
+                    this.onLog?.('info', `创建云主机 ${created.machine.name}`);
+                }
+                if (created.operationId) {
+                    const operation = await this.driver.waitOperation(created.operationId, {
+                        timeoutMs: 240_000,
+                        onPhase: (phase) => this.setStatus({ operationPhase: phase }),
+                    });
+                    this.checkOperation(operation);
+                }
+            }
+            if (!id)
+                throw new Error('创建云主机后没有拿到 machine id');
+            let machine = await this.driver.getMachine(id);
+            this.machine = machine;
+            if (machine.state !== 'running') {
+                this.setStatus({ state: 'waking', pendingReason: reason }, `唤醒云主机：${reason}`);
+                if (['creating', 'starting', 'resuming', 'suspending', 'stopping'].includes(machine.state)) {
+                    machine = await this.driver.waitForState(id, ['running', 'suspended', 'stopped', 'error'], { timeoutMs: 240_000 });
+                    this.machine = machine;
+                }
+            }
+            else {
+                this.touch();
+                this.setStatus({ state: this.activeRuns > 0 ? 'busy' : 'ready', machine, lastError: undefined, pendingReason: undefined, operationPhase: undefined });
+                return machine;
+            }
+            if (machine.state === 'suspended') {
+                await this.finishOperation(await this.driver.act(id, 'resume'), 120_000);
+            }
+            else if (machine.state === 'stopped' || machine.state === 'error') {
+                await this.finishOperation(await this.driver.act(id, 'start'), 240_000);
+            }
+            machine = await this.driver.waitForState(id, ['running'], {
+                timeoutMs: 240_000,
+                onState: (next) => {
+                    this.machine = next;
+                    this.setStatus({ operationPhase: next.state });
+                },
+            });
+            this.machine = machine;
+            this.setStatus({
+                state: this.activeRuns > 0 ? 'busy' : 'ready',
+                machine: {
+                    id: machine.id,
+                    name: machine.name,
+                    state: machine.state,
+                    autoSuspendAfterSeconds: machine.autoSuspendAfterSeconds,
+                    updatedAt: machine.updatedAt,
+                },
+                lastError: undefined,
+                pendingReason: undefined,
+                operationPhase: undefined,
+                lastWakeAt: Date.now(),
+                wakeCount: this.statusValue.wakeCount + 1,
+                awakeMs: 0,
+            }, `云主机已就绪（${Math.round((Date.now() - startedAt) / 1000)}s）`);
+            this.touch();
+            await this.applyAutoSuspend();
+            return machine;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.setStatus({ state: 'error', lastError: message }, `唤醒失败：${message}`);
+            throw error;
+        }
+    }
+    checkOperation(operation) {
+        if (operation.state === 'failed') {
+            throw new Error(operation.error?.message || `云电脑操作失败（${operation.error?.code ?? operation.id}）`);
+        }
+    }
+    async finishOperation(operation, timeoutMs) {
+        this.checkOperation(operation);
+        if (operation.id)
+            this.checkOperation(await this.driver.waitOperation(operation.id, {
+                timeoutMs, onPhase: (phase) => this.setStatus({ operationPhase: phase }),
+            }));
+    }
+    /** Keep the server-side idle timer aligned with the local setting. */
+    async applyAutoSuspend() {
+        if (this.driver.kind !== 'instabox' || !this.machine || !this.settings.machineId)
+            return;
+        const desired = this.settings.autoSuspendAfterSeconds;
+        if (this.machine.autoSuspendAfterSeconds === desired)
+            return;
+        try {
+            this.machine = await this.driver.updateMachine(this.settings.machineId, { autoSuspendAfterSeconds: desired });
+        }
+        catch (error) {
+            this.onLog?.('warn', `同步休眠计时失败：${error.message}`);
+        }
+    }
+    async suspend(reason) {
+        if (!this.settings.machineId)
+            return;
+        if (this.activeRuns > 0) {
+            this.onLog?.('warn', `仍有 ${this.activeRuns} 个任务在跑，跳过休眠`);
+            return;
+        }
+        this.setStatus({ state: 'sleeping', pendingReason: reason }, `休眠云主机：${reason}`);
+        try {
+            const op = await this.driver.act(this.settings.machineId, 'suspend');
+            await this.finishOperation(op, 90_000);
+            await this.driver.getMachine(this.settings.machineId).then((machine) => {
+                this.machine = machine;
+                this.setStatus({
+                    state: 'suspended',
+                    machine: {
+                        id: machine.id,
+                        name: machine.name,
+                        state: machine.state,
+                        autoSuspendAfterSeconds: machine.autoSuspendAfterSeconds,
+                        updatedAt: machine.updatedAt,
+                    },
+                    awakeMs: 0,
+                });
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.setStatus({ state: 'error', lastError: message }, `休眠失败：${message}`);
+            throw error;
+        }
+    }
+    async exec(command, options = {}) {
+        const directory = (0, util_1.normalizeRemoteDirectory)(this.settings.remoteWorkspaceDir ?? '/data/moyubot');
+        const machine = await this.ensureAwake('在云主机上执行命令');
+        this.touch();
+        this.setStatus({ state: 'busy' });
+        try {
+            options.signal?.throwIfAborted();
+            const directoryKey = `${machine.id}:${directory}`;
+            if (!this.preparedDirectories.has(directoryKey)) {
+                const prepared = await this.driver.exec(machine.id, { cmd: `mkdir -p -- ${(0, util_1.shellQuote)(directory)}`, timeoutSeconds: options.timeoutSeconds ?? 120 }, { signal: options.signal });
+                if (prepared.exitCode !== 0 || prepared.timedOut)
+                    throw new Error(`无法创建云电脑工作目录：${prepared.stderr || prepared.stdout || directory}`);
+                this.preparedDirectories.add(directoryKey);
+            }
+            options.signal?.throwIfAborted();
+            return await this.driver.exec(machine.id, { cmd: command, cwd: directory, timeoutSeconds: options.timeoutSeconds ?? 120 }, {
+                onStdout: options.onStdout,
+                signal: options.signal,
+            });
+        }
+        finally {
+            this.touch();
+            if (this.activeRuns === 0)
+                this.setStatus({ state: 'ready' });
+        }
+    }
+    async readText(remotePath) {
+        remotePath = node_path_1.default.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+        const machine = await this.ensureAwake('读取云主机文件');
+        const bytes = await this.driver.readFile(machine.id, remotePath);
+        return new TextDecoder().decode(bytes);
+    }
+    async desktopAction(args, signal) {
+        const machine = await this.ensureAwake('Bot 操作桌面');
+        const driver = this.driver;
+        if (!driver.desktopStart)
+            throw new Error('当前工作区不提供真实远程桌面');
+        signal?.throwIfAborted();
+        const status = await driver.desktopStart(machine.id);
+        if (!status.running)
+            throw new Error('云电脑桌面未运行，请使用 agent-browser 模板');
+        const coordinate = (key) => {
+            const value = args[key];
+            if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 2560)
+                throw new Error(`${key} 必须为有效的屏幕像素坐标`);
+            return value;
+        };
+        const run = async (cmd) => {
+            signal?.throwIfAborted();
+            const result = await driver.exec(machine.id, { cmd: `export DISPLAY=:1; ${cmd}`, timeoutSeconds: 30 }, { signal });
+            if (result.exitCode || result.timedOut)
+                throw new Error(result.stderr || '桌面操作失败');
+            return result;
+        };
+        switch (args.action) {
+            case 'open': {
+                const url = new URL(String(args.url ?? ''));
+                if (!['http:', 'https:'].includes(url.protocol))
+                    throw new Error('只支持 http/https 网页');
+                await run(`b=$(command -v chromium || command -v chromium-browser || command -v google-chrome); test -n "$b" || exit 127; setsid nohup "$b" --no-first-run --no-default-browser-check --password-store=basic ${(0, util_1.shellQuote)(url.href)} >/dev/null 2>&1 </dev/null &`);
+                break;
+            }
+            case 'click': {
+                const button = { left: 1, middle: 2, right: 3 }[String(args.button ?? 'left')];
+                if (!button)
+                    throw new Error('鼠标按钮无效');
+                await run(`xdotool mousemove ${coordinate('x')} ${coordinate('y')} click${args.double === true ? ' --repeat 2 --delay 80' : ''} ${button}`);
+                break;
+            }
+            case 'type': {
+                if (typeof args.text !== 'string' || args.text.length > 8000)
+                    throw new Error('输入文本过长或无效');
+                await run(`xdotool type --clearmodifiers --delay 1 -- ${(0, util_1.shellQuote)(args.text)}`);
+                break;
+            }
+            case 'press': {
+                const keys = Array.isArray(args.keys) ? args.keys : [args.keys];
+                if (!keys.length || keys.length > 6 || !keys.every((key) => typeof key === 'string' && /^[a-zA-Z0-9_]+$/.test(key)))
+                    throw new Error('按键名称无效，使用 Return、Escape、ctrl、l 等 X11 键名');
+                await run(`xdotool key --clearmodifiers -- ${(0, util_1.shellQuote)(keys.join('+'))}`);
+                break;
+            }
+            case 'scroll': {
+                const button = { up: 4, down: 5, left: 6, right: 7 }[String(args.direction)];
+                const amount = args.amount ?? 3;
+                if (!button || typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1 || amount > 100)
+                    throw new Error('滚动参数无效');
+                await run(`xdotool click --repeat ${amount} --delay 30 ${button}`);
+                break;
+            }
+            case 'screenshot': {
+                const file = (0, util_1.shellQuote)(`/tmp/${(0, util_1.newId)('moyu-screen')}.png`);
+                const result = await run(`scrot -o ${file} && base64 -w0 ${file}; result=$?; rm -f -- ${file}; exit "$result"`);
+                if (result.truncated)
+                    throw new Error('截图超过命令输出上限，请缩小桌面后重试');
+                const screenshot = Buffer.from(result.stdout.trim(), 'base64');
+                if (screenshot.length < 8 || screenshot.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a')
+                    throw new Error('桌面截图无效');
+                return { text: '当前桌面截图（坐标以图片左上角为原点）', screenshot };
+            }
+            default: throw new Error('不支持的桌面操作');
+        }
+        this.touch();
+        return { text: `桌面操作已完成：${args.action}。操作后先截图确认结果，再决定下一步。` };
+    }
+    async readBytes(remotePath) {
+        remotePath = node_path_1.default.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+        const machine = await this.ensureAwake('读取云主机文件');
+        const bytes = await this.driver.readFile(machine.id, remotePath);
+        return { bytes, machineId: machine.id };
+    }
+    async writeText(remotePath, content) {
+        remotePath = node_path_1.default.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+        const machine = await this.ensureAwake('写入云主机文件');
+        await this.driver.writeFile(machine.id, remotePath, content);
+        this.touch();
+    }
+    dispose() {
+        this.disposed = true;
+        if (this.pollTimer)
+            clearInterval(this.pollTimer);
+        if (this.idleTimer)
+            clearTimeout(this.idleTimer);
+    }
+}
+exports.CloudHost = CloudHost;

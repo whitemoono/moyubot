@@ -1,5 +1,7 @@
 import type {
+  CapabilityStatus,
   AppUpdateResult,
+  AppUpdateProgress,
   AgentEvent,
   AppSettings,
   ApprovalDecision,
@@ -35,13 +37,24 @@ export interface ConversationSummary {
 }
 
 export interface MoyuBridge {
+  capabilityStatus(workspaceId: string): Promise<CapabilityStatus>;
+  importMcp(workspaceId: string, json: string): Promise<void>;
+  testMcp(id: string): Promise<void>;
+  importSkill(workspaceId: string): Promise<void>;
+  removeCapability(kind: 'mcp' | 'skill', id: string): Promise<void>;
   setupDirectory(directory: string): Promise<AppSettings>;
   finishSetup(skipCloud: boolean): Promise<AppSettings>;
   feedbackDiagnostics(): Promise<DiagnosticEntry[]>;
   clearFeedbackDiagnostics(): Promise<void>;
   copyFeedback(text: string): Promise<void>;
   checkForUpdates(): Promise<AppUpdateResult>;
+  updateStatus(): Promise<AppUpdateProgress>;
+  downloadUpdate(): Promise<AppUpdateProgress>;
+  cancelUpdate(): Promise<void>;
+  installUpdate(): Promise<AppUpdateProgress>;
   bootstrap(): Promise<BootstrapPayload>;
+  mobileSync(action: string, payload?: unknown): Promise<any>;
+  onSyncData(listener: () => void): () => void;
   usage(query: UsageQuery): Promise<UsageReport>;
   saveSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   setProviderKey(providerId: string, key: string): Promise<void>;

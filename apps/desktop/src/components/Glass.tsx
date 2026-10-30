@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { Icon } from './Icon';
@@ -177,25 +177,37 @@ export function Spinner({ size = 16 }: { size?: number }) {
   return <span className="spinner" style={{ width: size, height: size }} />;
 }
 
-export function useAutoScroll<T extends HTMLElement>(deps: unknown[]) {
+export function useAutoScroll<T extends HTMLElement>(conversationId?: string) {
   const ref = useRef<T | null>(null);
   const stickRef = useRef(true);
 
-  useEffect(() => {
+  const follow = () => {
+    const node = ref.current;
+    if (node && stickRef.current) node.scrollTo({ top: node.scrollHeight, behavior: 'instant' });
+  };
+
+  // The loading placeholder swaps in a new scroll container, so listeners and
+  // observers are rebuilt per conversation and the new chat opens at its bottom.
+  useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
+    stickRef.current = true;
+    follow();
     const onScroll = () => {
       stickRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
     };
     node.addEventListener('scroll', onScroll, { passive: true });
-    return () => node.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (node && stickRef.current) node.scrollTop = node.scrollHeight;
+    // Images, tool cards and the composer change height after the first layout.
+    const observer = new ResizeObserver(follow);
+    observer.observe(node);
+    if (node.firstElementChild) observer.observe(node.firstElementChild);
+    return () => { node.removeEventListener('scroll', onScroll); observer.disconnect(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [conversationId]);
+
+  // Streaming text grows the last message between renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(follow);
 
   return ref;
 }

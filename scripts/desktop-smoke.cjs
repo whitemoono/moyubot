@@ -519,16 +519,64 @@ app.whenReady().then(async () => {
     assert.deepEqual(rendererErrors, [], 'No renderer errors');
     console.log(`Bot avatar smoke passed. Screenshots: ${output}`); return;
   }
+  if (process.argv.includes('--updates-only')) {
+    const { AppUpdater } = require('../apps/desktop/dist-electron/update-installer');
+    const { createHash } = require('node:crypto');
+    const payload = Buffer.alloc(4096, 42);
+    const digest = createHash('sha256').update(payload).digest('hex');
+    let downloads = 0, launched = 0, quit = 0, busy = true;
+    const base = 'https://github.com/whitemoono/moyubot/releases/download/v0.2.0/';
+    const name = 'MoyuBot.Setup.0.2.0.exe';
+    backend.updater = new AppUpdater({
+      directory: path.join(output, 'updates'), version: '0.1.0', canInstall: true,
+      beforeInstall: () => { if (busy) throw Error('仍有任务运行，请先结束后再安装更新'); },
+      launch: async (file) => { assert.deepEqual(fs.readFileSync(file), payload); launched++; },
+      quit: () => { quit++; },
+      request: async (url, options) => {
+        if (String(url).endsWith('/latest')) return new Response(JSON.stringify({ tag_name: 'v0.2.0', assets: [{ name, browser_download_url: base + name, size: payload.length, digest: 'sha256:' + digest, state: 'uploaded' }] }));
+        downloads++;
+        if (downloads === 1) return new Response(new ReadableStream({ start(controller) { controller.enqueue(payload.subarray(0, 2048)); options.signal.addEventListener('abort', () => controller.error(options.signal.reason), { once: true }); } }));
+        return new Response(payload);
+      },
+    });
+    await feature('设置'); await button('关于', '.settings-tabs button');
+    await button('检查更新', '.about-page button');
+    await until(() => [...document.querySelectorAll('.about-page button')].some(node => node.textContent.trim() === '下载更新'), 'Update download available');
+    await button('下载更新', '.about-page button');
+    await until(() => document.querySelector('[aria-label="更新下载进度"]')?.value === 2048, 'Live download progress');
+    assert.equal(launched, 0);
+    await capture('146-update-downloading');
+    await click('[aria-label="关闭设置"]'); await feature('设置'); await button('关于', '.settings-tabs button');
+    await until(() => !!document.querySelector('[aria-label="更新下载进度"]'), 'Download survives closing settings');
+    await button('取消下载', '.about-page button');
+    await until(() => document.querySelector('.about-update__description')?.textContent.includes('已取消下载'), 'Download cancelled');
+    assert.deepEqual(fs.readdirSync(path.join(output, 'updates')), []);
+    await button('下载更新', '.about-page button');
+    await until(() => [...document.querySelectorAll('.about-page button')].some(node => node.textContent.trim() === '重启并安装'), 'Verified update ready');
+    assert.equal(launched, 0);
+    await capture('147-update-ready');
+    await button('重启并安装', '.about-page button');
+    await until(() => [...document.querySelectorAll('.toast')].some(node => node.textContent.includes('任务运行')), 'Active tasks block installation');
+    assert.equal(launched, 0); assert.equal(quit, 0);
+    await button('通用', '.settings-tabs button'); await button('浅色', '.settings-general .segmented button');
+    await button('关于', '.settings-tabs button');
+    win.setSize(1040, 720); await layout(); await capture('148-update-ready-light-compact');
+    busy = false;
+    await button('重启并安装', '.about-page button');
+    await until(() => document.querySelector('.about-update__description')?.textContent.includes('正在启动安装'), 'Installer handoff');
+    assert.equal(launched, 1); assert.equal(quit, 1);
+    assert.deepEqual(rendererErrors, []);
+    console.log(`App update smoke passed (mock installer; no installation performed). Screenshots: ${output}`); return;
+  }
   if (process.argv.includes('--about-only')) {
-    const nativeFetch = global.fetch;
     const { shell } = require('electron');
     const nativeOpenExternal = shell.openExternal;
     let responseStatus = 404;
     let release = { tag_name: 'v0.2.0' };
     const opened = [];
     shell.openExternal = async (url) => { opened.push(url); };
-    global.fetch = async (url, options) => {
-      if (String(url) !== 'https://api.github.com/repos/whitemoono/moyubot/releases/latest') return nativeFetch(url, options);
+    const nativeUpdateRequest = backend.updater.deps.request;
+    backend.updater.deps.request = async () => {
       await delay(250);
       return new Response(JSON.stringify(release), { status: responseStatus });
     };
@@ -550,7 +598,8 @@ app.whenReady().then(async () => {
       await click('[aria-label="打开 GitHub 仓库"]');
       assert.equal(opened.at(-1), 'https://github.com/whitemoono/moyubot');
       await button('问题反馈', '.about-page button');
-      assert.equal(opened.at(-1), 'https://github.com/whitemoono/moyubot/issues');
+      await until(() => !!document.querySelector('.feedback-page:not([hidden])'), 'About opens feedback settings');
+      await button('关于', '.settings-tabs button');
       await evaluate(() => { window.__copiedRepository = ''; Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (text) => { window.__copiedRepository = text; } }); });
       await click('[aria-label="复制仓库地址"]');
       assert.equal(await evaluate(() => window.__copiedRepository), 'https://github.com/whitemoono/moyubot');
@@ -569,7 +618,7 @@ app.whenReady().then(async () => {
       assert.deepEqual(rendererErrors, []);
       console.log(`About smoke passed. Screenshots: ${output}`);
       return;
-    } finally { global.fetch = nativeFetch; shell.openExternal = nativeOpenExternal; }
+    } finally { backend.updater.deps.request = nativeUpdateRequest; shell.openExternal = nativeOpenExternal; }
   }
   if (process.argv.includes('--tasks-only')) {
     await click('[aria-label="对话详情与记忆"]');

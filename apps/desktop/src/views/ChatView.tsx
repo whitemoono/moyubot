@@ -5,26 +5,14 @@ import { formatClock } from '../lib/format';
 import { highlightCode, openLinksExternally, renderMarkdown } from '../lib/markdown';
 import { useMoyu } from '../state';
 import { BotAvatar } from '../components/BotAvatar';
+import { ReplyToolCard } from '../components/ReplyToolCard';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
 import type { IconName } from '../components/Icon';
 import { BOT_ACTIVITY, inferMessageActivity } from '../lib/bot-activity';
 import type { BotActivityKind } from '../lib/bot-activity';
-
-const TOOL_ICON: Record<string, IconName> = {
-  cloud_exec: 'terminal',
-  cloud_read: 'folder',
-  cloud_write: 'folder',
-  generate_image: 'image',
-  remember: 'memory',
-  recall: 'memory',
-  web_fetch: 'globe',
-  schedule_task: 'clock',
-  list_tasks: 'clock',
-  update_task: 'clock',
-};
-const TASK_TOOL_LABEL: Record<string, string> = { schedule_task: '安排任务', list_tasks: '查询任务', update_task: '管理任务' };
+import { replyTurns } from '../lib/reply-flow';
 
 const SUGGESTIONS = [
   { icon: 'image' as IconName, title: '创作一张图', text: '帮我设计一张极简风格的产品海报，主题是「让灵感自由发生」，画幅 16:9。' },
@@ -64,8 +52,8 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
     {!message.streaming ? <div className="msg__actions" aria-label="消息操作"><button type="button" aria-label={copied ? '已复制消息' : '复制消息'} title={copied ? '已复制' : '复制'} onClick={() => void copy()}><Icon name={copied ? 'check' : 'copy'} size={14} /><span className="sr-only" role="status">{copied ? '已复制' : ''}</span></button><button type="button" aria-label="回复引用消息" title="回复 / 引用（可先选中文字）" onPointerDown={(event) => event.preventDefault()} onClick={(event) => {
       const selection = window.getSelection();
       const text = selection?.toString().trim();
-      const container = event.currentTarget.closest('.msg')?.querySelector('[data-message-content]');
-      const selected = text && selection?.anchorNode && selection.focusNode && container?.contains(selection.anchorNode) && container.contains(selection.focusNode) && message.content.includes(text) ? text : undefined;
+      const containers = event.currentTarget.closest('.msg')?.querySelectorAll('[data-message-content]');
+      const selected = text && selection?.anchorNode && selection.focusNode && [...(containers ?? [])].some((container) => container.contains(selection.anchorNode) && container.contains(selection.focusNode)) && message.content.includes(text) ? text : undefined;
       onReply({ messageId: message.id, author: '', content: selected || message.content || message.attachments?.map((file) => `[图片：${file.name ?? '图片'}]`).join('\n') || '（空消息）' });
       selection?.removeAllRanges();
     }}><Icon name="reply" size={15} /></button></div> : null}
@@ -75,10 +63,9 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
 function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void }) {
   const { botActivities, setView, settings } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (message.role === 'assistant' && ref.current && message.content) highlightCode(ref.current);
+    if (message.role === 'assistant' && ref.current && message.content) ref.current.querySelectorAll<HTMLElement>('.prose').forEach(highlightCode);
   }, [message.content, message.role]);
 
   if (message.role === 'user') {
@@ -108,57 +95,26 @@ function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; 
   }
 
   const results = new Map<string, ToolResult>((message.toolResults ?? []).map((result) => [result.id, result]));
-  const calls = message.toolCalls ?? [];
   const activity = botActivities[bot.id];
   const current = isLatest && activity?.messageId === message.id;
-  const kind: BotActivityKind = message.streaming ? activity?.kind && activity.kind !== 'idle' ? activity.kind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? 'stopped' : current && activity.kind === 'done' ? 'done' : 'idle';
+  const kind: BotActivityKind = message.streaming ? current && activity.kind !== 'idle' ? activity.kind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? 'stopped' : current && activity.kind === 'done' ? 'done' : 'idle';
   const animate = !!message.streaming || !!(current && ['done', 'error', 'stopped'].includes(activity.kind));
   const content = message.error && message.content === `（没有回复：${message.error}）` ? '' : message.content;
+  const turns = replyTurns({ ...message, content });
 
   return (
-    <div className="msg msg--assistant" data-message-id={message.id} tabIndex={-1}>
-      <div className="msg__avatar">
-        <BotAvatar bot={bot} activity={kind} animated={animate} />
-      </div>
+    <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1}>
       <div className="msg__stack">
       <div className="msg__body" ref={ref}>
-        {message.botId ? <strong className="group-reply-name">{message.botName ?? bot.name}</strong> : null}
-        {message.streaming || kind === 'done' || message.stopped ? <div className={`reply-status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
-        {message.reasoning ? (
-          <details className="reasoning">
-            <summary>思考过程</summary>
-            <p>{message.reasoning}</p>
-          </details>
-        ) : null}
-
-        {calls.length > 0 ? (
-          <div className="tool-stack">
-            {calls.map((call) => {
-              const result = results.get(call.id);
-              const open = expanded[call.id] ?? false;
-              return (
-                <div key={call.id} className={`tool-card ${result?.ok === false ? 'is-error' : ''} ${!result && message.streaming ? 'is-running' : ''}`.trim()}>
-                  <button type="button" className="tool-card__head" onClick={() => setExpanded((prev) => ({ ...prev, [call.id]: !open }))}>
-                    <span className="tool-card__icon">
-                      <Icon name={TOOL_ICON[call.name] ?? 'spark'} size={16} />
-                    </span>
-                    <span className="tool-card__name">{TASK_TOOL_LABEL[call.name] ?? call.name}</span>
-                    <span className="tool-card__summary">
-                      {result ? result.summary : !message.streaming ? message.stopped ? '已停止' : '未完成' : call.name === 'cloud_exec' ? String(call.arguments.cmd ?? '').slice(0, 60) : '执行中…'}
-                    </span>
-                    {!result && message.streaming ? <Spinner size={14} /> : <Icon name="chevron" size={15} className={`tool-card__chevron ${open ? 'is-open' : ''}`} />}
-                  </button>
-                  {open ? (
-                    <div className="tool-card__body">
-                      {call.name === 'cloud_exec' && call.arguments.cmd ? <pre className="tool-card__cmd">$ {String(call.arguments.cmd)}</pre> : null}
-                      {result?.detail ? <pre className="tool-card__out">{result.detail}</pre> : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+        <div className="reply-author">
+          <BotAvatar bot={bot} activity={kind} animated={!!message.streaming} />
+          <strong>{message.botName ?? bot.name}</strong>
+        </div>
+        {turns.map((turn, index) => <div className="reply-turn" key={index}>
+          {turn.reasoning ? <details className="reasoning reply-reasoning"><summary><Icon name="spark" size={14} /><span>思考过程</span><Icon name="chevron" size={13} /></summary><p>{turn.reasoning}</p></details> : null}
+          {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.content) }} /> : null}
+          {turn.toolCalls?.map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
+        </div>)}
 
         {message.attachments?.filter((attachment) => attachment.kind === 'image').length ? (
           <div className="artifact-grid">
@@ -182,10 +138,8 @@ function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; 
           </div>
         ) : null}
 
-        {content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} /> : null}
-
         {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <button type="button" onClick={() => setView('settings')}>配置供应商</button> : null}</div> : null}
-        {message.streaming ? <span className="stream-caret" /> : null}
+        {message.streaming || kind === 'done' || message.stopped ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatar bot={bot} activity={kind} animated={animate} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
         {!message.streaming && message.usage ? (
           <span className="msg__usage">
             {message.usage.promptTokens ? `${message.usage.promptTokens} in` : ''}
@@ -392,7 +346,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
   const members = conversation?.group?.memberBotIds.map((id) => settings.bots.find((item) => item.id === id)).filter((item): item is Bot => !!item) ?? [];
   const messages = conversation?.messages ?? [];
   const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
-  const scrollRef = useAutoScroll<HTMLDivElement>([messages.length, messages.at(-1)?.content, messages.at(-1)?.toolResults?.length]);
+  const scrollRef = useAutoScroll<HTMLDivElement>(conversation?.id);
 
   if (!bot) {
     return (

@@ -1,0 +1,46 @@
+/* Assistant output follows the order of the conversation: text, tools, next response. */
+.msg--assistant.reply-flow .msg__stack { width: 100%; max-width: 100%; }
+.msg--assistant.reply-flow .msg__body { padding: 12px 0; border: 0; border-radius: 0; background: transparent; gap: 16px; }
+.reply-author { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--text-dim); }
+.reply-author .bot-avatar { width: 30px; height: 30px; flex: none; --avatar-ink: var(--bot-color, #ff8a00); }
+.reply-author strong { min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.reply-turn { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.reply-flow .prose > :first-child { margin-top: 0; }
+.reply-flow .prose > :last-child { margin-bottom: 0; }
+.reply-flow .reply-flow__status { gap: 9px; min-height: 32px; }
+.reply-flow__status .bot-avatar { width: 30px; height: 30px; flex: none; }
+.reply-flow__status.is-live > span:not(.bot-avatar) { color: var(--text-dim); }
+.reply-reasoning { border: 0; padding: 0; }
+.reply-reasoning summary { display: flex; align-items: center; gap: 7px; list-style: none; width: fit-content; padding: 3px 0; }
+.reply-reasoning summary::-webkit-details-marker { display: none; }
+.reply-reasoning summary > svg:last-child { transition: transform 160ms ease; }
+.reply-reasoning[open] summary > svg:last-child { transform: rotate(180deg); }
+.reply-reasoning p { margin: 8px 0 0 7px; padding: 0 0 0 14px; border-left: 1px solid var(--line-strong); line-height: 1.8; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
+.reply-tool { min-width: 0; }
+.reply-tool__head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0 8px; text-align: left; color: var(--text-faint); font-size: 11px; line-height: 1.7; }
+.reply-tool__head:hover { color: var(--text-dim); }
+.reply-tool__head > svg { flex: none; }
+.reply-tool__head > svg:last-child { transition: transform 160ms ease; }
+.reply-tool__head > svg.is-open { transform: rotate(180deg); }
+.reply-tool__label { flex: none; }
+.reply-tool__summary { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-tool__status { flex: none; font-size: 10px; }
+.reply-tool.is-error .reply-tool__status { color: #d96778; }
+.reply-tool__body { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: var(--surface); }
+.reply-tool__input { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px; min-width: 0; }
+.reply-tool__dot { flex: none; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--text-faint); }
+.reply-tool__dot[data-state="done"] { background: #47b886; }
+.reply-tool__dot[data-state="error"] { background: #d96778; }
+.reply-tool__dot[data-state="running"] { background: var(--accent); animation: reply-pulse 1.5s ease-in-out infinite; }
+.reply-tool__input pre, .reply-tool__output { margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; user-select: text; tab-size: 2; }
+.reply-tool__input pre { flex: 1; min-width: 0; padding-right: 54px; color: var(--text); }
+.reply-tool__input code { font: inherit; }
+.reply-tool__copy { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; padding: 4px 5px; border-radius: 5px; font-size: 10px; color: var(--text-faint); background: var(--surface); }
+.reply-tool__copy:hover { color: var(--text); background: var(--hover); }
+.reply-tool__output { padding: 13px 16px 15px 34px; border-top: 1px solid var(--line); color: var(--text-dim); }
+.reply-tool__head:focus-visible, .reply-tool__copy:focus-visible, .reply-reasoning summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+@media (max-width: 640px) {
+  .reply-tool__input { padding: 12px; gap: 9px; }
+  .reply-tool__output { padding-left: 27px; }
+  .reply-tool__status { display: none; }
+}

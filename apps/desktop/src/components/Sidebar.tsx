@@ -15,6 +15,7 @@ import { SearchDialog } from './SearchDialog';
 import { CreateGroupDialog } from './CreateGroupDialog';
 import { UserAvatar } from './UserAvatar';
 import { ConnectorsDialog } from './ConnectorsDialog';
+import { MobileConnectionDialog } from './MobileConnectionDialog';
 import { GroupContextMenu } from './GroupContextMenu';
 import { GroupChatContextMenu } from './GroupChatContextMenu';
 
@@ -32,6 +33,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
   const closeSearch = useCallback(() => setSearchOpen(false), []);
   const closeGroup = useCallback(() => setCreatingGroup(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const closeConnectors = useCallback(() => setConnectorsOpen(false), []);
   const [hiddenOpen, setHiddenOpen] = useState(false);
@@ -173,6 +175,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
       {searchOpen ? <SearchDialog onClose={closeSearch} onCreateBot={onCreateBot} onCreateGroup={() => setCreatingGroup(true)} /> : null}
       {creatingGroup ? <CreateGroupDialog onClose={closeGroup} /> : null}
       {connectorsOpen ? <ConnectorsDialog onClose={closeConnectors} /> : null}
+      {mobileOpen ? <MobileConnectionDialog onClose={() => setMobileOpen(false)} /> : null}
       {menuOpen ? createPortal(<div className="workspace-menu" ref={menuRef} aria-label="工作空间功能" role="menu" onKeyDown={(event) => {
         if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
@@ -180,6 +183,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         const index = items.indexOf(document.activeElement as HTMLButtonElement);
         items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
       }}>
+        <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setMobileOpen(true); }}><Icon name="plug" size={16}/><span><strong>连接手机</strong></span><Icon name="chevron" size={12}/></button>
         {FEATURES.map((item) => <button type="button" role="menuitem" key={item.id} onClick={() => { if (item.id === 'settings') openSettings('profile'); else if (item.id === 'usage') openSettings('usage'); else setView(item.id); setMenuOpen(false); }}>
           <Icon name={item.icon} size={16} /><span><strong>{item.id === 'cloud' && activeWorkspace?.kind === 'local' ? '本地电脑' : item.label}</strong></span><Icon name="chevron" size={12} />
         </button>)}

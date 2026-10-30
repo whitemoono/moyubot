@@ -3,6 +3,18 @@ const assert = require('node:assert/strict');
 const { checkForUpdates } = require('../apps/desktop/dist-electron/updates.js');
 const reply = (body, status = 200) => async () => new Response(JSON.stringify(body), { status });
 
+test('only matching uploaded Windows x64 installers from this repository enable updates', async () => {
+  const url = 'https://github.com/whitemoono/moyubot/releases/download/v1.0.0/';
+  const installer = { name: 'MoyuBot.Setup.1.0.0.exe', browser_download_url: url + 'MoyuBot.Setup.1.0.0.exe', size: 123, digest: 'sha256:' + 'a'.repeat(64), state: 'uploaded' };
+  const check = (asset, platform = 'win32', arch = 'x64') => checkForUpdates('0.1.0', reply({ tag_name: 'v1.0.0', assets: [asset] }), platform, arch);
+  assert.equal((await check(installer)).installer.sha256, 'a'.repeat(64));
+  for (const patch of [{ browser_download_url: 'https://other.example/setup.exe' }, { browser_download_url: url + '../MoyuBot.Setup.1.0.0.exe' }, { name: 'MoyuBot.Setup.2.0.0.exe' }, { digest: undefined }, { size: 0 }, { size: 1e10 }, { state: 'new' }]) assert.equal((await check({ ...installer, ...patch })).installer, undefined);
+  assert.equal((await check(installer, 'linux')).installer, undefined);
+  assert.equal((await check(installer, 'win32', 'arm64')).installer, undefined);
+  const fallback = await checkForUpdates('0.1.0', reply({ tag_name: 'v1.0.0', assets: [{ ...installer, digest: undefined }, { name: 'SHA256SUMS.txt', state: 'uploaded', browser_download_url: url + 'SHA256SUMS.txt' }] }), 'win32', 'x64');
+  assert.equal(fallback.installer.checksumUrl, url + 'SHA256SUMS.txt');
+});
+
 test('update checks use the project releases and compare numeric versions', async () => {
   const result = await checkForUpdates('0.9.0', async (url, options) => {
     assert.equal(url, 'https://api.github.com/repos/whitemoono/moyubot/releases/latest');

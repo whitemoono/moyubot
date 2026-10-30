@@ -1,0 +1,63 @@
+/** Real Electron IPC and QR generation, using an isolated store and a fake sync transport. */
+const {app,BrowserWindow}=require('electron');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const output=path.resolve('.work/mobile-desktop',String(Date.now()));fs.mkdirSync(output,{recursive:true});
+app.setPath('userData',path.join(output,'electron'));app.disableHardwareAcceleration();
+let backend,win,renderer;
+app.whenReady().then(async()=>{
+ const {MoyuApp}=require('../apps/desktop/dist-electron/app.js');
+ const {startRendererServer}=require('../apps/desktop/dist-electron/renderer-server.js');
+ backend=new MoyuApp(path.join(output,'data'),'test');
+ backend.store.updateSettings({userName:'测试用户',onboarding:{step:2,completedAt:Date.now()},cloud:{driver:'mock'}});
+ let configured=false;
+ backend.mobileSync.action=async(action,payload)=>{
+  if(action==='status')return {configured,server:configured?'https://sync.example.com':'',hasSetupKey:configured,connected:configured,enabled:false,pending:0};
+  if(action==='configure'){assert.equal(payload.server,'https://sync.example.com');assert.ok(payload.setupKey);configured=true;return {ok:true};}
+  if(action==='pair')return {id:'test',expires:Date.now()+300000,url:'https://sync.example.com/#pair=test.local-test-only'};
+  if(action==='devices')return {devices:[]};if(action==='pending')return {pairs:[]};if(action==='conflicts')return [];
+  if(action==='execution-local')return {providers:[{id:'test-provider',name:'Test Provider',models:['test-model']}],cloudConfigured:configured,cloudHint:configured?'已识别：Current cloud':'请先配置凭据'};
+  if(action==='execution-status')return {providers:[],cloud:null};
+  if(action==='execution-authorize'){assert.equal(payload.authorized,true);assert.deepEqual(payload.providerIds,['test-provider']);return {providers:[{id:'test-provider',name:'Test Provider'}],cloud:null};}
+  if(action==='enable')return {connected:true,enabled:payload.enabled,pending:0};return {ok:true};
+ };
+ backend.start();renderer=await startRendererServer(path.resolve('apps/desktop/dist'));
+ win=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{preload:path.resolve('apps/desktop/dist-electron/preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});backend.setWindow(win);
+ const errors=[];win.webContents.on('console-message',(_e,level,message)=>{if(level===3)errors.push(message);});
+ await win.loadURL(renderer.url);
+ const run=expression=>win.webContents.executeJavaScript(expression);
+ const until=async expression=>{for(let i=0;i<70;i++){if(await run(expression))return;await new Promise(r=>setTimeout(r,100));}throw new Error('Timeout '+expression);};
+ await until('!!document.querySelector("[aria-label=用户菜单]")');
+ await run('document.querySelector("[aria-label=用户菜单]").click()');await until('!!document.querySelector(".workspace-menu")');
+ assert.ok(await run('[...document.querySelectorAll(".workspace-menu button")].some(b=>b.textContent.includes("连接手机"))'));
+ await run('[...document.querySelectorAll(".workspace-menu button")].find(b=>b.textContent.includes("连接手机")).click()');
+ await until('!!document.querySelector("[aria-label=连接手机]")');
+ await until('!!document.querySelector("#mobile-sync-server")');
+ assert.equal(await run('document.querySelector("#mobile-sync-server").value'),'');
+ assert.ok(await run('[...document.querySelectorAll(".mobile-pairing button")].find(b=>b.textContent.includes("生成连接二维码")).disabled'));
+ await run(`(()=>{const set=(id,value)=>{const input=document.querySelector(id);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));};set('#mobile-sync-server','https://sync.example.com');set('#mobile-sync-setup-key','local-test-key-000000000000000000000000');})()`);
+ await run('document.querySelector(".mobile-server-form").requestSubmit()');
+ await until('[...document.querySelectorAll(".mobile-pairing button")].find(b=>b.textContent.includes("生成连接二维码")).disabled===false');
+ assert.equal(await run('document.querySelector("#mobile-sync-setup-key").value'),'');
+ await run('[...document.querySelectorAll(".mobile-pairing button")].find(b=>b.textContent.includes("生成连接二维码")).click()');
+ await until('!!document.querySelector(".mobile-pairing__qr img")');
+ await until('!!document.querySelector("[aria-label=手机聊天与云电脑授权]")');
+ await until('!document.querySelectorAll("[aria-label=手机聊天与云电脑授权] input[type=checkbox]")[1].disabled');
+ assert.ok(await run('document.querySelector("[aria-label=手机聊天与云电脑授权]").textContent.includes("Current cloud")'));
+ assert.ok(await run('[...document.querySelectorAll("[aria-label=手机聊天与云电脑授权] button")].find(b=>b.textContent.includes("授权并保存")).disabled'));
+ await run('document.querySelector("[aria-label=手机聊天与云电脑授权] input[type=checkbox]").click()');
+ await run('[...document.querySelectorAll("[aria-label=手机聊天与云电脑授权] input[type=checkbox]")].at(-1).click()');
+ await run('[...document.querySelectorAll("[aria-label=手机聊天与云电脑授权] button")].find(b=>b.textContent.includes("授权并保存")).click()');
+ await until('document.querySelector("[aria-label=手机聊天与云电脑授权]").textContent.includes("已授权：Test Provider")');
+ assert.ok(await run('document.querySelector(".mobile-pairing__qr img").src.startsWith("data:image/png")'));
+ await until('document.querySelector(".mobile-pairing__qr img").complete');
+ await new Promise(r=>setTimeout(r,800));
+ await run('[...document.querySelectorAll(".sheet-backdrop,.sheet")].flatMap(e=>e.getAnimations()).forEach(a=>a.finish())');
+ console.log(await run('JSON.stringify({dialogs:[...document.querySelectorAll("[role=dialog]")].map(e=>({label:e.getAttribute("aria-label"),rect:e.getBoundingClientRect().toJSON(),style:getComputedStyle(e).opacity})),qr:!!document.querySelector(".mobile-pairing__qr img")})'));
+ assert.ok(await run('Number(getComputedStyle(document.querySelector(".sheet-backdrop")).opacity)>0.9'));
+ await run('document.querySelector(".sheet").scrollIntoView({block:"center"})');
+ await new Promise(r=>setTimeout(r,500));
+ console.log(await run('JSON.stringify({sheet:document.querySelector(".sheet").getBoundingClientRect().toJSON(),visibility:getComputedStyle(document.querySelector(".sheet")).visibility,stack:document.elementsFromPoint(630,400).slice(0,4).map(e=>e.className)})'));
+ fs.writeFileSync(path.join(output,'connection.png'),(await win.webContents.capturePage(undefined,{stayHidden:true,stayAwake:true})).toPNG());
+ assert.deepEqual(errors.filter(m=>!m.includes('ERR_BLOCKED_BY')),[]);
+ console.log('Desktop avatar menu, mobile dialog, QR rendering and IPC passed. Screenshot: '+path.join(output,'connection.png'));
+}).catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{backend?.dispose();renderer?.close();win?.destroy();app.quit();});

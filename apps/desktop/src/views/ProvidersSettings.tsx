@@ -6,6 +6,8 @@ import { PRESETS } from '../lib/presets';
 import { Button, Field } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
+import { validateModelSettings, modelSettings } from '@moyu/core/dist/generation';
+import { ModelLimitsEditor } from '../components/ModelLimitsEditor';
 
 const PROTOCOLS = [{ value: 'openai', label: 'OpenAI 兼容', hint: '大部分中转站与本地服务' }, { value: 'anthropic', label: 'Anthropic', hint: 'Claude 原生协议' }, { value: 'gemini', label: 'Google Gemini', hint: 'Gemini 原生协议' }];
 const protocol = (kind: string) => PROTOCOLS.find((item) => item.value === kind)?.label;
@@ -17,6 +19,8 @@ function validate(provider: ProviderConfig, requireModel = true) {
   try { url = new URL(provider.baseUrl); } catch { throw new Error('请填写完整的 API 地址'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('API 地址须为 HTTP(S) 地址，不要包含密钥、查询参数或片段');
   if (requireModel && !provider.defaultModel.trim()) throw new Error('请填写默认模型，可直接输入模型 ID');
+  validateModelSettings(provider, provider.kind);
+  for (const name of Object.keys(provider.modelSettings ?? {})) validateModelSettings(modelSettings(provider, name), provider.kind);
   return { ...provider, name: provider.name.trim(), baseUrl: provider.baseUrl.trim().replace(/\/+$/, ''), defaultModel: provider.defaultModel.trim(), models: [...new Set([...provider.models, provider.defaultModel.trim()].filter(Boolean))] };
 }
 
@@ -29,6 +33,7 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
   const [search, setSearch] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [manualModel, setManualModel] = useState('');
+  const [limitsModel, setLimitsModel] = useState('');
   const [busy, setBusy] = useState<'save' | 'test' | 'models' | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [remove, setRemove] = useState(false);
@@ -36,7 +41,7 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   const current = drafts.find((item) => item.id === selected);
   const patch = (next: Partial<ProviderConfig>) => { setDrafts((prev) => prev.map((item) => item.id === selected ? { ...item, ...next } : item)); setResult(null); };
-  const choose = (id: string) => { setSelected(id); setAdding(false); setModelSearch(''); setResult(null); setRemove(false); };
+  const choose = (id: string) => { setSelected(id); setAdding(false); setModelSearch(''); setLimitsModel(''); setResult(null); setRemove(false); };
   const add = (presetId: string) => {
     const preset = PRESETS.find((item) => item.id === presetId)!;
     const unique = preset.id !== 'custom' && !drafts.some((item) => item.id === preset.id);
@@ -90,7 +95,9 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
           <div className="provider-form__grid"><Field label="供应商名称"><input className="input" aria-label="供应商名称" value={current.name} onChange={(e) => patch({ name: e.target.value })} /></Field><Field label="API 协议"><Select label="API 协议" value={current.kind} options={PROTOCOLS} onChange={(value) => patch({ kind: value as ProviderConfig['kind'] })} /></Field></div>
           <div className="provider-form__grid"><Field label="API 地址" hint="包含 /v1 等版本路径。"><input className="input mono" aria-label="API 地址" placeholder="https://your-api.example.com/v1" title={current.baseUrl} value={current.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} /></Field>
           <Field label="API Key" hint={secrets.providerKeys[current.id] ? '已安全保存，留空保留。' : '无需密钥的服务可留空。'}><input className="input mono" aria-label="供应商 API Key" type="password" autoComplete="new-password" value={keys[current.id] ?? ''} placeholder={secrets.providerKeys[current.id] ? '••••••••••••••••' : '输入 API Key'} onChange={(e) => { setKeys((prev) => ({ ...prev, [current.id]: e.target.value })); setResult(null); }} /></Field></div>
-          <div className="provider-form__grid"><Field label="默认模型"><Select allowCustom label="默认模型" value={current.defaultModel} placeholder="选择或输入模型 ID" options={models.map((model) => ({ value: model, label: model }))} onChange={(value) => patch({ defaultModel: value })} /></Field><Field label="上下文上限 (tokens)"><input className="input mono" aria-label="上下文上限" type="number" min={4096} step={1024} value={current.contextWindowTokens ?? 32768} onChange={(e) => patch({ contextWindowTokens: Math.max(4096, Number(e.target.value) || 32768) })} /></Field></div>
+          <div className="provider-form__grid"><Field label="默认模型"><Select allowCustom label="默认模型" value={current.defaultModel} placeholder="选择或输入模型 ID" options={models.map((model) => ({ value: model, label: model }))} onChange={(value) => patch({ defaultModel: value })} /></Field><Field label="供应商默认上下文" hint="留空按模型识别，未知模型使用 32768；下方可为各模型单独设置。"><input className="input mono" aria-label="上下文上限" type="number" min={4096} step={1024} value={current.contextWindowTokens ?? ''} placeholder="按模型自动识别" onChange={(e) => patch(Object.fromEntries([['contextWindowTokens', e.target.value === '' ? undefined : Number(e.target.value)]]))} /></Field></div>
+          <Field label="配置模型额度"><Select allowCustom label="配置模型额度" value={limitsModel || current.defaultModel} options={models.map(model => ({ value: model, label: model }))} onChange={setLimitsModel} /></Field>
+          {limitsModel || current.defaultModel ? <ModelLimitsEditor provider={current} model={limitsModel || current.defaultModel} onChange={limits => patch({ modelSettings: { ...current.modelSettings, [limitsModel || current.defaultModel]: limits } })} /> : null}
           <details className="provider-advanced"><summary>高级设置<Icon name="chevron" size={13} /></summary><Field label="图像模型" hint="供绘图工具使用，留空使用供应商默认。"><input className="input mono" aria-label="图像模型" value={current.imageModel ?? ''} placeholder="可选，例如 gpt-image-1" onChange={(e) => patch({ imageModel: e.target.value })} /></Field><p>接近上下文上限时，会自动压缩对话并整理记忆。</p></details>
         </fieldset>
         <div className="provider-models"><div className="provider-models__head"><h4>可用模型 <small>{models.length}</small></h4><Button variant="ghost" size="sm" icon="refresh" disabled={!!busy} loading={busy === 'models'} onClick={() => void request('models')}>获取模型</Button></div><label className="provider-search"><Icon name="search" size={14} /><input aria-label="搜索模型" placeholder="筛选模型" value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} /></label><div className="provider-models__list">{models.filter((model) => model.toLowerCase().includes(modelSearch.toLowerCase())).map((model) => <button type="button" disabled={!!busy} key={model} className={current.defaultModel === model ? 'is-active' : ''} onClick={() => patch({ defaultModel: model })}><Icon name="spark" size={13} /><span>{model}</span>{current.defaultModel === model ? <small>默认</small> : <small>设为默认</small>}</button>)}{!models.length ? <p>从接口获取，或手动添加模型 ID。</p> : null}</div><form className="provider-models__manual" onSubmit={(e) => { e.preventDefault(); if (manualModel.trim()) { patch({ models: [...new Set([...models, manualModel.trim()])] }); setManualModel(''); } }}><input className="input mono" aria-label="手动模型 ID" placeholder="输入模型 ID 手动添加" disabled={!!busy} value={manualModel} onChange={(e) => setManualModel(e.target.value)} /><Button type="submit" variant="ghost" size="sm" disabled={!!busy || !manualModel.trim()} icon="plus">添加</Button></form></div>

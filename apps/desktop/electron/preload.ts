@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  CapabilityStatus,
   AppUpdateResult,
+  AppUpdateProgress,
   AgentEvent,
   AppSettings,
   ApprovalDecision,
@@ -29,12 +31,21 @@ import type { ConversationSummary } from '@moyu/core';
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
 const api = {
+  capabilityStatus: (workspaceId: string) => invoke<CapabilityStatus>('moyu:capabilities:status', workspaceId),
+  importMcp: (workspaceId: string, json: string) => invoke<void>('moyu:mcp:import', workspaceId, json),
+  testMcp: (id: string) => invoke<void>('moyu:mcp:test', id),
+  importSkill: (workspaceId: string) => invoke<void>('moyu:skill:import', workspaceId),
+  removeCapability: (kind: 'mcp' | 'skill', id: string) => invoke<void>('moyu:capabilities:remove', kind, id),
   setupDirectory: (directory: string) => invoke<AppSettings>('moyu:setup:directory', directory),
   finishSetup: (skipCloud: boolean) => invoke<AppSettings>('moyu:setup:finish', skipCloud),
   feedbackDiagnostics: () => invoke<DiagnosticEntry[]>('moyu:feedback:diagnostics'),
   clearFeedbackDiagnostics: () => invoke<void>('moyu:feedback:clear'),
   copyFeedback: (text: string) => invoke<void>('moyu:feedback:copy', text),
   checkForUpdates: () => invoke<AppUpdateResult>('moyu:app:check-updates'),
+  updateStatus: () => invoke<AppUpdateProgress>('moyu:app:update-status'),
+  downloadUpdate: () => invoke<AppUpdateProgress>('moyu:app:download-update'),
+  cancelUpdate: () => invoke<void>('moyu:app:cancel-update'),
+  installUpdate: () => invoke<AppUpdateProgress>('moyu:app:install-update'),
   bootstrap: () => invoke<BootstrapPayload>('moyu:bootstrap'),
   usage: (query: UsageQuery) => invoke<UsageReport>('moyu:usage', query),
   saveSettings: (patch: Partial<AppSettings>) => invoke<AppSettings>('moyu:settings:save', patch),
@@ -86,6 +97,11 @@ const api = {
   openExternal: (url: string) => invoke<void>('moyu:open-external', url),
   win: (action: 'minimize' | 'maximize' | 'close') => invoke<void>('moyu:win', action),
 
+  mobileSync: (action: string, payload?: unknown) => invoke<any>('moyu:mobile-sync', action, payload),
+  onSyncData: (listener: () => void) => {
+    const handler = () => listener(); ipcRenderer.on('moyu:sync-data', handler);
+    return () => ipcRenderer.removeListener('moyu:sync-data', handler);
+  },
   onEvent: (listener: (event: AgentEvent) => void) => {
     const handler = (_event: unknown, payload: AgentEvent) => listener(payload);
     ipcRenderer.on('moyu:event', handler);

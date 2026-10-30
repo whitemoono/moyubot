@@ -8,6 +8,8 @@ import { Icon } from './Icon';
 import { BOT_TOOLS as TOOLS } from '../lib/bots';
 import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
+import { BotGenerationEditor } from './BotGenerationEditor';
+import { BotCapabilities } from './BotCapabilities';
 
 export function BotEditor({
   initial,
@@ -208,6 +210,8 @@ export function BotEditor({
             })}
           </div>
         </section>
+        <BotGenerationEditor bot={draft} provider={provider} onChange={generation => patch('generation', generation)} />
+        <div className="editor-block--wide"><BotCapabilities bot={draft} onChange={next => setDraft(prev => ({ ...prev, ...next }))} /></div>
       </div>
     </Sheet>
   );

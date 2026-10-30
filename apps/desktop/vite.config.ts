@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 
 const CSP = [
   "default-src 'self'",
@@ -12,6 +13,8 @@ const CSP = [
 ].join('; ');
 
 export default defineConfig({
+  // Share renderer-safe validation without bundling the Node core runtime.
+  resolve: { alias: { '@moyu/core/dist/generation': fileURLToPath(new URL('../../packages/core/src/generation.ts', import.meta.url)) } },
   plugins: [
     react(),
     {

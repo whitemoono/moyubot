@@ -12,12 +12,14 @@ import { BotsView } from './BotsView';
 import { CloudView } from './CloudView';
 import { UsageView } from './UsageView';
 import { WorkspacePathSettings } from '../components/WorkspacePathSettings';
+import { CapabilitiesSettings } from './CapabilitiesSettings';
 
 const ACCENTS = ['#f5f5f5', '#737373', '#404040', '#6366f1', '#ec4899', '#06b6d4', '#f97316', '#22c55e'];
 const SECTIONS = [
   { id: 'appearance', label: '通用', icon: 'sliders', hint: '让工作空间更合你的习惯。' },
   { id: 'profile', label: '个人资料', icon: 'users', hint: '为你的工作空间换个表情。' },
   { id: 'bots', label: 'Bot 管理', icon: 'bots', hint: '管理你的角色、模型、人格与工具。' },
+  { id: 'capabilities', label: 'MCP 与 Skills', icon: 'plug', hint: '为当前工作区添加工具服务与技能，再分配给 Bot。' },
   { id: 'providers', label: '模型供应商', icon: 'spark', hint: '连接官方服务、第三方中转站与本地模型。' },
   { id: 'cloud', label: '共享云电脑', icon: 'cloud', hint: '一个共享的执行空间，需要时唤醒，空闲时休眠。' },
   { id: 'usage', label: '用量', icon: 'usage', hint: '每一次调用，都看得见。' },
@@ -52,6 +54,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
       <div className={`settings-main settings-main--${section}`}>
         <header className="settings-heading"><div><h2 id="settings-title">{selected.label}</h2><p>{selected.hint}</p></div><IconButton name="close" label="关闭设置" onClick={close} /></header>
         <div className="settings-content">
+          {section === 'capabilities' ? <CapabilitiesSettings key={activeWorkspace?.id} /> : null}
           {section === 'usage' ? <UsageView /> : null}
           {section === 'feedback' ? <FeedbackSettings /> : null}
           <div hidden={section !== 'providers'} className="settings-provider-page"><ProvidersSettings onDirty={setProviderDirty} /></div>

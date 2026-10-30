@@ -19,9 +19,10 @@ import { moyu } from './lib/bridge';
 import type { ConversationSummary } from './lib/bridge';
 import { inferMessageActivity, updateActivities } from './lib/bot-activity';
 import type { BotActivity, ConversationActivities } from './lib/bot-activity';
+import { appendReplyProgress } from './lib/reply-flow';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
-export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage' | 'feedback';
+export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage' | 'feedback' | 'capabilities';
 
 export interface Toast {
   id: string;
@@ -269,6 +270,17 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   useEffect(() => {
+    const offSync = moyu().onSyncData(() => {
+      void moyu().bootstrap().then(async boot => {
+        setSettings(boot.settings); setConversations(boot.conversations); setSchedules(boot.schedules);
+        const current = conversationRef.current;
+        if (current && !runningRef.current.has(current.id)) {
+          const updated = await moyu().conversation(current.id);
+          if (updated && conversationRef.current?.id === current.id) setConversation(updated);
+        }
+        setMemories(await moyu().memories(selectedBotRef.current));
+      }).catch(error => toast(error.message, 'error'));
+    });
     const off = moyu().onEvent((event: AgentEvent) => {
       setActivities((previous) => updateActivities(previous, event));
       if (event.type === 'run_start' || event.type === 'run_end') {
@@ -287,11 +299,11 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (event.type === 'delta') {
-        patchMessage(event.messageId, (message) => ({ ...message, content: message.content + event.text }));
+        patchMessage(event.messageId, (message) => appendReplyProgress(message, event));
         return;
       }
       if (event.type === 'reasoning') {
-        patchMessage(event.messageId, (message) => ({ ...message, reasoning: (message.reasoning ?? '') + event.text }));
+        patchMessage(event.messageId, (message) => appendReplyProgress(message, event));
         return;
       }
       if (event.type === 'message_start') {
@@ -302,10 +314,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (event.type === 'tool_start') {
-        patchMessage(event.messageId, (message) => ({
-          ...message,
-          toolCalls: [...(message.toolCalls ?? []).filter((call) => call.id !== event.call.id), event.call],
-        }));
+        patchMessage(event.messageId, (message) => appendReplyProgress(message, event));
         return;
       }
       if (event.type === 'tool_end') {
@@ -373,6 +382,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     const offCloud = moyu().onCloud((status) => setCloud(status));
     const offLocal = moyu().onLocal((status) => setLocal(status));
     return () => {
+      offSync();
       off();
       offCloud();
       offLocal();

@@ -1,0 +1,1 @@
+{"name":"moyubot-sync-server","private":true,"type":"module","engines":{"node":">=22.13.0"},"scripts":{"start":"node index.mjs"},"dependencies":{"@ai-sdk/anthropic":"4.0.92","@ai-sdk/google":"4.0.108","@ai-sdk/openai-compatible":"3.0.81","@ai-sdk/provider":"4.0.34","zod":"4.4.1"}}

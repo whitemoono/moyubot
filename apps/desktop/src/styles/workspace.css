@@ -472,7 +472,6 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .group-chat-icon { width: 36px; height: 36px; flex-shrink: 0; display: grid; place-items: center; border-radius: 13px; background: var(--selected); color: var(--text-dim); }
 .group-welcome__avatars { display: flex; justify-content: center; gap: 6px; margin-bottom: 18px; }
 .group-welcome__avatars .bot-avatar { width: 70px; height: 70px; }
-.group-reply-name { display: block; margin: 1px 0 8px; font-size: 12px; font-weight: 500; color: var(--text-faint); }
 .group-composer-hint { display: flex; align-items: center; gap: 6px; color: var(--text-faint); font-size: 11px; white-space: nowrap; }
 .composer--compact .group-composer-hint { width: 30px; height: 30px; justify-content: center; }
 .composer--compact .group-composer-hint > span { display: none; }
@@ -735,3 +734,23 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .inspector-group-members .group-member strong { font-size: 12px; overflow-wrap: anywhere; }
 .inspector-group-members .group-member small { font-size: 10px; overflow-wrap: anywhere; }
 .inspector-group-computer-note { text-align: center; margin: 0 0 14px; }
+.bot-capabilities { min-width: 0; }
+.bot-capabilities .editor-block { margin-bottom: 14px; }
+.bot-capabilities h3 { margin: 0; }
+.capability-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.capability-item:last-child { border-bottom: 0; }
+.capability-item .switch { width: 100%; gap: 10px; }
+.capability-item .switch__text { min-width: 0; overflow-wrap: anywhere; }
+.capability-item details { color: var(--text-faint); font-size: 11px; margin-top: 7px; }
+.capability-item summary { cursor: pointer; }
+.capability-item details p { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; }
+.capability-item ul { padding-left: 18px; line-height: 1.9; overflow-wrap: anywhere; }
+.capability-error { color: var(--danger, #e27676); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.capabilities-settings { display: grid; gap: 16px; }
+.capabilities-settings h3 { font-size: 14px; font-weight: 500; }
+.capabilities-settings h3 small { color: var(--text-faint); margin-left: 8px; font-size: 10px; }
+.capability-config { display: flex; align-items: center; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.capability-config > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.capability-config strong { font-size: 12px; font-weight: 500; }
+.capability-config small { display: block; font-size: 10px; color: var(--text-faint); line-height: 1.8; }
+.capability-config p { font-size: 11px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
