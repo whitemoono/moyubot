@@ -129,7 +129,8 @@ test('tool rounds, group participants and automatic compaction all reach the dur
   try {
     const run = await runtime.send({ botId: bot.id, text: 'remember' }); await wait(run.conversationId);
     assert.equal(conversation.messages.at(-1).error, undefined);
-    assert.deepEqual(conversation.messages.at(-1).usage, { promptTokens: 200, completionTokens: 40 });
+    // cachedTokens accumulates across tool rounds (it used to be dropped entirely).
+    assert.deepEqual(conversation.messages.at(-1).usage, { promptTokens: 200, completionTokens: 40, cachedTokens: 80 });
     assert.equal(store.usage.query(query()).totals.totalTokens, 240);
     const group = store.createGroup('Test group', [first.id, second.id]);
     const groupRun = await runtime.send({ botId: first.id, conversationId: group.id, text: 'remember' }); await wait(groupRun.conversationId);

@@ -1,0 +1,44 @@
+/* Long-conversation / long-markdown rendering performance. */
+/* Skip layout+paint for messages outside the viewport (huge win on long chats and
+   very long articles); the intrinsic size keeps the scrollbar stable. */
+.msg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+/* Bound layout/paint work when the inspector toggles and the column width changes. */
+.chat__stage,
+.messages {
+  contain: layout paint;
+}
+.prose {
+  contain: content;
+}
+
+/* Very long replies are clamped with an inline "展开全文" toggle. */
+.reply-turns.is-clamped {
+  max-height: 68vh;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+}
+/* Plain-text expand/collapse toggle: transparent, only a faint gray on hover. */
+.reply-expand {
+  margin: 4px 0 2px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  background: transparent;
+  transition: background 140ms, color 140ms;
+}
+.reply-expand:hover,
+.reply-expand:focus-visible {
+  background: var(--selected);
+  color: var(--text);
+}
+.reply-expand:focus-visible {
+  outline: 2px solid var(--line-strong);
+  outline-offset: 1px;
+}

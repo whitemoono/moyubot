@@ -96,8 +96,12 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
     try { await updateBotMetadata(item.id, { sidebar: { pinned, hidden: false } }); }
     catch (error) { motion.discard(); throw error; }
   };
+  const activityFor = (botId: string) => {
+    const conv = conversations.find((entry) => !entry.group && entry.botId === botId);
+    return conv ? botActivities[conv.id]?.kind : undefined;
+  };
   const renderBot = (item: Bot) => <button type="button" key={item.id} data-bot-id={item.id} className={`messenger-bot ${view === 'chat' && !conversation?.group && bot?.id === item.id ? 'is-active' : ''}`} aria-current={view === 'chat' && !conversation?.group && bot?.id === item.id ? 'page' : undefined} aria-haspopup="menu" title={item.name} onClick={() => selectBot(item.id)} onContextMenu={(event) => openContext(event, item)}>
-    <BotAvatar bot={item} className="messenger-bot__avatar" animated={!item.sidebar?.hidden || hiddenOpen} />
+    <BotAvatar bot={item} className="messenger-bot__avatar" activity={activityFor(item.id)} animated={!item.sidebar?.hidden || hiddenOpen} />
     <span className="messenger-bot__text"><strong>{item.name}</strong><span>{runningBotIds.has(item.id) ? BOT_ACTIVITY[botActivities[item.id]?.kind ?? 'thinking'].label : previewFor(item.id)}</span></span>
     {item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : runningBotIds.has(item.id) ? <span className="messenger-bot__activity" aria-label="运行中" /> : null}
   </button>;
@@ -138,7 +142,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
       </div> : null}
       {pinnedBots.length ? <div className="messenger-pins" aria-label="置顶 Bot">
         {pinnedBots.map((item) => <button type="button" className={`messenger-pin ${view === 'chat' && !conversation?.group && bot?.id === item.id ? 'is-active' : ''}`} key={item.id} data-bot-id={item.id} title={item.name} aria-label={`打开置顶 Bot ${item.name}`} aria-current={view === 'chat' && !conversation?.group && bot?.id === item.id ? 'page' : undefined} aria-haspopup="menu" onClick={() => selectBot(item.id)} onContextMenu={(event) => openContext(event, item)}>
-          <span className="messenger-pin__portrait"><BotAvatar bot={item} size="lg" />{item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : null}</span><span className="messenger-pin__name">{item.name}</span>
+          <span className="messenger-pin__portrait"><BotAvatar bot={item} size="lg" activity={activityFor(item.id)} />{item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : null}</span><span className="messenger-pin__name">{item.name}</span>
         </button>)}
       </div> : null}
       {pinnedBots.length ? <div className="messenger-pin-divider" role="separator" aria-label="置顶与其他 Bot" /> : null}

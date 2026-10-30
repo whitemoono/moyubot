@@ -47,7 +47,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
     <aside className={`rail inspector ${isGroup ? 'inspector--group' : ''}`} aria-label={isGroup ? '群聊详情' : '对话详情'}>
       <div className="rail-heading inspector-toolbar">{isGroup ? <IconButton name="edit" label="编辑群聊" disabled={runningGroupIds.has(conversation!.id)} title={runningGroupIds.has(conversation!.id) ? '请先停止群聊任务' : '编辑群聊'} onClick={() => setEditingGroup(true)} /> : <IconButton name="plus" label="创建新 Bot" onClick={onCreateBot} />}<IconButton name="close" label="关闭详情" onClick={onClose} /></div>
       <div className="inspector-profile">
-        {isGroup ? <span className="inspector-group-avatar" aria-hidden="true"><Icon name="users" size={32} /></span> : bot ? <button type="button" className="inspector-avatar-button" aria-label={`修改 ${bot.name} 的头像`} aria-haspopup="dialog" title="修改 Bot 头像" onClick={() => setAvatarBotId(bot.id)}><BotAvatar bot={bot} size="xl" /><span className="inspector-avatar-button__edit" aria-hidden="true"><Icon name="edit" size={13} /></span></button> : null}
+        {isGroup ? <span className="inspector-group-avatar" aria-hidden="true"><Icon name="users" size={32} /></span> : bot ? <button type="button" className="inspector-avatar-button" aria-label={`修改 ${bot.name} 的头像`} aria-haspopup="dialog" title="修改 Bot 头像" onClick={() => setAvatarBotId(bot.id)}><BotAvatar bot={bot} size="xl" activity="idle" /><span className="inspector-avatar-button__edit" aria-hidden="true"><Icon name="edit" size={13} /></span></button> : null}
         <h2>{isGroup ? conversation!.title : bot?.name ?? 'Bot'}</h2>
         {isGroup ? <p className="inspector-group-caption">{conversation!.group!.memberBotIds.length} 个 Bot · 共用工作区电脑</p> : null}
       </div>
@@ -67,7 +67,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
       <div className="inspector-content" key={tab} id={`inspector-panel-${tab}`} role="tabpanel" aria-labelledby={`inspector-tab-${tab}`} tabIndex={0}>
         {tab === 'computer' ? <div className="inspector-computer">
           {!isLocal && awake ? <CloudDesktop /> : <div className={`computer-preview ${dozing ? 'is-resting' : ''} ${booting ? 'is-booting' : ''}`} role="status" aria-live="polite">
-            <div className="computer-character" aria-hidden="true">{isGroup ? <Icon name={isLocal ? 'terminal' : 'cloud'} size={38} /> : bot ? <BotAvatar bot={bot} activity={computerActivity} className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
+            <div className="computer-character" aria-hidden="true">{isGroup ? <Icon name={isLocal ? 'terminal' : 'cloud'} size={38} /> : bot ? <BotAvatar bot={bot} activity="idle" className="computer-character__avatar" /> : <Icon name="terminal" size={32} />}{dozing ? <span className="computer-character__sleep">z<sup>z</sup></span> : null}{booting ? <span className="computer-character__boot"><i /><i /><i /></span> : null}</div>
             <strong>{computerLabel}</strong>
           </div>}
           <p className="computer-caption">{isLocal ? '本机 Windows' : cloud.machine?.name ?? settings.cloud.machineName}<small> · 工作区内所有 Bot 共用</small></p>

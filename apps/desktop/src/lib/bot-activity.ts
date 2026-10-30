@@ -14,9 +14,9 @@ export const BOT_ACTIVITY = {
   waiting: { label: '等待你的确认', motion: 'listening' },
   sleeping: { label: '电脑休眠中', motion: 'sleeping' },
   waking: { label: '正在唤醒电脑', motion: 'waking' },
-  done: { label: '回复完成', motion: 'happy' },
+  done: { label: '回复完成', motion: 'waking' },
   error: { label: '遇到问题', motion: 'alerting' },
-  stopped: { label: '已停止生成', motion: 'drowsy' },
+  stopped: { label: '已停止生成', motion: 'alerting' },
 } as const;
 export type BotActivityKind = keyof typeof BOT_ACTIVITY;
 export interface BotActivity {

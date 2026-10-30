@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Bot, Message, ToolResult } from '@moyu/core';
 import { assetUrl, moyu } from '../lib/bridge';
 import { formatClock } from '../lib/format';
@@ -8,6 +8,8 @@ import { BotAvatar } from '../components/BotAvatar';
 import { ReplyToolCard } from '../components/ReplyToolCard';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
+import { ContextMeter } from '../components/ContextMeter';
+import { EffortPicker } from '../components/EffortPicker';
 import { Button, IconButton, Spinner, useAutoScroll } from '../components/Glass';
 import type { IconName } from '../components/Icon';
 import { BOT_ACTIVITY, inferMessageActivity } from '../lib/bot-activity';
@@ -60,13 +62,17 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
   </div>;
 }
 
-function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void }) {
+const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void }) {
   const { botActivities, setView, settings } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
+  // Syntax highlighting is the costly part of a long message; run it once the
+  // stream settles rather than on every delta-derived re-render.
   useEffect(() => {
-    if (message.role === 'assistant' && ref.current && message.content) ref.current.querySelectorAll<HTMLElement>('.prose').forEach(highlightCode);
-  }, [message.content, message.role]);
+    if (message.role !== 'assistant' || message.streaming || !ref.current || !message.content) return;
+    ref.current.querySelectorAll<HTMLElement>('.prose').forEach(highlightCode);
+  }, [message.id, message.streaming, message.content]);
 
   if (message.role === 'user') {
     return (
@@ -97,24 +103,32 @@ function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; 
   const results = new Map<string, ToolResult>((message.toolResults ?? []).map((result) => [result.id, result]));
   const activity = botActivities[bot.id];
   const current = isLatest && activity?.messageId === message.id;
-  const kind: BotActivityKind = message.streaming ? current && activity.kind !== 'idle' ? activity.kind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? 'stopped' : current && activity.kind === 'done' ? 'done' : 'idle';
+  const kind: BotActivityKind = message.streaming ? current && activity.kind !== 'idle' ? activity.kind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? (current && activity.kind === 'stopped' ? 'stopped' : 'idle') : current && activity.kind === 'done' ? 'done' : 'idle';
+  // While the model is producing text, show the "thinking" animation (its pondering
+  // motion) rather than the hand-writing one; tool-running states keep their motion.
+  const avatarKind: BotActivityKind = message.streaming && kind === 'writing' ? 'thinking' : kind;
   const animate = !!message.streaming || !!(current && ['done', 'error', 'stopped'].includes(activity.kind));
   const content = message.error && message.content === `（没有回复：${message.error}）` ? '' : message.content;
-  const turns = replyTurns({ ...message, content });
+  const turns = useMemo(() => replyTurns({ ...message, content }), [message.content, message.modelTurns, content]);
+  const turnHtml = useMemo(() => turns.map((turn) => (turn.content ? renderMarkdown(turn.content) : '')), [turns]);
+  const long = content.length > 1600;
 
   return (
     <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1}>
       <div className="msg__stack">
       <div className="msg__body" ref={ref}>
         <div className="reply-author">
-          <BotAvatar bot={bot} activity={kind} animated={!!message.streaming} />
+          <BotAvatar bot={bot} activity="idle" animated={!!message.streaming || kind === 'stopped' || kind === 'done'} />
           <strong>{message.botName ?? bot.name}</strong>
         </div>
+        <div className={`reply-turns ${long && !expanded ? 'is-clamped' : ''}`}>
         {turns.map((turn, index) => <div className="reply-turn" key={index}>
           {turn.reasoning ? <details className="reasoning reply-reasoning"><summary><Icon name="spark" size={14} /><span>思考过程</span><Icon name="chevron" size={13} /></summary><p>{turn.reasoning}</p></details> : null}
-          {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.content) }} /> : null}
+          {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: turnHtml[index] ?? '' }} /> : null}
           {turn.toolCalls?.map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
         </div>)}
+        </div>
+        {long ? <button type="button" className="reply-expand" onClick={() => setExpanded((value) => !value)}>{expanded ? '收起' : '展开全文'}</button> : null}
 
         {message.attachments?.filter((attachment) => attachment.kind === 'image').length ? (
           <div className="artifact-grid">
@@ -139,7 +153,7 @@ function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; 
         ) : null}
 
         {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <button type="button" onClick={() => setView('settings')}>配置供应商</button> : null}</div> : null}
-        {message.streaming || kind === 'done' || message.stopped ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatar bot={bot} activity={kind} animated={animate} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
+        {message.streaming || kind === 'done' || kind === 'stopped' ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatar bot={bot} activity={avatarKind} animated={animate || kind === 'stopped' || kind === 'done'} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
         {!message.streaming && message.usage ? (
           <span className="msg__usage">
             {message.usage.promptTokens ? `${message.usage.promptTokens} in` : ''}
@@ -151,7 +165,7 @@ function MessageBubble({ message, bot, isLatest, onReply }: { message: Message; 
       </div>
     </div>
   );
-}
+});
 
 function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, toast } = useMoyu();
@@ -286,7 +300,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
         />
         <div className="composer__bar">
           <div className="composer__options">
-            {group ? <span className="group-composer-hint" title={`${group.memberBotIds.length} 个 Bot · 依次回复`} aria-label={`${group.memberBotIds.length} 个 Bot · 依次回复`}><Icon name="users" size={14} /><span>{group.memberBotIds.length} 个 Bot · 依次回复</span></span> : <Select label="模型" className="composer-model-picker" menuMinWidth={210} align="end" value={bot.model} disabled={savingOptions} onChange={(value) => void updateOptions({ model: value })} options={[...new Set([bot.model, ...(provider?.models ?? [])])].filter(Boolean).map((model) => ({ value: model, label: model }))} />}
+            {group ? <span className="group-composer-hint" title={`${group.memberBotIds.length} 个 Bot · 依次回复`} aria-label={`${group.memberBotIds.length} 个 Bot · 依次回复`}><Icon name="users" size={14} /><span>{group.memberBotIds.length} 个 Bot · 依次回复</span></span> : <><Select label="模型" className="composer-model-picker" menuMinWidth={210} align="end" value={bot.model} disabled={savingOptions} onChange={(value) => void updateOptions({ model: value })} options={[...new Set([bot.model, ...(provider?.models ?? [])])].filter(Boolean).map((model) => { const name = provider?.modelCatalog?.[model]?.name; return { value: model, label: name ?? model, hint: name && name !== model ? model : undefined }; })} /><EffortPicker bot={bot} disabled={savingOptions} /></>}
           </div>
           <div className="composer__actions">
             {running ? (
@@ -307,6 +321,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           </div>
         </div>
       </div>
+      {conversation ? <ContextMeter bot={bot} conversation={conversation} /> : null}
       {home ? <div className="starter-actions" aria-label="灵感建议">
         {(bot.workspaceId === 'workspace_local' ? LOCAL_SUGGESTIONS : SUGGESTIONS).map((item) => <button type="button" key={item.title} onClick={() => { setText(bot.workspaceId === 'workspace_local' ? item.text : item.text.replaceAll('/data/moyubot', settings.cloud.remoteWorkspaceDir ?? '/data/moyubot')); textarea.current?.focus(); }}>
           <Icon name={item.icon} size={16} /><span>{item.title}</span>
@@ -347,6 +362,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
   const messages = conversation?.messages ?? [];
   const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
   const scrollRef = useAutoScroll<HTMLDivElement>(conversation?.id);
+  const handleReply = useCallback((quote: NonNullable<Message['replyTo']>) => setReply({ conversationId: conversation?.id ?? '', quote }), [conversation?.id]);
 
   if (!bot) {
     return (
@@ -366,7 +382,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <header className="chat__head">
         <h2 className="chat__title">
           <button type="button" className={`chat__who ${inspectorOpen ? 'is-active' : ''}`} aria-label={conversation.group ? '群聊成员与详情' : '对话详情与记忆'} aria-expanded={inspectorOpen} title={conversation.group ? conversation.title : `${bot.name} · 对话详情与记忆`} onClick={onToggleInspector}>
-            {conversation.group ? <span className="group-chat-icon"><Icon name="users" size={21} /></span> : <BotAvatar bot={bot} size="lg" />}
+            {conversation.group ? <span className="group-chat-icon"><Icon name="users" size={21} /></span> : <BotAvatar bot={bot} size="lg" activity="idle" />}
             <span className="chat__name">{conversation.group ? conversation.title : bot.name}</span>
           </button>
         </h2>
@@ -375,7 +391,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <div className="chat__stage">
       <div className="messages" ref={scrollRef}>
         <div className="messages__inner">
-          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <MessageBubble key={message.id} message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={(quote) => setReply({ conversationId: conversation.id, quote })} />)}
+          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <MessageBubble key={message.id} message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} />)}
         </div>
       </div>
 

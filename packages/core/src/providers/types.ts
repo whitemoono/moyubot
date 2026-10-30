@@ -39,7 +39,16 @@ export interface ChatProvider {
   readonly kind: ProviderConfig['kind'];
   chat(args: ChatArgs, handlers: StreamHandlers): Promise<ChatOutcome>;
   listModels(): Promise<string[]>;
+  /** Optional richer catalog: ids with display names and advertised limits. */
+  listModelCatalog?(): Promise<ModelCatalogEntry[]>;
   test(): Promise<{ ok: boolean; message: string; latencyMs: number }>;
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  name?: string;
+  contextWindowTokens?: number;
+  maxOutputTokens?: number;
 }
 
 export interface ProviderContext {

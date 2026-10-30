@@ -6,8 +6,9 @@ import { PRESETS } from '../lib/presets';
 import { Button, Field } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
-import { validateModelSettings, modelSettings } from '@moyu/core/dist/generation';
+import { validateModelSettings, modelSettings, modelProfile } from '@moyu/core/dist/generation';
 import { ModelLimitsEditor } from '../components/ModelLimitsEditor';
+import { formatTokens } from '../components/LimitChips';
 
 const PROTOCOLS = [{ value: 'openai', label: 'OpenAI 兼容', hint: '大部分中转站与本地服务' }, { value: 'anthropic', label: 'Anthropic', hint: 'Claude 原生协议' }, { value: 'gemini', label: 'Google Gemini', hint: 'Gemini 原生协议' }];
 const protocol = (kind: string) => PROTOCOLS.find((item) => item.value === kind)?.label;
@@ -69,14 +70,34 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
         const response = await moyu().testProvider(current.id, config, keys[current.id]);
         setResult({ ok: response.ok, message: response.ok ? `连接正常 · ${response.latencyMs} ms` : response.message });
       } else {
-        const models = [...new Set(await moyu().listModels(current.id, config, keys[current.id]))];
-        if (models.length) setDrafts((prev) => prev.map((item) => item.id === current.id ? { ...item, defaultModel: item.defaultModel || models[0]!, models: [...new Set([...models, item.defaultModel].filter(Boolean))] } : item));
-        setResult({ ok: true, message: models.length ? `发现 ${models.length} 个模型，保存后生效` : '未返回模型列表，请手动添加模型 ID' });
+        let catalog = await moyu().listModelCatalog(current.id, config, keys[current.id]).catch(() => []);
+        if (!catalog.length) catalog = (await moyu().listModels(current.id, config, keys[current.id])).map((id) => ({ id }));
+        const ids = [...new Set(catalog.map((entry) => entry.id))];
+        setDrafts((prev) => prev.map((item) => {
+          if (item.id !== current.id) return item;
+          const modelCatalog = { ...(item.modelCatalog ?? {}) };
+          for (const entry of catalog) {
+            const previous = modelCatalog[entry.id] ?? {};
+            modelCatalog[entry.id] = {
+              ...previous,
+              ...(entry.name ? { name: entry.name } : {}),
+              ...(entry.contextWindowTokens ? { contextWindowTokens: entry.contextWindowTokens } : {}),
+              ...(entry.maxOutputTokens ? { maxOutputTokens: entry.maxOutputTokens } : {}),
+            };
+          }
+          return { ...item, defaultModel: item.defaultModel || ids[0] || '', models: [...new Set([...ids, item.defaultModel].filter(Boolean))], modelCatalog };
+        }));
+        setResult({ ok: true, message: ids.length ? `发现 ${ids.length} 个模型，已读取名称与上下文（保存后生效）` : '未返回模型列表，请手动添加模型 ID' });
       }
     } catch (error) { setResult({ ok: false, message: (error as Error).message }); }
     finally { setBusy(null); }
   };
   const models = current ? [...new Set([...current.models, current.defaultModel].filter(Boolean))] : [];
+  const contextOf = (model: string): number => current?.modelSettings?.[model]?.contextWindowTokens ?? current?.contextWindowTokens ?? current?.modelCatalog?.[model]?.contextWindowTokens ?? (current ? modelProfile(current, model)?.contextWindowTokens : undefined) ?? 32768;
+  const labelOf = (model: string): string => current?.modelCatalog?.[model]?.name ?? model;
+  const modelOption = (model: string) => { const name = current?.modelCatalog?.[model]?.name; return { value: model, label: name ?? model, hint: name && name !== model ? model : undefined }; };
+  const maxOutputOf = (model: string): number | undefined => current?.modelSettings?.[model]?.maxOutputTokens ?? current?.maxOutputTokens ?? current?.modelCatalog?.[model]?.maxOutputTokens ?? (current ? modelProfile(current, model)?.maxOutputTokens : undefined);
+  const thresholdOf = (model: string): number => current?.modelSettings?.[model]?.compactionThresholdTokens ?? Math.floor(contextOf(model) * 0.9);
   const botCount = settings.bots.filter((bot) => bot.providerId === selected).length;
   return <div className="provider-workspace">
     <aside className="provider-browser">
@@ -95,12 +116,12 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
           <div className="provider-form__grid"><Field label="供应商名称"><input className="input" aria-label="供应商名称" value={current.name} onChange={(e) => patch({ name: e.target.value })} /></Field><Field label="API 协议"><Select label="API 协议" value={current.kind} options={PROTOCOLS} onChange={(value) => patch({ kind: value as ProviderConfig['kind'] })} /></Field></div>
           <div className="provider-form__grid"><Field label="API 地址" hint="包含 /v1 等版本路径。"><input className="input mono" aria-label="API 地址" placeholder="https://your-api.example.com/v1" title={current.baseUrl} value={current.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} /></Field>
           <Field label="API Key" hint={secrets.providerKeys[current.id] ? '已安全保存，留空保留。' : '无需密钥的服务可留空。'}><input className="input mono" aria-label="供应商 API Key" type="password" autoComplete="new-password" value={keys[current.id] ?? ''} placeholder={secrets.providerKeys[current.id] ? '••••••••••••••••' : '输入 API Key'} onChange={(e) => { setKeys((prev) => ({ ...prev, [current.id]: e.target.value })); setResult(null); }} /></Field></div>
-          <div className="provider-form__grid"><Field label="默认模型"><Select allowCustom label="默认模型" value={current.defaultModel} placeholder="选择或输入模型 ID" options={models.map((model) => ({ value: model, label: model }))} onChange={(value) => patch({ defaultModel: value })} /></Field><Field label="供应商默认上下文" hint="留空按模型识别，未知模型使用 32768；下方可为各模型单独设置。"><input className="input mono" aria-label="上下文上限" type="number" min={4096} step={1024} value={current.contextWindowTokens ?? ''} placeholder="按模型自动识别" onChange={(e) => patch(Object.fromEntries([['contextWindowTokens', e.target.value === '' ? undefined : Number(e.target.value)]]))} /></Field></div>
-          <Field label="配置模型额度"><Select allowCustom label="配置模型额度" value={limitsModel || current.defaultModel} options={models.map(model => ({ value: model, label: model }))} onChange={setLimitsModel} /></Field>
+          <div className="provider-form__grid"><Field label="默认模型"><Select allowCustom label="默认模型" value={current.defaultModel} placeholder="选择或输入模型 ID" options={models.map((model) => modelOption(model))} onChange={(value) => patch({ defaultModel: value })} /></Field><Field label="供应商默认上下文" hint="留空按模型识别，未知模型使用 32768；下方可为各模型单独设置。"><input className="input mono" aria-label="上下文上限" type="number" min={4096} step={1024} value={current.contextWindowTokens ?? ''} placeholder="按模型自动识别" onChange={(e) => patch(Object.fromEntries([['contextWindowTokens', e.target.value === '' ? undefined : Number(e.target.value)]]))} /></Field></div>
+          <Field label="配置模型额度"><Select allowCustom label="配置模型额度" value={limitsModel || current.defaultModel} options={models.map(model => modelOption(model))} onChange={setLimitsModel} /></Field>
           {limitsModel || current.defaultModel ? <ModelLimitsEditor provider={current} model={limitsModel || current.defaultModel} onChange={limits => patch({ modelSettings: { ...current.modelSettings, [limitsModel || current.defaultModel]: limits } })} /> : null}
           <details className="provider-advanced"><summary>高级设置<Icon name="chevron" size={13} /></summary><Field label="图像模型" hint="供绘图工具使用，留空使用供应商默认。"><input className="input mono" aria-label="图像模型" value={current.imageModel ?? ''} placeholder="可选，例如 gpt-image-1" onChange={(e) => patch({ imageModel: e.target.value })} /></Field><p>接近上下文上限时，会自动压缩对话并整理记忆。</p></details>
         </fieldset>
-        <div className="provider-models"><div className="provider-models__head"><h4>可用模型 <small>{models.length}</small></h4><Button variant="ghost" size="sm" icon="refresh" disabled={!!busy} loading={busy === 'models'} onClick={() => void request('models')}>获取模型</Button></div><label className="provider-search"><Icon name="search" size={14} /><input aria-label="搜索模型" placeholder="筛选模型" value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} /></label><div className="provider-models__list">{models.filter((model) => model.toLowerCase().includes(modelSearch.toLowerCase())).map((model) => <button type="button" disabled={!!busy} key={model} className={current.defaultModel === model ? 'is-active' : ''} onClick={() => patch({ defaultModel: model })}><Icon name="spark" size={13} /><span>{model}</span>{current.defaultModel === model ? <small>默认</small> : <small>设为默认</small>}</button>)}{!models.length ? <p>从接口获取，或手动添加模型 ID。</p> : null}</div><form className="provider-models__manual" onSubmit={(e) => { e.preventDefault(); if (manualModel.trim()) { patch({ models: [...new Set([...models, manualModel.trim()])] }); setManualModel(''); } }}><input className="input mono" aria-label="手动模型 ID" placeholder="输入模型 ID 手动添加" disabled={!!busy} value={manualModel} onChange={(e) => setManualModel(e.target.value)} /><Button type="submit" variant="ghost" size="sm" disabled={!!busy || !manualModel.trim()} icon="plus">添加</Button></form></div>
+        <div className="provider-models"><div className="provider-models__head"><h4>可用模型 <small>{models.length}</small></h4><Button variant="ghost" size="sm" icon="refresh" disabled={!!busy} loading={busy === 'models'} onClick={() => void request('models')}>获取模型</Button></div><label className="provider-search"><Icon name="search" size={14} /><input aria-label="搜索模型" placeholder="筛选模型" value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} /></label><div className="provider-models__list">{models.filter((model) => model.toLowerCase().includes(modelSearch.toLowerCase())).map((model) => <button type="button" disabled={!!busy} key={model} className={current.defaultModel === model ? 'is-active' : ''} onClick={() => patch({ defaultModel: model })}><Icon name="spark" size={13} /><span title={model}>{labelOf(model)}</span>{(() => { const out = maxOutputOf(model); return <><span className="model-badge" title={`上下文 ${contextOf(model).toLocaleString('zh-CN')} tokens`}>{formatTokens(contextOf(model))}</span>{out ? <span className="model-badge" title={`最大输出 ${out.toLocaleString('zh-CN')} tokens`}>{formatTokens(out)}</span> : null}<span className="model-badge" title={`压缩阈值 ${thresholdOf(model).toLocaleString('zh-CN')} tokens`}>{formatTokens(thresholdOf(model))}</span></>; })()}{current.defaultModel === model ? <small>默认</small> : <small>设为默认</small>}</button>)}{!models.length ? <p>从接口获取，或手动添加模型 ID。</p> : null}</div><form className="provider-models__manual" onSubmit={(e) => { e.preventDefault(); if (manualModel.trim()) { patch({ models: [...new Set([...models, manualModel.trim()])] }); setManualModel(''); } }}><input className="input mono" aria-label="手动模型 ID" placeholder="输入模型 ID 手动添加" disabled={!!busy} value={manualModel} onChange={(e) => setManualModel(e.target.value)} /><Button type="submit" variant="ghost" size="sm" disabled={!!busy || !manualModel.trim()} icon="plus">添加</Button></form></div>
         {result ? <p role="status" className={`provider-result ${result.ok ? 'is-ok' : 'is-error'}`}><Icon name={result.ok ? 'check' : 'alert'} size={14} />{result.message}</p> : null}
         <div className="provider-danger">{remove ? <><span>从配置中移除这个供应商？</span><Button size="sm" variant="ghost" onClick={() => setRemove(false)}>取消</Button><Button size="sm" variant="danger" onClick={() => { const next = drafts.filter((item) => item.id !== selected); setDrafts(next); setKeys((prev) => { const copy = { ...prev }; delete copy[selected]; return copy; }); choose(next[0]?.id ?? ''); }}>确认移除</Button></> : <button type="button" disabled={botCount > 0 || !!busy} title={botCount ? '请先为使用它的 Bot 更换供应商' : '保存后生效'} onClick={() => setRemove(true)}><Icon name="trash" size={13} />{botCount ? '使用中的供应商不可移除' : '移除供应商'}</button>}</div>
       </div>}

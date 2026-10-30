@@ -9,6 +9,9 @@ export const BOT_TOOLS = [
   { id: 'recall', label: '查长期记忆', hint: '关键词检索记忆' },
   { id: 'schedule_task', label: '定时任务', hint: '通过对话创建、查询、修改和启停任务' },
   { id: 'web_fetch', label: '网页抓取', hint: '只读 https 页面' },
+  { id: 'web_search', label: '网页搜索', hint: '返回标题/链接/摘要，默认 DuckDuckGo' },
+  { id: 'install_mcp', label: '安装 MCP', hint: '对话里安装 MCP 服务并绑定（敏感操作，需确认）' },
+  { id: 'install_skill', label: '安装 Skill', hint: '从工作区目录安装技能并绑定（需确认）' },
 ];
 
 export function deepSeekProvider(providers: ProviderConfig[]): ProviderConfig {

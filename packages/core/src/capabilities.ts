@@ -116,7 +116,7 @@ export class CapabilityManager {
     if (!config) return Promise.reject(new Error('MCP 服务不存在'));
     this.states.set(id, { id, state: 'connecting', tools: [] });
     const pending = (async () => {
-      const client = new Client({ name: 'MoyuBot', version: '0.1.2' });
+      const client = new Client({ name: 'MoyuBot', version: '0.1.3' });
       try {
         const auth = JSON.parse(this.store.secrets.get(`mcp:${id}`) ?? '{}') as Credentials;
         const transport = config.transport === 'stdio'

@@ -30,6 +30,14 @@ export interface Toast {
   level: 'info' | 'warn' | 'error';
 }
 
+/** Latest per-conversation context breakdown reported by the agent for the request it just built. */
+export interface ContextUsageSnapshot {
+  systemTokens: number;
+  toolTokens: number;
+  historyTokens: number;
+  windowTokens: number;
+}
+
 interface MoyuContextValue {
   ready: boolean;
   settings: AppSettings;
@@ -59,6 +67,7 @@ interface MoyuContextValue {
   running: boolean;
   runningBotIds: Set<string>;
   compacting: boolean;
+  contextUsage: Record<string, ContextUsageSnapshot>;
   botActivities: Record<string, BotActivity>;
   approval: ApprovalRequest | null;
   schedules: Schedule[];
@@ -157,6 +166,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [runningConversations, setRunning] = useState<Set<string>>(new Set());
   const [compactingConversations, setCompacting] = useState<Set<string>>(new Set());
+  const [contextUsage, setContextUsage] = useState<Record<string, ContextUsageSnapshot>>({});
   const [activities, setActivities] = useState<ConversationActivities>({});
   const activityTimers = useRef(new Map<string, number>());
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
@@ -165,7 +175,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [logs, setLogs] = useState<{ level: string; text: string; ts: number }[]>([]);
   const [platform, setPlatform] = useState('win32');
-  const [version, setVersion] = useState('0.1.2');
+  const [version, setVersion] = useState('0.1.3');
 
   const conversationRef = useRef<Conversation | null>(null);
   conversationRef.current = conversation;
@@ -364,6 +374,16 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
           const selectedId = selectedBotRef.current;
           void moyu().memories(selectedId).then((facts) => { if (selectedId === selectedBotRef.current) setMemories(facts); }).catch((error: Error) => toast(error.message, 'error'));
         }
+        return;
+      }
+      if (event.type === 'usage') {
+        patchMessage(event.messageId, (message) => ({ ...message, usage: event.usage }));
+        return;
+      }
+      if (event.type === 'context_usage') {
+        const snapshot = { systemTokens: event.systemTokens, toolTokens: event.toolTokens, historyTokens: event.historyTokens, windowTokens: event.windowTokens };
+        try { localStorage.setItem(`moyu:ctx:${event.conversationId}`, JSON.stringify(snapshot)); } catch { /* ignore quota/denied */ }
+        setContextUsage((prev) => ({ ...prev, [event.conversationId]: snapshot }));
         return;
       }
       if (event.type === 'approval') {
@@ -724,6 +744,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     running: conversation ? runningConversations.has(conversation.id) : false,
     runningBotIds: new Set(conversations.filter((item) => runningConversations.has(item.id)).map((item) => item.botId)),
     compacting: conversation ? compactingConversations.has(conversation.id) : false,
+    contextUsage,
     botActivities,
     approval,
     schedules: schedules.filter((item) => workspaceBots.some((bot) => bot.id === item.botId)),

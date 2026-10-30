@@ -9,6 +9,8 @@ export type ReasoningEffort = 'low' | 'medium' | 'high';
 export interface ModelSettings {
   contextWindowTokens?: number;
   maxOutputTokens?: number;
+  /** Long-conversation compaction starts here; >= context window means the full window. */
+  compactionThresholdTokens?: number;
   /** Explicit opt-in: compatible relays do not necessarily support these fields. */
   reasoningControl?: 'default' | 'openai-effort' | 'anthropic-budget' | 'gemini-budget';
   outputTokenParameter?: 'max_tokens' | 'max_completion_tokens';
@@ -22,6 +24,8 @@ export interface BotGenerationSettings {
   reasoningEffort?: ReasoningEffort;
   thinkingBudgetTokens?: number;
   maxSteps?: number;
+  /** Per-Bot override for long-conversation compaction; falls back to the model setting. */
+  compactionThresholdTokens?: number;
   /** Across every request, retry and compaction in this Bot run. */
   maxTaskOutputTokens?: number;
   maxDurationSeconds?: number;
@@ -37,6 +41,8 @@ export interface ProviderConfig {
   networkMode?: 'system' | 'direct';
   defaultModel: string;
   models: string[];
+  /** Filled from the provider's /v1/models: readable name + advertised limits per model id. */
+  modelCatalog?: Record<string, { name?: string; contextWindowTokens?: number; maxOutputTokens?: number }>;
   imageModel?: string;
   /** Extra headers, e.g. OpenRouter's HTTP-Referer. */
   extraHeaders?: Record<string, string>;
@@ -239,6 +245,10 @@ export interface Message {
   attachments?: Attachment[];
   usage?: TokenUsage;
   usageTracked?: boolean;
+  /** Total model generation time across this message's calls, in ms. */
+  modelMs?: number;
+  /** Time from the first model call to its first streamed token, in ms. */
+  ttftMs?: number;
   error?: string;
   /** true while tokens are still streaming in */
   streaming?: boolean;
@@ -327,9 +337,20 @@ export interface UiSettings {
   glassIntensity: number;
 }
 
+export type WebSearchProvider = 'bing-web' | 'duckduckgo' | 'serper' | 'brave' | 'bing' | 'searxng';
+
+/** Backend for the web_search tool; bing-web and duckduckgo need no credentials. */
+export interface WebSearchSettings {
+  provider: WebSearchProvider;
+  apiKey?: string;
+  /** SearXNG instance base URL, e.g. https://searx.example.com */
+  endpoint?: string;
+}
+
 export interface AppSettings {
   mcpServers?: McpServerConfig[];
   skills?: SkillConfig[];
+  webSearch?: WebSearchSettings;
   version: number;
   userName?: string;
   onboarding?: { step: 0 | 1 | 2; cloudSkipped?: boolean; completedAt?: number };
@@ -379,6 +400,8 @@ export type AgentEvent =
   | { type: 'message_end'; conversationId: string; message: Message }
   | { type: 'run_end'; conversationId: string; runId: string; ok: boolean; error?: string }
   | { type: 'context_compaction'; conversationId: string; phase: 'start' | 'done' | 'error'; context?: ConversationContext }
+  | { type: 'context_usage'; conversationId: string; systemTokens: number; toolTokens: number; historyTokens: number; windowTokens: number; reserveTokens: number }
+  | { type: 'usage'; conversationId: string; messageId: string; usage: TokenUsage }
   | { type: 'cloud'; status: CloudStatus; note?: string }
   | { type: 'approval'; request: ApprovalRequest }
   | { type: 'approval_done'; requestId: string; approved: boolean }

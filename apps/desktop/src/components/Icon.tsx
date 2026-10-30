@@ -129,6 +129,7 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="18" cy="12" r="1.2" />
     </>
   ),
+  gauge: <><circle cx="12" cy="12" r="8.2" /><path d="M12 12l4.2-4.2" /></>,
 };
 
 export type IconName = keyof typeof PATHS;

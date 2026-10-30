@@ -1,8 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { WebSearchProvider, WebSearchSettings } from '@moyu/core';
 import { useMoyu } from '../state';
 import { moyu } from '../lib/bridge';
 import { Button, Field, Panel } from '../components/Glass';
+import { Select } from '../components/Select';
 import { useCapabilityStatus } from '../components/BotCapabilities';
+
+const SEARCH_PROVIDERS = [
+  { value: 'bing-web', label: 'Bing 网页（免密钥，默认）' },
+  { value: 'serper', label: 'Serper（Google 结果，需 Key）' },
+  { value: 'brave', label: 'Brave Search（需 Key）' },
+  { value: 'bing', label: 'Bing API（需 Key）' },
+  { value: 'searxng', label: 'SearXNG 自建实例' },
+  { value: 'duckduckgo', label: 'DuckDuckGo（免密钥，国内常不可达）' },
+];
 
 export function CapabilitiesSettings() {
   const { settings, activeWorkspace, saveSettings, toast } = useMoyu();
@@ -11,6 +22,8 @@ export function CapabilitiesSettings() {
   const [json, setJson] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState<WebSearchSettings>(settings.webSearch ?? { provider: 'bing-web' });
+  useEffect(() => { setSearch(settings.webSearch ?? { provider: 'bing-web' }); }, [settings.webSearch]);
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setError('');
     try { await action(); await saveSettings({}); } catch (e) { setError((e as Error).message); }
@@ -36,6 +49,14 @@ export function CapabilitiesSettings() {
       <div className="inspector-section__head"><h3>技能库</h3><Button size="sm" icon="plus" disabled={busy} onClick={() => void run(() => moyu().importSkill(workspaceId))}>导入技能目录</Button></div>
       <p className="settings-note">选择含 SKILL.md 的目录，会连同参考资料和脚本复制到本地技能库。文件更新后需重新导入。技能使用 Bot 已有工具与权限。</p>
       {!skills.length ? <p className="inspector-note">还没有技能。导入后在 Bot 编辑页或右侧详情中启用。</p> : skills.map(skill => <div className="capability-config" key={skill.id}><div><strong>{skill.name}</strong><p>{skill.description}</p></div><Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button></div>)}
+    </Panel>
+    <Panel className="settings-card">
+      <h3>联网搜索 <small>web_search 工具</small></h3>
+      <p className="settings-note">默认 DuckDuckGo 免密钥可用；换后端需填写密钥或实例地址。此处设置对所有工作区生效。</p>
+      <Field label="搜索后端"><Select label="搜索后端" value={search.provider} options={SEARCH_PROVIDERS} onChange={(value) => setSearch({ ...search, provider: value as WebSearchProvider })} /></Field>
+      {search.provider !== 'duckduckgo' && search.provider !== 'searxng' ? <Field label="API Key" hint="与供应商密钥同样加密保存在本机。"><input className="input mono" aria-label="搜索 API Key" type="password" value={search.apiKey ?? ''} placeholder="填写后保存" onChange={(event) => setSearch({ ...search, apiKey: event.target.value })} /></Field> : null}
+      {search.provider === 'searxng' ? <Field label="实例地址" hint="该实例需允许 format=json 输出。"><input className="input mono" aria-label="SearXNG 地址" value={search.endpoint ?? ''} placeholder="https://searx.example.com" onChange={(event) => setSearch({ ...search, endpoint: event.target.value })} /></Field> : null}
+      <Button disabled={busy} onClick={() => void run(async () => { await saveSettings({ webSearch: { ...search, apiKey: search.apiKey?.trim() || undefined, endpoint: search.endpoint?.trim() || undefined } }); toast('联网搜索设置已保存'); })}>保存搜索设置</Button>
     </Panel>
     {error ? <p className="capability-error" role="alert">{error}</p> : null}
   </div>;

@@ -391,6 +391,15 @@ export class MoyuApp {
       return createChatProvider(config, key).listModels();
     });
 
+    handle('moyu:provider:model-catalog', async (_event, providerId: string, draft?: AppSettings['providers'][number], draftKey?: string) => {
+      const config = draft ? { ...draft, id: providerId } : this.store.getProvider(providerId);
+      if (!config) return [];
+      const key = draftKey?.trim() || this.store.secrets.get(this.store.providerSecretKey(providerId)) || '';
+      const provider = createChatProvider(config, key);
+      if (provider.listModelCatalog) return provider.listModelCatalog();
+      return (await provider.listModels()).map((id) => ({ id }));
+    });
+
     handle('moyu:bot:save', (_event, bot: Bot): Bot => {
       const next: Bot = { ...bot, updatedAt: Date.now(), createdAt: bot.createdAt || Date.now() };
       return this.store.upsertBot(next);

@@ -283,7 +283,9 @@ test('replies validate the source, persist selected quotes and reach the model i
     assert.deepEqual(saved.replyTo, { messageId: 'assistant-1', author: f.bot.name, content: '已经处理' });
     assert.match(seen[0].messages.at(-1).content, /引用了.*历史消息/s);
     assert.ok(seen[0].messages.at(-1).content.includes('> 已经处理'));
-    assert.ok(seen[0].messages.at(-1).content.endsWith('解释这部分'));
+    // The volatile timestamp is appended after the user's own text (never in the system
+    // prompt) so the cache prefix stays stable; the quote and the text must still reach the model.
+    assert.match(seen[0].messages.at(-1).content, /解释这部分\n\n\[当前时间：/);
     await assert.rejects(runtime.send({ ...request, replyTo: { messageId: 'assistant-1', selectedText: '伪造的引用' } }), /不一致/);
     await assert.rejects(runtime.send({ ...request, botId: peer.id }), /无法引用/);
     assert.equal(runtime.isRunning(f.conversation.id), false, 'Invalid quotes must not leave a busy run');

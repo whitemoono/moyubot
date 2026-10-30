@@ -1,5 +1,5 @@
 export * from './types';
-export { modelSettings, validateModelSettings, validateGeneration, DEFAULT_TASK_LIMITS, TaskOutputBudget } from './generation';
+export { modelSettings, modelProfile, validateModelSettings, validateGeneration, DEFAULT_TASK_LIMITS, TaskOutputBudget } from './generation';
 export { CapabilityManager } from './capabilities';
 export { DiagnosticJournal, redactDiagnostic } from './diagnostics';
 export type { DiagnosticEntry } from './diagnostics';

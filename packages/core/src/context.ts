@@ -152,8 +152,18 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   const window = contextWindow(store, bot);
   const reserve = args.outputTokens ?? Math.min(4096, Math.floor(window * .2));
   const overhead = estimateTokens(JSON.stringify(tools));
-  const baseBudget = Math.floor(window * .9 - reserve);
+  // Compaction threshold: Bot override > model setting > historical 90% of the window.
+  // A threshold at or above the window simply means "use the full window".
+  const compactionLimit = bot.generation?.compactionThresholdTokens ?? modelSettings(store.getProvider(bot.providerId), bot.model).compactionThresholdTokens;
+  const threshold = compactionLimit && compactionLimit > 0 ? Math.min(compactionLimit, window) : Math.floor(window * .9);
+  const baseBudget = Math.floor(threshold - reserve);
   const fixedInput = estimateTokens(system) + overhead + historyTokens(live);
+  // Report the same token accounting that actually goes to the model, so the UI can
+  // show a live breakdown without duplicating the (tool-schema heavy) estimate.
+  const reportUsage = (systemText: string, msgs: AgentMessage[]): void => {
+    emit({ type: 'context_usage', conversationId: conversation.id, systemTokens: estimateTokens(systemText),
+      toolTokens: overhead, historyTokens: historyTokens(msgs), windowTokens: window, reserveTokens: reserve });
+  };
   // Only shrink historical allowance on retry; current instructions and input cannot be discarded.
   const budget = Math.min(baseBudget, fixedInput + Math.floor(Math.max(0, baseBudget - fixedInput) * Math.pow(.6, args.recovery ?? 0)));
   const current = conversation.messages.findIndex((message) => message.id === userMessageId);
@@ -165,7 +175,9 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   const viewer = conversation.group ? bot.id : undefined;
   const initial = [...messagesFor(older, viewer), ...live];
   if (!args.recovery && estimateTokens(summarySystem(system, summary)) + overhead + historyTokens(initial) <= budget) {
-    return { system: summarySystem(system, summary), messages: initial };
+    const fittedSystem = summarySystem(system, summary);
+    reportUsage(fittedSystem, initial);
+    return { system: fittedSystem, messages: initial };
   }
 
   // Remove complete earlier turns, so tool calls/results never get separated.
@@ -281,6 +293,7 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
     }
     if (args.taskContext) Object.assign(args.taskContext, { summary: accumulated, throughMessageId: next.throughMessageId, liveMessages: coveredLive + liveCutoff - 1 });
     emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'done', context: liveCutoff === 1 && !coveredLive ? next : undefined });
+    reportUsage(nextSystem, messages);
     return { system: nextSystem, messages };
   } catch (error) {
     emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'error' });

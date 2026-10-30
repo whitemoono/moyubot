@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult } from './types';
+import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult, WebSearchSettings } from './types';
 import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
 import { newId, summarize, truncate } from './util';
@@ -131,6 +131,36 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       required: ['url'],
     },
   },
+  {
+    name: 'install_mcp',
+    description: '安装 MCP 服务并自动绑定到当前 Bot。json 为标准 mcpServers 配置（与设置页导入格式一致）；stdio 服务的 command 必须是本机存在的绝对路径。这是敏感操作，会请求用户确认。',
+    parameters: {
+      type: 'object',
+      properties: { json: { type: 'string', description: 'mcpServers 配置 JSON 字符串' } },
+      required: ['json'],
+    },
+  },
+  {
+    name: 'install_skill',
+    description: '从当前工作区内的目录安装 Skill（目录需包含带 name/description 的 SKILL.md 头部），并自动绑定到当前 Bot。会请求用户确认。',
+    parameters: {
+      type: 'object',
+      properties: { directory: { type: 'string', description: '技能目录：工作区相对路径，或工作区内的绝对路径' } },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: '按关键词搜索网页，返回标题、链接和摘要（默认免密钥 Bing 网页，可在设置切换 Serper / Brave / Bing API / SearXNG / DuckDuckGo）。需要正文时用 web_fetch 抓取其中的链接。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索关键词' },
+        count: { type: 'integer', description: '返回条数 1–10，默认 6' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 export interface ToolContext {
@@ -144,13 +174,17 @@ export interface ToolContext {
   createSchedule: (input: ScheduleInput) => Schedule;
   listTasks: (includeClosed: boolean) => Schedule[];
   updateTask: (id: string, patch: ScheduleUpdate) => Schedule;
+  installMcp?: (json: string) => { added: string[] };
+  installSkill?: (directory: string) => { id?: string; name?: string };
+  webSearch?: WebSearchSettings;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
   signal?: AbortSignal;
 }
 
 export function toolNamesFor(bot: Bot): string[] {
-  const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
+  // Installation tools are opt-in: never part of the implicit "all tools" default.
+  const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => name !== 'install_mcp' && name !== 'install_skill');
   const expanded = names.includes('schedule_task') ? [...names, 'list_tasks', 'update_task'] : [...names];
   if (bot.workspaceId !== 'workspace_local' && names.includes('cloud_exec')) expanded.push('desktop_action');
   return [...new Set(expanded)].filter((name) => bot.workspaceId !== 'workspace_local' || name !== 'desktop_action');
@@ -191,6 +225,105 @@ async function saveImage(workspaceDir: string, image: GeneratedImage): Promise<{
   const absPath = path.join(dir, name);
   fs.writeFileSync(absPath, image.bytes);
   return { relPath: `images/${name}`, absPath };
+}
+
+interface SearchHit { title: string; url: string; snippet: string }
+
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&nbsp;|&ensp;|&emsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** DuckDuckGo wraps result links in a redirect; pull the real target out of it. */
+function unwrapDdg(href: string): string {
+  const raw = href.startsWith('//') ? `https:${href}` : href;
+  try {
+    const url = new URL(raw);
+    if (url.hostname.endsWith('duckduckgo.com')) {
+      const target = url.searchParams.get('uddg');
+      if (target) return target;
+    }
+  } catch { /* keep whatever we got */ }
+  return raw;
+}
+
+async function fetchJson(url: string, init: RequestInit): Promise<any> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`搜索失败：HTTP ${res.status}`);
+  return res.json();
+}
+
+const requireKey = (key: string | undefined, label: string) => {
+  if (!key) throw new Error(`${label} 需要在「设置 → 能力 → 联网搜索」填写 API Key`);
+  return key;
+};
+
+/** Search backends share one shape so the tool result is identical across providers. */
+async function searchWeb(query: string, count: number, settings: WebSearchSettings | undefined, signal?: AbortSignal): Promise<SearchHit[]> {
+  const provider = settings?.provider ?? 'bing-web';
+  const key = settings?.apiKey?.trim();
+  const limit = (rows: any[], map: (row: any) => SearchHit) => (Array.isArray(rows) ? rows : []).slice(0, count).map(map);
+  if (provider === 'serper') {
+    const data = await fetchJson('https://google.serper.dev/search', { method: 'POST', signal, headers: { 'content-type': 'application/json', 'X-API-KEY': requireKey(key, 'Serper') }, body: JSON.stringify({ q: query, num: count }) });
+    return limit(data.organic, (row) => ({ title: decodeEntities(String(row.title ?? '')), url: String(row.link ?? ''), snippet: decodeEntities(String(row.snippet ?? '')) }));
+  }
+  if (provider === 'brave') {
+    const data = await fetchJson(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`, { signal, headers: { accept: 'application/json', 'X-Subscription-Token': requireKey(key, 'Brave Search') } });
+    return limit(data.web?.results, (row) => ({ title: decodeEntities(String(row.title ?? '')), url: String(row.url ?? ''), snippet: decodeEntities(String(row.description ?? '')) }));
+  }
+  if (provider === 'bing') {
+    const data = await fetchJson(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${count}&mkt=zh-CN`, { signal, headers: { 'Ocp-Apim-Subscription-Key': requireKey(key, 'Bing Search') } });
+    return limit(data.webSearch?.value, (row) => ({ title: decodeEntities(String(row.name ?? '')), url: String(row.url ?? ''), snippet: decodeEntities(String(row.snippet ?? '')) }));
+  }
+  if (provider === 'searxng') {
+    const base = settings?.endpoint?.trim();
+    if (!base) throw new Error('SearXNG 需要在「设置 → 能力 → 联网搜索」填写实例地址');
+    const data = await fetchJson(`${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json`, { signal, headers: { 'user-agent': BROWSER_UA } });
+    return limit(data.results, (row) => ({ title: decodeEntities(String(row.title ?? '')), url: String(row.url ?? ''), snippet: decodeEntities(String(row.content ?? '')) }));
+  }
+  // Keyless default: scrape Bing's result page, reachable from CN networks (DuckDuckGo usually is not).
+  if (provider === 'bing-web') {
+    const res = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${Math.max(count, 10)}`, { signal, headers: { 'user-agent': BROWSER_UA, 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8' } });
+    if (!res.ok) throw new Error(`搜索失败：HTTP ${res.status}`);
+    const page = await res.text();
+    const hits: SearchHit[] = [];
+    for (const block of page.split('<li class="b_algo"').slice(1)) {
+      const link = /<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+      if (!link?.[1]) continue;
+      const url = decodeEntities(link[1]);
+      if (!/^https?:\/\//i.test(url)) continue;
+      const snippet = /<p[^>]*class="[^"]*b_(?:lineclamp|alwayshide|caption)[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(block)?.[1] ?? /<p[^>]*>([\s\S]*?)<\/p>/.exec(block)?.[1] ?? '';
+      hits.push({ title: decodeEntities(link[2] ?? ''), url, snippet: decodeEntities(snippet) });
+      if (hits.length >= count) break;
+    }
+    return hits;
+  }
+  const res = await fetch('https://html.duckduckgo.com/html/', {
+    method: 'POST',
+    signal,
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': BROWSER_UA },
+    body: new URLSearchParams({ q: query }).toString(),
+  });
+  if (res.status === 403 || res.status === 429) throw new Error('DuckDuckGo 正在限流，稍后重试或在设置里更换搜索后端');
+  if (!res.ok) throw new Error(`搜索失败：HTTP ${res.status}`);
+  const html = await res.text();
+  const hits: SearchHit[] = [];
+  for (const block of html.split('result__body').slice(1)) {
+    const link = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+    if (!link?.[1]) continue;
+    const snippet = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? '';
+    hits.push({ title: decodeEntities(link[2] ?? ''), url: unwrapDdg(decodeEntities(link[1])), snippet: decodeEntities(snippet) });
+    if (hits.length >= count) break;
+  }
+  return hits.filter((hit) => /^https?:\/\//i.test(hit.url));
 }
 
 export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
@@ -342,6 +475,45 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           .replace(/\s+/g, ' ')
           .trim();
         return finish({ ok: true, summary: `抓取 ${host}（${text.length} 字符）`, detail: truncate(text, 16000) });
+      }
+      case 'install_mcp': {
+        if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用安装 MCP 工具');
+        if (!ctx.installMcp) throw new Error('当前环境不支持安装 MCP');
+        const json = requireString(args, 'json');
+        let parsed: any;
+        try { parsed = JSON.parse(json); } catch { throw new Error('MCP JSON 格式无效'); }
+        const servers = Object.entries(parsed?.mcpServers ?? {}) as [string, any][];
+        if (!servers.length) throw new Error('JSON 需包含 mcpServers');
+        for (const [name, item] of servers) {
+          if (item?.url) continue;
+          const command = typeof item?.command === 'string' ? item.command : '';
+          if (!command || !path.isAbsolute(command) || !fs.existsSync(command)) throw new Error(`MCP「${name}」的 command 必须是本机存在的绝对路径（当前：${command || '空'}）`);
+        }
+        if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装 MCP：${servers.map(([name]) => name).join('、')}`))) return finish({ ok: false, summary: '已取消安装 MCP' });
+        const result = ctx.installMcp(json);
+        return finish({ ok: true, summary: `已安装 MCP：${result.added.join('、') || '（无新增）'}`, detail: '已自动绑定到当前 Bot，重启对话或下次请求即可使用' });
+      }
+      case 'install_skill': {
+        if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用安装 Skill 工具');
+        if (!ctx.installSkill) throw new Error('当前环境不支持安装 Skill');
+        const base = path.resolve(ctx.workspaceDir);
+        const resolved = path.resolve(base, requireString(args, 'directory'));
+        if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('技能目录必须在当前工作区内');
+        if (!fs.existsSync(path.join(resolved, 'SKILL.md'))) throw new Error('目录内没有 SKILL.md');
+        if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装技能：${path.basename(resolved)}`))) return finish({ ok: false, summary: '已取消安装技能' });
+        const result = ctx.installSkill(resolved);
+        return finish({ ok: true, summary: `已安装技能：${result.name ?? result.id ?? ''}`, detail: '已自动绑定到当前 Bot' });
+      }
+      case 'web_search': {
+        const query = requireString(args, 'query');
+        const count = Math.max(1, Math.min(10, Number.isFinite(Number(args.count)) && args.count !== undefined ? Math.floor(Number(args.count)) : 6));
+        const hits = await searchWeb(query, count, ctx.webSearch, ctx.signal);
+        if (!hits.length) return finish({ ok: true, summary: `没有搜到「${summarize(query, 40)}」的结果` });
+        return finish({
+          ok: true,
+          summary: `搜索「${summarize(query, 40)}」：${hits.length} 条结果`,
+          detail: truncate(hits.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`).join('\n'), 8000),
+        });
       }
       default:
         return finish({ ok: false, summary: `未知工具：${call.name}` });

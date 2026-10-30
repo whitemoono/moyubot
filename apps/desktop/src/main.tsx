@@ -6,6 +6,10 @@ import './styles/liquid.css';
 import './styles/workspace.css';
 import './styles/settings.css';
 import './styles/usage.css';
+import './styles/context-meter.css';
+import './styles/effort.css';
+import './styles/model-limits.css';
+import './styles/perf.css';
 import './styles/terminal-command.css';
 import './styles/reply-flow.css';
 

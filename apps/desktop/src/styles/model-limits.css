@@ -1,0 +1,77 @@
+/* Model "高级" limits: context window / max output / compaction threshold. */
+.limit-group {
+  margin: 10px 0 4px;
+  padding: 12px 13px 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--selected) 55%, transparent);
+}
+.limit-group__title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+.limit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.limit-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  transition: background 140ms, color 140ms, border-color 140ms;
+}
+.limit-chip:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+.limit-chip.is-active {
+  color: #3b82f6;
+  border-color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 14%, transparent);
+  font-weight: 600;
+}
+
+/* Small gray square badges next to a model: 上下文 / 最大输出 / 压缩阈值 actual values. */
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 15px;
+  margin-left: 5px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 550;
+  line-height: 1;
+  color: var(--text-faint);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: 1px solid var(--line-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The model list button forces every <span> to flex:1; undo it for the name and badges
+   so the badges hug the model name instead of stretching into bars. */
+.provider-models__list > button > span:first-of-type {
+  flex: 0 1 auto;
+}
+.provider-models__list > button > small {
+  margin-left: auto;
+}
+.provider-models__list > button span.model-badge {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  font-size: 9px;
+  color: var(--text-faint);
+}

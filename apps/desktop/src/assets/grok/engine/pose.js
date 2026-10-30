@@ -357,11 +357,11 @@
         squash = 1 + Math.sin(mt * 1.6) * 0.012;
         break;
       case "alerting":
-        spin = pt + Math.sin(mt * 2.8) * 4 * Math.exp(-dtState * 0.8);
-        tx = 0;
-        ty = -2 * Math.exp(-dtState);
+        spin = pt + Math.sin(mt * 2.8) * 6;
+        tx = Math.sin(mt * 1.7) * 3;
+        ty = -2.5 - Math.abs(Math.sin(mt * 3.2)) * 4;
         squash = 1;
-        eyeBoost = 1.08;
+        eyeBoost = 1.12 + Math.sin(mt * 3.2) * 0.03;
         break;
       default:
         spin = pt;

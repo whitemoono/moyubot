@@ -1,0 +1,116 @@
+/* 推理强度：触发器 + 复刻 reasoning-card 弹层 */
+.effort-picker { position: relative; display: inline-flex; }
+
+/* 输入框内：模型选择与思考按钮同排，不换行 */
+.composer__options { display: flex; align-items: center; gap: 4px; min-width: 0; flex-wrap: nowrap; }
+.composer__options > .composer-model-picker { min-width: 0; flex: 0 1 auto; }
+.composer__options > .effort-picker { flex: 0 0 auto; }
+.chat .composer--compact .composer-model-picker { max-width: min(170px, 26vw); }
+.chat .composer--compact .effort-picker__trigger { height: 30px; padding: 0 6px; gap: 4px; }
+/* 紧凑模式下省略“思考”二字，只留图标 + 档位 */
+.chat .composer--compact .effort-picker__prefix { display: none; }
+.effort-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  transition: background 160ms, color 160ms;
+}
+.effort-picker__trigger:hover:not(:disabled),
+.effort-picker__trigger[aria-expanded="true"] {
+  background: var(--selected);
+  color: var(--text);
+}
+.effort-picker__trigger:disabled { opacity: .6; }
+.effort-picker__trigger:focus-visible { outline: 2px solid var(--line-strong); outline-offset: 1px; }
+
+.reasoning-card {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  width: 256px;
+  padding: 11px 12px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 8px 26px #0000001f;
+  user-select: none;
+  animation: context-menu-enter 150ms var(--ease-out) both;
+}
+.reasoning-current {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 42px;
+  margin-bottom: 8px;
+}
+.reasoning-name {
+  color: #3298f5;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 18px;
+  letter-spacing: .1px;
+}
+.reasoning-desc { color: var(--text-faint); font-size: 11px; line-height: 15px; }
+.reasoning-chevron { display: inline-block; margin-left: 2px; font-size: 14px; transform: translateY(1px); }
+
+.reasoning-slider {
+  position: relative;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  cursor: pointer;
+  touch-action: pan-y;
+  outline: none;
+}
+.reasoning-slider:focus-visible { box-shadow: 0 0 0 3px rgba(50, 152, 245, .2); }
+.reasoning-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: #3298f5;
+  transition: width 160ms ease;
+}
+.reasoning-markers { position: absolute; inset: 0; pointer-events: none; }
+.reasoning-marker {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #b9b9bc;
+  transform: translate(-50%, -50%);
+  transition: background 160ms ease;
+}
+.reasoning-marker.is-active { background: rgba(255, 255, 255, .6); }
+.reasoning-thumb {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(0, 0, 0, .06);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .14);
+  transform: translate(-50%, -50%);
+  transition: left 160ms ease;
+  pointer-events: none;
+}
+.reasoning-choices {
+  display: flex;
+  justify-content: space-between;
+  margin: 7px 2px 0;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-fill, .reasoning-thumb, .reasoning-marker { transition: none; }
+  .reasoning-card { animation: none; }
+}

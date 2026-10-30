@@ -60,7 +60,7 @@ export function BotAvatar({
       inkFlat: 'var(--avatar-ink)',
       eyeColor: 'var(--avatar-void)',
       reduceMotion,
-      preservePortrait: true,
+      preservePortrait: false,
       autoTricks: false,
       onChange: ({ state }) => {
         if (svgRef.current?.parentElement) svgRef.current.parentElement.dataset.expression = state;
@@ -73,11 +73,38 @@ export function BotAvatar({
     };
   }, [reduceMotion, shape, customImage]);
 
+  // Pause the rAF engine while offscreen or when the window is hidden, so many
+  // avatars (sidebar + status) don't keep animating and drop frames.
+  useEffect(() => {
+    if (customImage || reduceMotion) return;
+    const host = svgRef.current?.parentElement;
+    if (!host) return;
+    const observer = new IntersectionObserver((entries) => {
+      charRef.current?.setPaused(!entries[0]?.isIntersecting);
+    }, { rootMargin: '240px' });
+    observer.observe(host);
+    const onVisibility = () => charRef.current?.setPaused(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [reduceMotion, shape, customImage]);
+
   useEffect(() => {
     const char = charRef.current;
     if (!char) return;
     char.setMode('hold');
     char.setState(mood, { resetEyes: false });
+    if (kind === 'thinking' && !reduceMotion) {
+      const cycle = ['curious', 'thinking', 'searching', 'thinking'];
+      let index = 0;
+      const timer = window.setInterval(() => {
+        index = (index + 1) % cycle.length;
+        char.setState(cycle[index]!, { resetEyes: false });
+      }, 2300);
+      return () => window.clearInterval(timer);
+    }
     // Ambient expressions belong to identity surfaces; reply avatars follow the message.
     if (kind !== 'idle' || activity !== undefined || reduceMotion) return;
 

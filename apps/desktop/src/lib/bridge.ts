@@ -60,6 +60,7 @@ export interface MoyuBridge {
   setProviderKey(providerId: string, key: string): Promise<void>;
   testProvider(providerId: string, draft?: ProviderConfig, key?: string): Promise<ProviderTestResult>;
   listModels(providerId: string, draft?: ProviderConfig, key?: string): Promise<string[]>;
+  listModelCatalog(providerId: string, draft?: ProviderConfig, key?: string): Promise<{ id: string; name?: string; contextWindowTokens?: number; maxOutputTokens?: number }[]>;
   saveBot(bot: Bot): Promise<Bot>;
   updateBotMetadata(botId: string, patch: BotMetadataPatch): Promise<Bot>;
   updateBotGroup(name: string, action: BotGroupAction, workspaceId?: string): Promise<AppSettings>;

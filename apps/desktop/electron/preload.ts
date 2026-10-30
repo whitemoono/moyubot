@@ -52,6 +52,7 @@ const api = {
   setProviderKey: (providerId: string, key: string) => invoke<void>('moyu:provider:key', { providerId, key }),
   testProvider: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<ProviderTestResult>('moyu:provider:test', providerId, draft, key),
   listModels: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<string[]>('moyu:provider:models', providerId, draft, key),
+  listModelCatalog: (providerId: string, draft?: ProviderConfig, key?: string) => invoke<{ id: string; name?: string; contextWindowTokens?: number; maxOutputTokens?: number }[]>('moyu:provider:model-catalog', providerId, draft, key),
   saveBot: (bot: Bot) => invoke<Bot>('moyu:bot:save', bot),
   updateBotMetadata: (botId: string, patch: BotMetadataPatch) => invoke<Bot>('moyu:bot:metadata', botId, patch),
   updateBotGroup: (name: string, action: BotGroupAction, workspaceId?: string) => invoke<AppSettings>('moyu:bot-group:update', name, action, workspaceId),
