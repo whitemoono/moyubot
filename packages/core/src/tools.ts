@@ -194,6 +194,12 @@ export interface ToolContext {
   webSearch?: WebSearchSettings;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
+  /** 计划模式状态，由 AgentRuntime 从会话上读取后注入。 */
+  conversationMode?: 'execute' | 'plan';
+  /** 与 Bot 自动执行策略无关的强制确认，只给"必须问人"的场合用（计划批准）。 */
+  requireApproval?: (summary: string) => Promise<boolean>;
+  /** 计划获批后的落库回调。 */
+  approvePlan?: (plan: { title: string; steps: string[] }) => void;
   signal?: AbortSignal;
 }
 
@@ -205,9 +211,29 @@ export function toolNamesFor(bot: Bot): string[] {
   return [...new Set(expanded)].filter((name) => bot.workspaceId !== 'workspace_local' || name !== 'desktop_action');
 }
 
-export function schemasFor(bot: Bot): ToolSchema[] {
+/** 计划模式要收走的写能力：命令、写文件、桌面操作、绘图、记忆写入、定时任务、能力安装。 */
+const WRITE_TOOLS = new Set(['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'list_tasks', 'update_task', 'install_mcp', 'install_skill']);
+
+const EXIT_PLAN_TOOL: ToolSchema = {
+  name: 'exit_plan_mode',
+  description:
+    '把可执行的方案交给用户批准。计划模式下你只有只读工具，不能改动任何东西；批准后才会切换到执行模式并拿回写权限。先核实事实再提交，不要把没查清的猜测写成步骤。用户会逐条看你的步骤。',
+  parameters: {
+    type: 'object',
+    properties: {
+      plan: { type: 'string', description: '一句话说清这次要达成什么' },
+      steps: { type: 'array', items: { type: 'string' }, description: '按执行顺序排列的具体步骤，每步都要可核对' },
+    },
+    required: ['plan', 'steps'],
+  },
+};
+
+export function schemasFor(bot: Bot, mode: 'execute' | 'plan' = 'execute'): ToolSchema[] {
   const allowed = new Set(toolNamesFor(bot));
-  return TOOL_SCHEMAS.filter((tool) => allowed.has(tool.name)).map((tool) => bot.workspaceId !== 'workspace_local' || !tool.name.startsWith('cloud_') ? tool : { ...tool, description: tool.name === 'cloud_exec' ? '在本机 Windows 工作区运行 PowerShell 命令（兼容工具名），不使用云电脑。' : tool.name === 'cloud_read' ? '读取本机工作区目录内的文本文件，可使用相对路径。' : '写入本机工作区目录内的文件，可使用相对路径。' });
+  const schemas = TOOL_SCHEMAS
+    .filter((tool) => allowed.has(tool.name) && !(mode === 'plan' && WRITE_TOOLS.has(tool.name)))
+    .map((tool) => bot.workspaceId !== 'workspace_local' || !tool.name.startsWith('cloud_') ? tool : { ...tool, description: tool.name === 'cloud_exec' ? '在本机 Windows 工作区运行 PowerShell 命令（兼容工具名），不使用云电脑。' : tool.name === 'cloud_read' ? '读取本机工作区目录内的文本文件，可使用相对路径。' : '写入本机工作区目录内的文件，可使用相对路径。' });
+  return mode === 'plan' ? [...schemas, EXIT_PLAN_TOOL] : schemas;
 }
 
 function requireString(args: Record<string, unknown>, key: string): string {
@@ -355,6 +381,18 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
   const acquireComputer = async () => { releaseComputer = await ctx.cloud.control?.acquire(ctx.signal); };
   try {
     switch (call.name) {
+      case 'exit_plan_mode': {
+        if (ctx.conversationMode !== 'plan') throw new Error('当前不在计划模式，无需提交计划');
+        const title = requireString(args, 'plan');
+        const steps = Array.isArray(args.steps) ? args.steps.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.trim()) : [];
+        if (!steps.length) throw new Error('steps 至少要有一条具体步骤');
+        const listed = steps.map((step, index) => `${index + 1}. ${step}`).join('\n');
+        // 计划批准必须问人，与该 Bot 的「自动执行」策略无关 —— 否则计划模式形同虚设。
+        const approved = ctx.requireApproval ? await ctx.requireApproval(`计划：${summarize(title, 160)}\n${listed}`) : false;
+        if (!approved) return finish({ ok: false, summary: '用户未批准该计划，仍停留在计划模式', detail: '按用户反馈修订后再提交；批准前不要声称已经开始执行。' });
+        ctx.approvePlan?.({ title, steps });
+        return finish({ ok: true, summary: `计划已批准，已切回执行模式（${steps.length} 步）`, detail: `按批准的步骤继续：\n${listed}` });
+      }
       case 'spawn_agent': {
         if (!ctx.spawnAgents) throw new Error('当前运行时不支持子智能体');
         const single = typeof args.task === 'string' && args.task.trim() ? [args.task.trim()] : [];

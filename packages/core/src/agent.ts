@@ -146,7 +146,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     return { messageId: source.id, author, content: selected || source.content || source.attachments?.map((file) => `[图片：${file.name ?? '图片'}]`).join('\n') || '（空消息）' };
   }
 
-  async send(input: SendMessageInput): Promise<SendMessageResult> {
+  async send(input: SendMessageInput, options: { modeOverride?: 'execute' | 'plan' } = {}): Promise<SendMessageResult> {
     const target = input.conversationId ? this.store.getConversation(input.conversationId) : undefined;
     if (target?.group) return this.sendGroup(input, target.id);
     const bot = this.store.getBot(input.botId);
@@ -186,7 +186,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     this.store.appendMessage(conversationId, assistantMessage);
     this.emit({ type: 'message_start', conversationId, message: assistantMessage });
 
-    const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage });
+    const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage, modeOverride: options.modeOverride });
     this.runCompletions.set(conversationId, completion);
     void completion.finally(() => { if (this.runCompletions.get(conversationId) === completion) this.runCompletions.delete(conversationId); }).catch(() => {});
 
@@ -252,6 +252,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     silent?: boolean;
     /** 0 for a user-initiated run; incremented for each sub-agent generation. */
     depth?: number;
+    /** Unattended runs force 'execute': no human is present to approve a plan. */
+    modeOverride?: 'execute' | 'plan';
   }): Promise<void> {
     const { bot, conversationId, runId, assistantMessage, abort } = params;
     const message = assistantMessage;
@@ -263,6 +265,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
     if (history[0]?.role === 'user') history[0] = { ...history[0], content: `${history[0].content}\n\n[当前时间：${new Date().toLocaleString('zh-CN', { hour12: false })}]` };
     const taskContext: TaskContext = {};
     const memoryScope = params.group ? conversationId : bot.id;
+    // Plan mode lives on the conversation, so it survives restarts and covers every run.
+    // Unattended runs override it: nobody is there to approve a plan, and blocking on an
+    // approval that can never arrive would just burn the task deadline.
+    const mode: 'execute' | 'plan' = params.modeOverride ?? conversation.mode ?? 'execute';
     // Children draw down the parent's budget instead of getting a fresh one: otherwise a model
     // could multiply its own task ceiling by spawning, and nothing would stop it.
     const taskBudget = params.taskBudget ?? new TaskOutputBudget(bot.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
@@ -278,9 +284,22 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
 
     try {
       const { provider, imageGenerator } = this.providerFor(bot);
-      const tools = [...schemasFor(bot), ...(await this.capabilities?.schemas(bot) ?? [])];
-      const allowed = new Set(tools.map(tool => tool.name));
-      const external = new Set(tools.filter(tool => tool.name.startsWith('mcp_') || tool.name === 'load_skill').map(tool => tool.name));
+      // In plan mode MCP tools are hidden too: they are third-party writes with the same reach
+      // as our own, so "read-only" has to cover them. load_skill only reads SKILL.md, so it stays.
+      const capabilitySchemas = await this.capabilities?.schemas(bot) ?? [];
+      const toolsetFor = (current: 'execute' | 'plan') => [...schemasFor(bot, current), ...capabilitySchemas]
+        .filter((tool) => current !== 'plan' || !tool.name.startsWith('mcp_'));
+      // The tool list is refreshed when a plan is approved mid-run; otherwise the rest of that
+      // same run would stay read-only even though the user already said yes.
+      let executingMode: 'execute' | 'plan' = mode;
+      let tools = toolsetFor(executingMode);
+      let allowed = new Set(tools.map(tool => tool.name));
+      let external = new Set(tools.filter(tool => tool.name.startsWith('mcp_') || tool.name === 'load_skill').map(tool => tool.name));
+      const refreshTools = () => {
+        tools = toolsetFor(executingMode);
+        allowed = new Set(tools.map(tool => tool.name));
+        external = new Set(tools.filter(tool => tool.name.startsWith('mcp_') || tool.name === 'load_skill').map(tool => tool.name));
+      };
       let finished = false;
       let firstChunkAt: number | undefined;
       let callStart = Date.now();
@@ -319,7 +338,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
           if (['anthropic-budget', 'gemini-budget'].includes(reasoning.reasoningControl ?? '') && reasoning.thinkingBudgetTokens && reasoning.thinkingBudgetTokens >= outputTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');
           const context = await prepareContext({
             store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
-            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : ''), tools,
+            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : ''), tools,
             signal, emit: params.silent ? () => {} : this.emit, recovery, outputTokens, taskBudget, taskContext,
           });
           callStart = Date.now();
@@ -445,6 +464,16 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
             emitStatus: (status, note) => { if ((bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud') this.emit({ type: 'cloud', status, note }); },
             webSearch: this.store.getSettings().webSearch,
             spawnAgents: (callId, tasks, background) => this.spawnAgents({ callId, bot, conversationId, taskBudget, signal, depth: params.depth ?? 0 }, tasks, background),
+            conversationMode: executingMode,
+            // Deliberately ignores bot.approvalPolicy: approving a plan is the one gate that must
+            // ask a human even for a Bot set to auto-execute, or plan mode would be decorative.
+            requireApproval: (summary) => this.requestApproval({ id: newId('approval'), conversationId, botId: bot.id, toolName: 'exit_plan_mode', summary, createdAt: Date.now() }, signal),
+            approvePlan: (plan) => {
+              executingMode = 'execute';
+              refreshTools();
+              this.store.setConversationMode(conversationId, 'execute', { ...plan, approvedAt: Date.now() });
+              this.emit({ type: 'log', level: 'info', text: '计划已批准，本轮后续步骤恢复写权限' });
+            },
             signal,
           });
 
@@ -580,7 +609,12 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}`;
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {
     const bot = this.store.getBot(botId);
     if (!bot) throw new Error('Bot 不存在');
-    const result = await this.send({ botId, text: prompt });
+    // A scheduled or Telegram run in plan mode would wait forever for an approval nobody can
+    // give. Run it in execute mode for this attempt and say so, rather than hanging the task.
+    if (this.store.botConversation(botId).mode === 'plan') {
+      this.emit({ type: 'log', level: 'warn', text: '该会话处于计划模式，但无人值守任务没有批准者，本次按执行模式运行（不改动会话设置）' });
+    }
+    const result = await this.send({ botId, text: prompt }, { modeOverride: 'execute' });
     await this.runCompletions.get(result.conversationId);
     const reply = this.store.getConversation(result.conversationId)?.messages.find((message) => message.id === result.assistantMessageId);
     if (reply?.error || reply?.stopped) throw new Error(reply.error || '任务已停止');

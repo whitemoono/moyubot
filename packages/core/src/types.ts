@@ -280,6 +280,14 @@ export interface Conversation {
    * 它对外的唯一留痕是回给父会话的那条工具结果；depth 用来硬限递归层数。
    */
   subagent?: { task: string; depth: number; parentConversationId: string };
+  /**
+   * 计划模式。省略即等同 'execute'，所以旧会话文件不需要迁移。
+   * 计划态下模型只拿到只读工具（MCP 工具一并隐藏），必须用 exit_plan_mode 把方案交给
+   * 人批准，批准后才切回执行态。
+   */
+  mode?: 'execute' | 'plan';
+  /** 最近一次被批准的计划，供界面回看与后续轮次引用。 */
+  plan?: { title: string; steps: string[]; approvedAt: number };
 }
 
 export interface ConversationContext {

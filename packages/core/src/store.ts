@@ -528,6 +528,21 @@ export class Store {
     return conv;
   }
 
+  /**
+   * Plan mode is conversation-scoped: two Bots, two independent modes, and the default
+   * state is not written to disk at all (an absent `mode` means execute).
+   */
+  setConversationMode(id: string, mode: 'execute' | 'plan', plan?: Conversation['plan']): Conversation {
+    const conv = this.getConversation(id);
+    if (!conv) throw new Error('会话不存在');
+    if (conv.subagent) throw new Error('子智能体的临时会话不支持切换模式');
+    conv.mode = mode === 'plan' ? 'plan' : undefined;
+    if (plan) conv.plan = plan;
+    conv.updatedAt = Date.now();
+    this.saveConversation(id);
+    return conv;
+  }
+
   saveConversation(id: string): void {
     const conv = this.conversations.get(id);
     if (!conv) return;
