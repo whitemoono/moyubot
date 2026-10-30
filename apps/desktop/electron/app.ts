@@ -461,6 +461,10 @@ export class MoyuApp {
     handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
     handle('moyu:conversation', (_event, id: string): Conversation | undefined => this.store.getConversation(id));
     handle('moyu:conversation:bot', (_event, botId: string): Conversation => this.store.botConversation(botId));
+    handle('moyu:conversation:mode', (_event, id: string, mode: 'execute' | 'plan'): Conversation => {
+      if (this.runtime.isRunning(id)) throw new Error('这个会话正在生成中，请等它结束再切换模式');
+      return this.store.setConversationMode(id, mode);
+    });
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });

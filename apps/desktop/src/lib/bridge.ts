@@ -76,6 +76,7 @@ export interface MoyuBridge {
   conversations(botId?: string): Promise<ConversationSummary[]>;
   conversation(id: string): Promise<Conversation | undefined>;
   botConversation(botId: string): Promise<Conversation>;
+  setConversationMode(id: string, mode: 'execute' | 'plan'): Promise<Conversation>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   updateGroupChat(id: string, action: GroupChatAction): Promise<{ group: Conversation; settings: AppSettings }>;
   setGroupChatsCollapsed(workspaceId: string, collapsed: boolean): Promise<AppSettings>;

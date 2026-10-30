@@ -63,6 +63,7 @@ interface MoyuContextValue {
   setGroupChatsCollapsed: (collapsed: boolean) => Promise<void>;
   runningGroupIds: Set<string>;
   conversation: Conversation | null;
+  setConversationMode: (mode: 'execute' | 'plan') => Promise<void>;
   conversations: ConversationSummary[];
   running: boolean;
   runningBotIds: Set<string>;
@@ -225,6 +226,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       return { ...previous, ui: { ...previous.ui, botGroups: name && !groups.some((item) => item.name === name) ? [...groups, { name, collapsed: false }] : groups }, bots: previous.bots.map((item) => item.id === saved.id ? saved : item) };
     });
   }, []);
+
+  /** 切换会话的计划/执行模式。故意不放进 Bot 配置：同一只 Bot 的不同会话各管各的。 */
+  const setConversationMode = useCallback(async (mode: 'execute' | 'plan') => {
+    const current = conversationRef.current;
+    if (!current || current.subagent) return;
+    try {
+      const updated = await moyu().setConversationMode(current.id, mode);
+      if (conversationRef.current?.id === updated.id) setConversation(updated);
+    } catch (error) {
+      toast((error as Error).message, 'error');
+    }
+  }, [toast]);
 
   const updateBotGroup = useCallback(async (name: string, action: BotGroupAction) => {
     applySavedSettings(await moyu().updateBotGroup(name, action, settingsRef.current.activeWorkspaceId));
@@ -757,6 +770,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     stop,
     saveBot,
     updateBotMetadata,
+    setConversationMode,
     updateBotGroup,
     deleteBot,
     saveSettings,

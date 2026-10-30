@@ -194,7 +194,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 });
 
 function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
-  const { running, sendMessage, stop, saveBot, settings, compacting, conversation, toast } = useMoyu();
+  const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, toast } = useMoyu();
   const group = conversation?.group;
   const recipient = group ? conversation.title : bot.name;
   const [text, setText] = useState('');
@@ -301,6 +301,10 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
             { value: 'never', label: '自动执行', hint: '按 Bot 配置自动执行工具' },
             { value: 'ask', label: '每次确认', hint: '执行命令和写入文件前确认' },
             { value: 'always', label: '全部允许', hint: '工具直接执行，无需确认' },
+          ]} /> : null}
+          {!group ? <Select label="会话模式" className={`composer-policy-picker composer-mode-picker--${conversation?.mode ?? 'execute'}`} icon={conversation?.mode === 'plan' ? 'shield' : 'sliders'} iconOnly menuMinWidth={250} value={conversation?.mode ?? 'execute'} onChange={(value) => void setConversationMode(value as 'execute' | 'plan')} options={[
+            { value: 'execute', label: '执行模式', hint: '正常干活，按上面的执行权限逐步确认' },
+            { value: 'plan', label: '计划模式', hint: '只读核查，先把计划交给你批准再动手' },
           ]} /> : null}
         </div>
         <textarea

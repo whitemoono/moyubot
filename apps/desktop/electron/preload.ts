@@ -69,6 +69,7 @@ const api = {
   conversations: (botId?: string) => invoke<ConversationSummary[]>('moyu:conversations', botId),
   conversation: (id: string) => invoke<Conversation | undefined>('moyu:conversation', id),
   botConversation: (botId: string) => invoke<Conversation>('moyu:conversation:bot', botId),
+  setConversationMode: (id: string, mode: 'execute' | 'plan') => invoke<Conversation>('moyu:conversation:mode', id, mode),
   createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
   updateGroupChat: (id: string, action: GroupChatAction) => invoke<{ group: Conversation; settings: AppSettings }>('moyu:group:update', id, action),
   setGroupChatsCollapsed: (workspaceId: string, collapsed: boolean) => invoke<AppSettings>('moyu:group:collapse', workspaceId, collapsed),
