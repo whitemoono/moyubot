@@ -20,6 +20,8 @@ import { DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, normalizeRemoteDirectory, safeJsonParse } from './util';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
+import { modelSettings, validateGeneration, validateModelSettings } from './generation';
+import { syncValue, type SyncRecord } from './sync';
 
 export interface SecretBox {
   get(key: string): string | undefined;
@@ -230,6 +232,11 @@ export class Store {
   }
 
   updateSettings(patch: SettingsPatch): AppSettings {
+    for (const provider of patch.providers ?? []) {
+      validateModelSettings(provider, provider.kind);
+      for (const name of Object.keys(provider.modelSettings ?? {})) validateModelSettings(modelSettings(provider, name), provider.kind);
+    }
+    for (const bot of patch.bots ?? []) validateGeneration(bot.generation);
     if (patch.userName !== undefined) {
       if (typeof patch.userName !== 'string' || !patch.userName.trim() || [...patch.userName.trim()].length > 40 || /[\x00-\x1f\x7f]/.test(patch.userName)) throw new Error('用户名需要 1–40 个字符，不能包含换行或控制字符');
       patch = { ...patch, userName: patch.userName.trim() };
@@ -261,9 +268,12 @@ export class Store {
   }
 
   upsertBot(bot: AppSettings['bots'][number]) {
+    validateGeneration(bot.generation);
     const existing = this.getBot(bot.id);
     bot = { ...bot, image: { aspect: bot.image?.aspect ?? '1:1' }, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
     if (!this.settings.workspaces.some((item) => item.id === bot.workspaceId)) throw new Error('工作区不存在');
+    for (const id of bot.mcpServerIds ?? []) if (!this.settings.mcpServers?.some(s => s.id === id && s.workspaceId === bot.workspaceId)) throw new Error('MCP 服务不属于此 Bot 的工作区');
+    for (const id of bot.skillIds ?? []) if (!this.settings.skills?.some(s => s.id === id && s.workspaceId === bot.workspaceId)) throw new Error('技能不属于此 Bot 的工作区');
     if (existing && (existing.workspaceId ?? 'workspace_cloud') !== bot.workspaceId) throw new Error('现有 Bot 不能直接转移工作区，请创建独立 Bot');
     const index = this.settings.bots.findIndex((item) => item.id === bot.id);
     if (index >= 0) this.settings.bots[index] = bot;
@@ -501,6 +511,70 @@ export class Store {
   }
 
   // ----- memories -----
+  /** Portable data only; importing data never executes agents or schedules. */
+  syncSnapshot(): Omit<SyncRecord, 'revision'>[] {
+    const records: Omit<SyncRecord, 'revision'>[] = [];
+    const add = (collection: string, id: string, value: Record<string, any>) => records.push({ collection, id, value: syncValue(collection, value) });
+    for (const bot of this.settings.bots) add('bots', bot.id, bot);
+    for (const conv of this.conversations.values()) {
+      if (conv.mergedInto) continue;
+      add('conversations', conv.id, conv);
+      for (const message of conv.messages) add('messages', message.id, { ...message, conversationId: conv.id });
+    }
+    for (const memory of this.memories) add('memories', memory.id, memory);
+    for (const schedule of this.scheduleList) add('schedules', schedule.id, schedule);
+    if (this.settings.userName) add('profile', 'user', { userName: this.settings.userName });
+    return records;
+  }
+
+  applySyncRecords(records: SyncRecord[]): void {
+    const valid = (id: unknown) => typeof id === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(id);
+    let settingsChanged = false, memoriesChanged = false;
+    for (const record of [...records].sort((a,b) => (a.collection === 'messages' ? 1 : 0) - (b.collection === 'messages' ? 1 : 0))) {
+      if (!valid(record.id)) continue;
+      const value = syncValue(record.collection, record.value);
+      if (record.collection === 'bots') {
+        const previous = this.getBot(record.id);
+        if (!value) { this.settings.bots = this.settings.bots.filter(b => b.id !== record.id); settingsChanged = true; continue; }
+        if (typeof value.name !== 'string' || typeof value.model !== 'string') continue;
+        const base = previous || { ...defaultSettings(this.dataDir).bots[0]!, id: record.id, tools: [], approvalPolicy: 'always' as const, wakeOnTask: false };
+        const workspaceId = this.settings.workspaces.some(w => w.id === value.workspaceId) ? value.workspaceId : 'workspace_cloud';
+        const next = { ...base, ...value, id: record.id, workspaceId, avatar: { ...base.avatar, ...value.avatar } } as AppSettings['bots'][number];
+        this.settings.bots = [...this.settings.bots.filter(b => b.id !== record.id), next]; settingsChanged = true;
+      } else if (record.collection === 'conversations') {
+        if (!value) { this.deleteConversation(record.id); continue; }
+        if (!valid(value.botId) || typeof value.title !== 'string' || !Number.isFinite(value.createdAt)) continue;
+        const previous = this.conversations.get(record.id);
+        // Active agents hold this object while awaiting model responses. Replacing
+        // it here loses newly generated context and writes stale data on save.
+        if (previous) Object.assign(previous, value, { id: record.id });
+        else this.conversations.set(record.id, { ...value, id: record.id, messages: [] } as unknown as Conversation);
+        this.saveConversation(record.id);
+      } else if (record.collection === 'messages') {
+        if (!value) {
+          for (const conv of this.conversations.values()) if (conv.messages.some(m => m.id === record.id)) { conv.messages = conv.messages.filter(m => m.id !== record.id); this.saveConversation(conv.id); }
+          continue;
+        }
+        if (!value || !valid(value.conversationId) || typeof value.content !== 'string' || !Number.isFinite(value.createdAt)) continue;
+        const conv = this.conversations.get(value.conversationId); if (!conv) continue;
+        const previous = conv.messages.find(m => m.id === record.id);
+        const { conversationId: _unused, ...portable } = value;
+        const next = { ...previous, ...portable, id: record.id } as Message;
+        conv.messages = [...conv.messages.filter(m => m.id !== record.id), next].sort((a,b) => a.createdAt-b.createdAt || a.id.localeCompare(b.id));
+        conv.updatedAt = Math.max(conv.updatedAt, next.createdAt); this.saveConversation(conv.id);
+      } else if (record.collection === 'memories') {
+        if (value && (typeof value.text !== 'string' || !valid(value.botId))) continue;
+        this.memories = this.memories.filter(m => m.id !== record.id);
+        if (value) this.memories.push({ ...value, id: record.id } as MemoryFact); memoriesChanged = true;
+      } else if (record.collection === 'profile' && typeof value?.userName === 'string' && value.userName.trim()) {
+        this.settings.userName = value.userName.slice(0,40); settingsChanged = true;
+      }
+      // Mobile displays schedule status; this device remains the execution owner.
+    }
+    if (settingsChanged) this.persistSettings();
+    if (memoriesChanged) writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+  }
+
   private loadMemories(): void {
     const file = path.join(this.dataDir, 'memories.json');
     if (!fs.existsSync(file)) return;

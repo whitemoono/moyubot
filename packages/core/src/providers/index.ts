@@ -8,7 +8,7 @@ import { ProviderError } from './types';
 import { readErrorMessage } from './sse';
 
 export type { ChatProvider, ChatArgs, StreamHandlers, ToolSchema, AgentMessage } from './types';
-export { ProviderError } from './types';
+export { ProviderError, OutputLimitError } from './types';
 
 export function createChatProvider(config: ProviderConfig, apiKey: string): ChatProvider {
   switch (config.kind) {

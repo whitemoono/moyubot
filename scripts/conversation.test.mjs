@@ -35,6 +35,30 @@ function summaryProvider(onCall = () => {}) {
 }
 const prepare = (f, live, provider, extra = {}) => prepareContext({ ...f, userMessageId: 'current-user', live, provider, system: '你是一个助手', tools: [], signal: new AbortController().signal, emit: () => {}, ...extra });
 
+test('sync during awaited compaction preserves active objects and the durable summary is reused', async () => {
+  const f = fixture();
+  for (let n = 0; n < 5; n++) addTurn(f.store, f.conversation, n, true);
+  const live = pending(f);
+  let calls = 0;
+  const provider = summaryProvider(() => {
+    calls++;
+    const portable = f.store.syncSnapshot().find(record => record.collection === 'conversations' && record.id === f.conversation.id);
+    f.store.applySyncRecords([{ ...portable, value: { ...portable.value, title: '手机更新的标题' } }]);
+    assert.equal(f.store.getConversation(f.conversation.id), f.conversation);
+  });
+  await prepare(f, live, provider);
+  assert.ok(calls > 0);
+  const cursor = f.conversation.context.throughMessageId;
+  const reopened = new Store(f.dataDir), conversation = reopened.getConversation(f.conversation.id);
+  assert.equal(conversation.context.throughMessageId, cursor);
+  assert.equal(conversation.title, '手机更新的标题');
+  assert.equal(conversation.messages.find(message => message.id === 'assistant-0').toolResults[0].ok, true);
+  const before = calls;
+  await prepareContext({ store: reopened, bot: f.bot, conversation, provider, userMessageId: 'current-user', live,
+    system: '你是一个助手', tools: [], signal: new AbortController().signal, emit() {} });
+  assert.equal(calls, before, 'Unchanged history must reuse its persisted summary');
+});
+
 test('sidebar organization persists without replacing Bot configuration, history, or memories', () => {
   const f = fixture();
   addTurn(f.store, f.conversation, 1);
@@ -373,6 +397,52 @@ test('an oversized current message is reported without truncating or deleting it
   assert.equal(f.conversation.context, undefined);
 });
 
+test('malformed summaries are regenerated with format feedback; only validated output is committed', async () => {
+  const f = fixture();
+  for (let n = 0; n < 6; n++) addTurn(f.store, f.conversation, n, true);
+  const live = pending(f), requests = [];
+  const provider = { kind: 'openai', async chat(args, handlers) {
+    requests.push(args);
+    handlers.onText(requests.length === 1 ? '{"summary":{"text":"错误类型"},"memories":["不能保存"]}'
+      : '这是摘要：\n```json\n' + JSON.stringify({ summary: '工具已执行，继续剩余步骤', memories: [] }) + '\n```');
+    return { finishReason: 'stop', usage: { completionTokens: 100 } };
+  } };
+  const result = await prepare(f, live, provider);
+  assert.match(requests[1].system, /上次摘要未通过格式校验/);
+  assert.equal(result.messages.at(-1).content, '继续这个项目');
+  assert.equal(f.conversation.context.summary, '工具已执行，继续剩余步骤');
+  assert.equal(f.store.listMemories(f.bot.id).length, 0);
+});
+
+test('long running tasks compact completed groups once and keep the latest calls and original user request', async () => {
+  const f = fixture();
+  const live = pending(f), taskContext = {};
+  for (let n = 0; n < 5; n++) {
+    live.push({ role: 'assistant', content: '正在检查', toolCalls: [{ id: `call-${n}`, name: 'cloud_exec', arguments: { command: `inspect-${n}` } }] });
+    live.push({ role: 'tool', toolCallId: `call-${n}`, name: 'cloud_exec', content: `已执行标记-${n} ` + '完整工具结果'.repeat(75) });
+  }
+  const original = structuredClone(live), sources = [];
+  const provider = { kind: 'openai', async chat(args, handlers) {
+    sources.push(args.messages[0].content);
+    handlers.onText(JSON.stringify({ summary: '早期检查命令已成功执行，不要重放。继续最新步骤。', memories: [] }));
+    return { finishReason: 'stop' };
+  } };
+  const result = await prepare(f, live, provider, { taskContext });
+  assert.ok(taskContext.liveMessages > 0);
+  assert.ok(sources.join('').includes('已执行标记-0'));
+  assert.equal(result.messages[0].content, '继续这个项目');
+  assert.equal(result.messages.at(-1).toolCallId, 'call-4');
+  for (const assistant of result.messages.filter(message => message.role === 'assistant')) {
+    for (const call of assistant.toolCalls ?? []) assert.ok(result.messages.some(message => message.role === 'tool' && message.toolCallId === call.id));
+  }
+  assert.deepEqual(live, original);
+  assert.equal(f.conversation.context, undefined, 'Task-local summary must not advance the durable conversation cursor');
+  const count = sources.length;
+  const again = await prepare(f, live, provider, { taskContext });
+  assert.equal(sources.length, count, 'Covered live results must not be summarized again on the next tool step');
+  assert.deepEqual(again, result);
+});
+
 test('storage failures do not advance the in-memory or persisted compaction cursor', async () => {
   for (const method of ['addMemory', 'saveConversation']) {
     const f = fixture();
@@ -407,7 +477,7 @@ test('runtime reuses the same thread, recovers from a real context rejection, an
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     await new Promise((resolve) => setTimeout(resolve, 35));
     const content = summarizing ? JSON.stringify({ summary: '项目按计划推进，用户要求中文回答。', memories: ['用户要求中文回答'] }) : '已继续同一个 Bot 的对话';
-    res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content } }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: 'stop' }] })}\n\n`);
     res.end('data: [DONE]\n\n');
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));

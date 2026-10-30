@@ -4,6 +4,7 @@ import type { Bot, Conversation, TokenUsage, UsageQuery, UsageRecord, UsageRepor
 import type { ChatArgs, ChatOutcome, ChatProvider, StreamHandlers } from './providers/types';
 import type { Store } from './store';
 import { newId } from './util';
+import type { TaskOutputBudget } from './generation';
 
 const count = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 export function normalizeUsage(usage?: TokenUsage): TokenUsage | undefined {
@@ -116,12 +117,25 @@ export class UsageLedger {
 }
 
 /** Each stream reports cumulative snapshots; persist exactly once, including failed streams. */
-export async function trackedChat(store: Store, bot: Bot, conversationId: string, purpose: 'chat' | 'compaction', provider: ChatProvider, args: ChatArgs, handlers: StreamHandlers, messageId?: string): Promise<ChatOutcome> {
+export async function trackedChat(store: Store, bot: Bot, conversationId: string, purpose: 'chat' | 'compaction', provider: ChatProvider, args: ChatArgs, handlers: StreamHandlers, messageId?: string, taskBudget?: TaskOutputBudget): Promise<ChatOutcome> {
+  taskBudget?.requireAvailable();
+  if (taskBudget && args.maxTokens) args = { ...args, maxTokens: Math.min(args.maxTokens, taskBudget.remaining()) };
+  if (['anthropic-budget', 'gemini-budget'].includes(args.reasoning?.reasoningControl ?? '') && args.reasoning?.thinkingBudgetTokens && args.maxTokens && args.reasoning.thinkingBudgetTokens >= args.maxTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');
+  let generatedChars = 0;
   const providerConfig = store.settings.providers.find((item) => item.id === bot.providerId);
   const record: UsageRecord = { id: newId('usage'), workspaceId: bot.workspaceId ?? 'workspace_cloud', createdAt: Date.now(), botId: bot.id, botName: bot.name, providerId: bot.providerId, providerName: providerConfig?.name ?? '已移除的供应商', model: args.model, conversationId, messageId, purpose, status: 'error' };
   try {
-    const result = await provider.chat(args, { ...handlers, onUsage: (usage) => { record.usage = { ...record.usage, ...usage }; handlers.onUsage?.(usage); } });
+    const result = await provider.chat(args, { ...handlers,
+      onText: text => { generatedChars += text.length; handlers.onText(text); },
+      onReasoning: text => { generatedChars += text.length; handlers.onReasoning?.(text); },
+      onToolCall: call => { generatedChars += JSON.stringify(call.arguments).length; handlers.onToolCall(call); },
+      onUsage: (usage) => { record.usage = { ...record.usage, ...usage }; handlers.onUsage?.(usage); } });
     record.usage = { ...record.usage, ...result.usage }; record.status = 'complete';
     return { ...result, usage: normalizeUsage(record.usage) };
-  } finally { store.usage.append(record); }
+  } finally {
+    // If a relay omits usage, charge the reserved request budget rather than
+    // silently allowing unlimited retries. The ledger still retains unknown usage.
+    taskBudget?.consume(record.usage?.completionTokens ?? args.maxTokens ?? Math.max(1, generatedChars));
+    store.usage.append(record);
+  }
 }

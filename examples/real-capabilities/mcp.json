@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "Filesystem 文件管理": {
+      "command": "C:\\Users\\Administrator\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+      "args": [
+        "D:\\dev\\moyubot\\.work\\real-capabilities\\runtime\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js",
+        "D:\\dev\\moyubot\\workspace"
+      ]
+    }
+  }
+}

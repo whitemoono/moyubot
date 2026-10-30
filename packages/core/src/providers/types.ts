@@ -1,4 +1,4 @@
-import type { ProviderConfig, ToolCall, TokenUsage } from '../types';
+import type { ProviderConfig, ToolCall, TokenUsage, ModelSettings, ProviderReplay } from '../types';
 
 export interface ToolSchema {
   name: string;
@@ -8,7 +8,7 @@ export interface ToolSchema {
 
 export type AgentMessage =
   | { role: 'user'; content: string; images?: { mimeType: string; dataUrl: string }[] }
-  | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
+  | { role: 'assistant'; content: string; reasoning?: string; toolCalls?: ToolCall[]; replay?: ProviderReplay }
   | { role: 'tool'; toolCallId: string; name: string; content: string };
 
 export interface ChatArgs {
@@ -18,6 +18,7 @@ export interface ChatArgs {
   tools: ToolSchema[];
   temperature: number;
   maxTokens?: number;
+  reasoning?: Pick<ModelSettings, 'reasoningControl' | 'reasoningEffort' | 'thinkingBudgetTokens' | 'outputTokenParameter' | 'reasoningReplay'>;
   signal?: AbortSignal;
 }
 
@@ -31,6 +32,7 @@ export interface StreamHandlers {
 export interface ChatOutcome {
   finishReason: string;
   usage?: TokenUsage;
+  replay?: ProviderReplay;
 }
 
 export interface ChatProvider {
@@ -54,6 +56,14 @@ export class ProviderError extends Error {
     this.name = 'ProviderError';
     this.status = status;
     this.code = code;
+  }
+}
+
+/** A truncated response has no executable calls; raw arguments are diagnostic data only. */
+export class OutputLimitError extends ProviderError {
+  constructor(readonly partial: { text: string; reasoning: string; tools: { name: string; rawArguments: string }[] }) {
+    super('模型单次输出额度已耗尽，自动恢复未能完成任务；已执行的工具结果已保留。', 502, 'output_limit');
+    this.name = 'OutputLimitError';
   }
 }
 

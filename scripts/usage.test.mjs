@@ -84,13 +84,16 @@ test('real SSE adapters normalize OpenAI cache, Anthropic cache writes, and Gemi
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const events = req.url.includes('messages') ? [
       { type: 'message_start', message: { usage: { input_tokens: 100, output_tokens: 0, cache_read_input_tokens: 70, cache_creation_input_tokens: 30 } } },
-      { type: 'content_block_delta', delta: { type: 'text_delta', text: 'ok' } },
-      { type: 'message_delta', usage: { output_tokens: 20 } },
-    ] : req.url.includes('streamGenerateContent') ? [{ candidates: [{ content: { parts: [{ text: 'ok' }] } }], usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 10, thoughtsTokenCount: 15, cachedContentTokenCount: 80 } }] : [
-      { choices: [{ delta: { content: 'ok' } }], usage: { prompt_tokens: 200, completion_tokens: 25, prompt_cache_hit_tokens: 80 } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ok' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 20 } },
+      { type: 'message_stop' },
+    ] : req.url.includes('streamGenerateContent') ? [{ candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 10, thoughtsTokenCount: 15, cachedContentTokenCount: 80 } }] : [
+      { choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 200, completion_tokens: 25, prompt_cache_hit_tokens: 80 } },
     ];
-    for (const event of events) res.write(`data: ${JSON.stringify(event)}\n\n`);
-    res.end('data: [DONE]\n\n');
+    for (const event of events) res.write(`${req.url.includes('messages') ? `event: ${event.type}\n` : ''}data: ${JSON.stringify(event)}\n\n`);
+    res.end(req.url.includes('messages') || req.url.includes('streamGenerateContent') ? '' : 'data: [DONE]\n\n');
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
   try {
@@ -113,7 +116,7 @@ test('tool rounds, group participants and automatic compaction all reach the dur
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const tool = !body.messages.some((message) => message.role === 'tool');
     const delta = tool ? { tool_calls: [{ index: 0, id: 'remember-call', function: { name: 'remember', arguments: JSON.stringify({ text: 'remembered fact' }) } }] } : { content: 'done' };
-    res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }] })}\n\n`);
     res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 40 } } })}\n\n`);
     res.end('data: [DONE]\n\n');
   });

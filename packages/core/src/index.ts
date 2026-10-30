@@ -1,4 +1,6 @@
 export * from './types';
+export { modelSettings, validateModelSettings, validateGeneration, DEFAULT_TASK_LIMITS, TaskOutputBudget } from './generation';
+export { CapabilityManager } from './capabilities';
 export { DiagnosticJournal, redactDiagnostic } from './diagnostics';
 export type { DiagnosticEntry } from './diagnostics';
 export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage';
@@ -21,3 +23,4 @@ export { setProviderFetch } from './providers/transport';
 export type { ChatProvider, AgentMessage, StreamHandlers, GeneratedImage, ImageRequest } from './providers';
 export { parseCron, nextCronTime, ScheduleRunner } from './scheduler';
 export { TelegramGateway } from './telegram';
+export * from './sync';

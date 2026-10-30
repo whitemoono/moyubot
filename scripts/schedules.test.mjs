@@ -99,7 +99,7 @@ test('chat tools create, list, modify, pause, resume and close only the speaking
     }
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const delta = name ? { tool_calls: [{ index: 0, id: `call-${requests}`, function: { name, arguments: JSON.stringify(args) } }] } : { content: '操作完成' };
-    res.write(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`); res.end('data: [DONE]\n\n');
+    res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }] })}\n\n`); res.end('data: [DONE]\n\n');
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
   store.updateSettings({ providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }] });

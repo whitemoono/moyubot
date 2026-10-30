@@ -5,9 +5,11 @@
   "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, in a focused desktop workspace",
   "license": "MIT",  "packageManager": "pnpm@11.7.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "scripts": {
+    "dev:web": "node apps/desktop/node_modules/vite/bin/vite.js apps/web --host localhost --port 5174 --strictPort",
+    "build:web": "node apps/desktop/node_modules/vite/bin/vite.js build apps/web --base ./",
     "dev": "pnpm --filter @moyu/core build && pnpm --filter @moyu/desktop dev",
     "dev:core": "pnpm --filter @moyu/core dev",
     "build": "pnpm --filter @moyu/core build && pnpm --filter @moyu/desktop build",
@@ -17,6 +19,7 @@
     "smoke:desktop": "pnpm build && pnpm --filter @moyu/desktop exec electron ../../scripts/desktop-smoke.cjs",
     "test:conversations": "pnpm --filter @moyu/core build && node --test scripts/conversation.test.mjs",
     "test:usage": "pnpm --filter @moyu/core build && node --test scripts/usage.test.mjs",
+    "test:providers": "pnpm --filter @moyu/core build && node --test scripts/provider-sdk.test.mjs scripts/output-limits.test.mjs scripts/conversation.test.mjs scripts/usage.test.mjs scripts/capabilities.test.mjs",
     "test:schedules": "pnpm --filter @moyu/core build && node --test scripts/schedules.test.mjs",
     "test:avatars": "node --test scripts/bot-activity.test.mjs",
     "seed": "node scripts/seed-demo.mjs",

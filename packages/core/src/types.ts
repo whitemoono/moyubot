@@ -5,6 +5,28 @@
 
 export type ProviderKind = 'openai' | 'anthropic' | 'gemini';
 
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+export interface ModelSettings {
+  contextWindowTokens?: number;
+  maxOutputTokens?: number;
+  /** Explicit opt-in: compatible relays do not necessarily support these fields. */
+  reasoningControl?: 'default' | 'openai-effort' | 'anthropic-budget' | 'gemini-budget';
+  outputTokenParameter?: 'max_tokens' | 'max_completion_tokens';
+  reasoningEffort?: ReasoningEffort;
+  thinkingBudgetTokens?: number;
+  /** DeepSeek-compatible thinking history; automatically enabled for known DeepSeek models. */
+  reasoningReplay?: boolean;
+}
+export interface BotGenerationSettings {
+  maxOutputTokens?: number;
+  reasoningEffort?: ReasoningEffort;
+  thinkingBudgetTokens?: number;
+  maxSteps?: number;
+  /** Across every request, retry and compaction in this Bot run. */
+  maxTaskOutputTokens?: number;
+  maxDurationSeconds?: number;
+}
+
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -20,6 +42,9 @@ export interface ProviderConfig {
   extraHeaders?: Record<string, string>;
   /** Model input + output limit. Unknown models use a conservative 32K budget. */
   contextWindowTokens?: number;
+  /** Per-request output ceiling including reasoning; absent uses automatic sizing. */
+  maxOutputTokens?: number;
+  modelSettings?: Record<string, ModelSettings>;
   createdAt: number;
 }
 
@@ -48,9 +73,12 @@ export interface Bot {
   providerId: string;
   model: string;
   temperature: number;
+  generation?: BotGenerationSettings;
   systemPrompt: string;
   approvalPolicy: ApprovalPolicy;
   tools: string[];
+  mcpServerIds?: string[];
+  skillIds?: string[];
   image: ImageConfig;
   wakeOnTask: boolean;
   createdAt: number;
@@ -180,6 +208,17 @@ export interface Attachment {
 
 export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
 
+/** JSON-only protocol blocks, scoped to the exact endpoint and model that signed them. */
+export interface ProviderReplay {
+  version: 1;
+  providerId: string;
+  kind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  parts: ({ type: 'text' | 'reasoning'; text: string; providerOptions?: Record<string, Record<string, unknown>> } |
+    { type: 'tool-call'; toolCallId: string; toolName: string; input: Record<string, unknown>; providerOptions?: Record<string, Record<string, unknown>> })[];
+}
+
 export interface MessageReply {
   messageId: string;
   author: string;
@@ -206,6 +245,8 @@ export interface Message {
   /** Generation was explicitly stopped; preserved separately from provider failures. */
   stopped?: boolean;
   reasoning?: string;
+  /** Complete model responses, preserving thinking/tool boundaries across requests and reloads. */
+  modelTurns?: { content: string; reasoning?: string; toolCalls?: ToolCall[]; replay?: ProviderReplay }[];
   /** renderer-only shade for notices */
   tone?: 'info' | 'warning' | 'error';
 }
@@ -287,6 +328,8 @@ export interface UiSettings {
 }
 
 export interface AppSettings {
+  mcpServers?: McpServerConfig[];
+  skills?: SkillConfig[];
   version: number;
   userName?: string;
   onboarding?: { step: 0 | 1 | 2; cloudSkipped?: boolean; completedAt?: number };
@@ -299,6 +342,30 @@ export interface AppSettings {
   activeWorkspaceId?: string;
   activeBotId?: string;
   activeView?: string;
+}
+
+export interface McpServerConfig {
+  id: string;
+  workspaceId: string;
+  name: string;
+  transport: 'stdio' | 'http';
+  command?: string;
+  args?: string[];
+  url?: string;
+  hasSecrets?: boolean;
+}
+
+export interface SkillConfig {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  directory: string;
+}
+
+export interface CapabilityStatus {
+  servers: { id: string; state: 'disconnected' | 'connecting' | 'connected' | 'error'; tools: { name: string; description?: string }[]; error?: string }[];
+  loadedSkills: { botId: string; skillId: string; loadedAt: number }[];
 }
 
 export type AgentEvent =
@@ -361,6 +428,16 @@ export interface AppUpdateResult {
   releaseUrl?: string;
   message: string;
   checkedAt: number;
+  installer?: { name: string; url: string; size: number; sha256?: string; checksumUrl?: string };
+  installHint?: string;
+}
+
+export interface AppUpdateProgress {
+  status: 'idle' | 'downloading' | 'verifying' | 'ready' | 'installing' | 'cancelled' | 'error';
+  received: number;
+  total?: number;
+  message: string;
+  release?: AppUpdateResult;
 }
 
 export interface ProviderTestResult {

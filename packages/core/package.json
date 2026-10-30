@@ -12,7 +12,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "@types/node": "^22.18.0"
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "yaml": "^2.9.1",
+    "zod": "4.4.1"
   }
 }

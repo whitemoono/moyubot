@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "MoyuBot 测试": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": ["D:\\dev\\moyubot\\examples\\capability-demo\\server.cjs"]
+    }
+  }
+}

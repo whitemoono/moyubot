@@ -7,9 +7,11 @@ release/
 .DS_Store
 .env
 .env.*
+!.env.example
 apps/desktop/src/generated/
 data/
 .work/
 .moyu-data/
 .moyu-userdata/
+/workspace/
 .tmp-*
