@@ -21,11 +21,18 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
   const isGroup = !!conversation?.group;
   const isLocal = activeWorkspace?.kind === 'local';
   const cloud = isLocal ? local : cloudStatus;
-  const [tab, setTab] = useState<Tab>('computer');
+  // 右侧栏记住每个会话上次停留的页签（Bot/群各存各的），和上下文快照一样存 localStorage。
+  const storedTab = (id?: string): Tab => {
+    if (!id) return 'computer';
+    try { const value = localStorage.getItem(`moyu:inspector:${id}`); return value === 'details' || value === 'library' || value === 'computer' ? value : 'computer'; }
+    catch { return 'computer'; }
+  };
+  const [tab, setTab] = useState<Tab>(() => storedTab(conversation?.id));
   const [pending, setPending] = useState(false);
   const [avatarBotId, setAvatarBotId] = useState<string | null>(null);
   const [editingGroup, setEditingGroup] = useState(false);
-  useEffect(() => { setTab('computer'); setEditingGroup(false); setAvatarBotId(null); }, [conversation?.id]);
+  useEffect(() => { setTab(storedTab(conversation?.id)); setEditingGroup(false); setAvatarBotId(null); }, [conversation?.id]);
+  useEffect(() => { if (!conversation) return; try { localStorage.setItem(`moyu:inspector:${conversation.id}`, tab); } catch { /* 配额或禁用，忽略 */ } }, [tab, conversation?.id]);
   const meta = CLOUD_META[cloud.state];
   const provider = settings.providers.find((item) => item.id === bot?.providerId);
   const awake = cloud.state === 'ready' || cloud.state === 'busy';
