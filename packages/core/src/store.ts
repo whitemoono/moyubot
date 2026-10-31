@@ -67,7 +67,18 @@ function writeJsonAtomic(file: string, value: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8');
-  fs.renameSync(tmp, file);
+  // Windows 上 AV / 索引器偶发短暂锁住目标文件导致 rename 失败（EPERM）。
+  // 重试几次，避免高频持久化（测试、群聊、定时任务）偶发丢写。
+  for (let attempt = 0; ; attempt++) {
+    try { fs.renameSync(tmp, file); return; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM' && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (attempt >= 4) throw error;
+      const wait = 40 + Math.floor(Math.random() * 40) * (attempt + 1);
+      const until = Date.now() + wait;
+      while (Date.now() < until) { /* busy-wait 很短，不引入异步 */ }
+    }
+  }
 }
 
 export function defaultSettings(dataDir: string, localDirectory = path.join(dataDir, 'local-workspace')): AppSettings {
@@ -658,6 +669,17 @@ export class Store {
   removeMemory(id: string): void {
     this.memories = this.memories.filter((fact) => fact.id !== id);
     writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+  }
+
+  // ----- cloud capability inventory (persisted so restarts show the last-known list instantly) -----
+  readCloudInventory(): { at: number; servers: { id: string; name: string; transport: string; command?: string; url?: string; source: string }[]; skills: { id: string; name: string; path: string; source: string }[] } | undefined {
+    const file = path.join(this.dataDir, 'cloud-inventory.json');
+    if (!fs.existsSync(file)) return undefined;
+    return safeJsonParse<ReturnType<Store['readCloudInventory']>>(fs.readFileSync(file, 'utf8'), undefined);
+  }
+
+  writeCloudInventory(inventory: NonNullable<ReturnType<Store['readCloudInventory']>>): void {
+    writeJsonAtomic(path.join(this.dataDir, 'cloud-inventory.json'), inventory);
   }
 
   // ----- todos -----

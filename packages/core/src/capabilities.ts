@@ -33,12 +33,23 @@ export class CapabilityManager {
   /**
    * 盘点云电脑上真实部署的 MCP 与技能（读 ~/.claude.json、~/.claude/skills、
    * ~/.agents/skills、/usr/local/bin/*-mcp），结果缓存 30 秒，避免每次轮询都唤醒云主机。
+   * 缓存同时落盘（cloud-inventory.json）：应用重启后先返回上次已知清单（最多 5 分钟前的），
+   * 不唤醒云电脑就能立即展示；超过该窗口或没有落盘才重新盘点。
    */
-  async inventoryCloud(): Promise<{ servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> }> {
+  async inventoryCloud(force = false): Promise<{ servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> }> {
     const empty = { servers: [], skills: [] };
     const host = this.cloud();
     if (!host || this.disposed) return empty;
-    if (this.cloudInventory && Date.now() - this.cloudInventory.at < 30_000) return this.cloudInventory;
+    const now = Date.now();
+    if (this.cloudInventory && now - this.cloudInventory.at < 30_000) return this.cloudInventory;
+    // 重启后：优先用落盘的上次清单（≤5 分钟），不用唤醒云主机即可展示。
+    if (!force && !this.cloudInventory) {
+      const persisted = this.store.readCloudInventory();
+      if (persisted && now - persisted.at < 5 * 60_000) {
+        this.cloudInventory = persisted;
+        return persisted;
+      }
+    }
     await host.ensureAwake('盘点云端能力').catch(() => {});
     const probe = [
       'node -e \'',
@@ -59,9 +70,11 @@ export class CapabilityManager {
       const servers = (data.mcpServers ?? []).map((item, index) => ({ id: `cloud-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '云电脑' }));
       const skills = [...(data.claudeSkills ?? []).map((item) => ({ ...item, source: '~/.claude/skills' })), ...(data.agentSkills ?? []).map((item) => ({ ...item, source: '~/.agents/skills' }))].map((item, index) => ({ id: `cloud-skill-${index}`, name: item.name, path: item.path, source: item.source }));
       this.cloudInventory = { at: Date.now(), servers, skills };
+      this.store.writeCloudInventory(this.cloudInventory);
       return this.cloudInventory;
     } catch {
       this.cloudInventory = { at: Date.now(), servers: [], skills: [] };
+      this.store.writeCloudInventory(this.cloudInventory);
       return this.cloudInventory;
     }
   }

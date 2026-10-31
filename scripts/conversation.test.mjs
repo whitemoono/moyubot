@@ -260,7 +260,7 @@ test('group replies preserve speaker identity, shared context, private memory is
     assert.equal(seen.length, before + 1, 'Stopping a group prevents queued Bot replies');
     assert.equal(group.messages.at(-1).stopped, true);
     assert.equal(events.filter((event) => event.type === 'run_end').at(-1).error, '已停止');
-  } finally { cloud.dispose(); server.close(); }
+  } finally { cloud.dispose(); await new Promise((resolve) => server.close(resolve)); }
 });
 
 test('replies validate the source, persist selected quotes and reach the model in private and group chats', async () => {
@@ -509,5 +509,5 @@ test('runtime reuses the same thread, recovers from a real context rejection, an
     assert.equal(f.store.listConversations().length, 2);
     for (const event of events.filter((e) => ['message_start', 'delta', 'message_end', 'run_end'].includes(e.type))) assert.ok(event.conversationId);
     assert.ok(seen.some((body) => body.messages[0].content.includes('conversation_summary')));
-  } finally { cloud.dispose(); server.close(); }
+  } finally { cloud.dispose(); await new Promise((resolve) => server.close(resolve)); }
 });
