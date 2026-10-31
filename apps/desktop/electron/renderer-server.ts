@@ -25,12 +25,35 @@ export async function startRendererServer(root: string): Promise<{ url: string; 
       response.end(bytes);
     } catch { response.writeHead(400).end(); }
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => { server.off('error', reject); resolve(); });
-  });
   server.unref();
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('无法加载应用界面');
-  return { url: `http://127.0.0.1:${address.port}/`, close: () => { server.closeAllConnections(); server.close(); } };
+  // Chromium 会拦截一批「不安全端口」（如 5060 SIP）：listen 成功但 loadURL 报 ERR_UNSAFE_PORT，界面全黑。
+  // 之前 listen(0) 随机端口撞上 5060 就是这样。先试固定安全端口；随机端口撞上受限表就关权重掷。
+  const RESTRICTED = new Set([5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
+  const listenOn = (port: number) => new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => { server.off('listening', onUp); reject(error); };
+    const onUp = () => { server.off('error', onError); resolve(); };
+    server.once('error', onError);
+    server.once('listening', onUp);
+    server.listen(port, '127.0.0.1');
+  });
+  const reopen = async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => { const done = () => resolve(); server.once('close', done); server.close(done); });
+    // 换一个新 server 语义：close 后原 http.Server 仍可再 listen。
+  };
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const fixed = [5173, 4173, 8288, 18080, 21320][attempt];
+    try {
+      await listenOn(fixed ?? 0);
+      const address = server.address();
+      if (address && typeof address !== 'string' && !RESTRICTED.has(address.port)) {
+        return { url: `http://127.0.0.1:${address.port}/`, close: () => { server.closeAllConnections(); server.close(); } };
+      }
+      await reopen();
+    } catch {
+      // 端口被占：试下一个。
+      continue;
+    }
+  }
+  throw new Error('无法加载应用界面');
 }
