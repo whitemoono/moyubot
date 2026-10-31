@@ -467,8 +467,8 @@ export type AgentEvent =
   | { type: 'context_pruned'; conversationId: string; pruned: number; savedTokens: number }
   /** 子智能体批次进度。父会话用它画嵌套卡片；子会话内部的 token 增量不外发，避免界面串台。 */
   | { type: 'subagent'; conversationId: string; callId: string; status: 'start'; tasks: string[] }
-  /** 单个子任务的实时状态：界面据此显示"第几个在跑、第几个已完成"。 */
-  | { type: 'subagent'; conversationId: string; callId: string; status: 'child'; index: number; task: string; state: 'running' | 'done' | 'error' }
+  /** 单个子任务的实时状态：界面据此显示"第几个在跑、第几个已完成"，childConversationId 支持单独停止/续聊。 */
+  | { type: 'subagent'; conversationId: string; callId: string; status: 'child'; index: number; task: string; state: 'running' | 'done' | 'error'; childConversationId?: string }
   | { type: 'subagent'; conversationId: string; callId: string; status: 'done'; tasks: string[]; children?: { conversationId: string; task: string; ok: boolean; text?: string; error?: string }[]; seconds?: number }
   | { type: 'question'; request: AskRequest }
   | { type: 'question_done'; requestId: string; answer: string; cancelled: boolean }

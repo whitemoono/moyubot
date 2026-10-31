@@ -43,7 +43,7 @@ export interface ContextUsageSnapshot {
 /** 按工具调用 id 聚合的子任务进度：界面用它显示"第几个在跑、第几个已完成"。 */
 export interface SubagentProgress {
   tasks: string[];
-  children: Record<number, { task: string; state: 'running' | 'done' | 'error' }>;
+  children: Record<number, { task: string; state: 'running' | 'done' | 'error'; conversationId?: string }>;
 }
 
 interface MoyuContextValue {
@@ -80,6 +80,8 @@ interface MoyuContextValue {
   answerQuestion: (decision: { requestId: string; answer: string }) => Promise<void>;
   /** 手动压缩当前会话的历史（command-compact）。 */
   compactConversation: () => Promise<void>;
+  continueSubagent: (childConversationId: string, message: string) => Promise<{ ok: boolean; text: string; error?: string }>;
+  stopSubagent: (childConversationId: string) => Promise<boolean>;
   completeGoal: () => Promise<void>;
   conversations: ConversationSummary[];
   running: boolean;
@@ -277,6 +279,16 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const continueSubagent = useCallback(async (childConversationId: string, message: string) => {
+    try { return await moyu().continueSubagent(childConversationId, message); }
+    catch (error) { return { ok: false, text: '', error: (error as Error).message }; }
+  }, []);
+
+  const stopSubagent = useCallback(async (childConversationId: string) => {
+    try { return await moyu().stopSubagent(childConversationId); }
+    catch { return false; }
+  }, []);
+
   const completeGoal = useCallback(async () => {    const current = conversationRef.current;
     if (!current) return;
     try {
@@ -433,10 +445,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
           const current = previous[event.callId] ?? { tasks: [], children: {} };
           if (event.status === 'start') return { ...previous, [event.callId]: { tasks: event.tasks, children: {} } };
           if (event.status === 'child') {
-            return { ...previous, [event.callId]: { ...current, children: { ...current.children, [event.index]: { task: event.task, state: event.state } } } };
+            return { ...previous, [event.callId]: { ...current, children: { ...current.children, [event.index]: { task: event.task, state: event.state, conversationId: event.childConversationId ?? current.children[event.index]?.conversationId } } } };
           }
           const merged = { ...current.children };
-          (event.children ?? []).forEach((child, index) => { merged[index] = { task: child.task, state: child.ok ? 'done' : 'error' }; });
+          (event.children ?? []).forEach((child, index) => { merged[index] = { task: child.task, state: child.ok ? 'done' : 'error', conversationId: child.conversationId }; });
           return { ...previous, [event.callId]: { ...current, tasks: event.tasks, children: merged } };
         });
         return;
@@ -854,6 +866,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     question,
     answerQuestion,
     compactConversation,
+    continueSubagent,
+    stopSubagent,
     updateBotGroup,
     deleteBot,
     saveSettings,

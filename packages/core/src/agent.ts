@@ -53,6 +53,10 @@ export interface AgentRuntimeDeps {
 interface RunState {
   abort: AbortController;
   conversationId: string;
+  /** 供 job_list / job_kill 展示与路由：任务种类、归属 Bot、起始时间。 */
+  kind: 'user' | 'group' | 'subagent';
+  botId?: string;
+  startedAt: number;
 }
 
 export class AgentRuntime {
@@ -190,7 +194,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
 
     const runId = newId('run');
     const abort = new AbortController();
-    this.runs.set(conversationId, { abort, conversationId });
+    this.runs.set(conversationId, { abort, conversationId, kind: 'user', botId: bot.id, startedAt: Date.now() });
     this.emit({ type: 'run_start', runId, conversationId });
 
     const userMessage: Message = {
@@ -231,7 +235,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const replyTo = this.replyFrom(input, conversation);
     const runId = newId('run');
     const abort = new AbortController();
-    this.runs.set(conversationId, { abort, conversationId });
+    this.runs.set(conversationId, { abort, conversationId, kind: 'group', startedAt: Date.now() });
     this.emit({ type: 'run_start', runId, conversationId });
     const userMessage: Message = { id: newId('msg'), role: 'user', content: input.text, replyTo, createdAt: Date.now(), attachments: this.attachmentsFrom(input.images) };
     this.store.appendMessage(conversationId, userMessage);
@@ -514,6 +518,16 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             emitStatus: (status, note) => { if ((bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud') this.emit({ type: 'cloud', status, note }); },
             webSearch: this.store.getSettings().webSearch,
             spawnAgents: (callId, tasks, background) => this.spawnAgents({ callId, bot, conversationId, taskBudget, signal, depth: params.depth ?? 0 }, tasks, background),
+            listJobs: () => this.listJobs(),
+            killJob: (targetId) => this.stop(targetId),
+            listAgents: () => this.listSubagents(conversationId),
+            controlAgent: async (targetId, action, message) => {
+              if (action === 'stop') return { ok: this.stop(targetId), error: '该子智能体没有在运行' };
+              if (!message) throw new Error('send 需要 message');
+              const result = await this.continueSubagent(targetId, message);
+              return { ok: result.ok, text: result.text, error: result.error };
+            },
+            forkAgent: (prompt) => this.forkSubagent(conversationId, prompt),
             conversationMode: executingMode,
             // Deliberately ignores bot.approvalPolicy: approving a plan is the one gate that must
             // ask a human even for a Bot set to auto-execute, or plan mode would be decorative.
@@ -646,11 +660,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
 
   /**
    * 子代理的工具面由 power 决定：readonly 只给调研工具；full 继承父会话工具集，
-   * 但永远去掉 run_script 自己（脚本不能再套脚本，否则上限形同虚设）。
+   * 但永远去掉 run_script 自己（脚本不能再套脚本，否则上限形同虚设），
+   * 也不给任务/子代理管理工具——孩子不能停爸爸、不能指挥兄弟。
    */
   private childBotFor(bot: Bot, power: 'readonly' | 'full'): Bot {
     if (power === 'readonly') return { ...bot, tools: SUBAGENT_TOOLS, mcpServerIds: [], skillIds: [], approvalPolicy: 'never' };
-    const tools = toolNamesFor(bot).filter((name) => name !== 'run_script');
+    const managed = new Set(['run_script', 'job_kill', 'subagent_control', 'subagent_fork']);
+    const tools = toolNamesFor(bot).filter((name) => !managed.has(name));
     return { ...bot, tools, mcpServerIds: bot.mcpServerIds ?? [], skillIds: bot.skillIds ?? [], approvalPolicy: 'never' };
   }
 
@@ -675,10 +691,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
       createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
     };
     this.store.appendMessage(conversation.id, assistantMessage);
-    if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: 'running' });
+    if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: 'running', childConversationId: conversation.id });
     const abort = new AbortController();
     const forward = () => abort.abort();
     parent.signal.addEventListener('abort', forward, { once: true });
+    // 注册进 runs 表：让 job_list/job_kill 与子代理单独停止能看到、控制这个子任务；
+    // runLoop 的 finally 只清非 silent 的运行，这里由 runChild 自己清。
+    this.runs.set(conversation.id, { abort, conversationId: conversation.id, kind: 'subagent', botId: child.id, startedAt: Date.now() });
     try {
       await this.runLoop({
         bot: child, conversationId: conversation.id, runId: newId('run'), assistantMessage, abort, userMessage,
@@ -687,6 +706,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
       });
     } finally {
       parent.signal.removeEventListener('abort', forward);
+      this.runs.delete(conversation.id);
     }
     const text = assistantMessage.content.trim();
     const outcome = assistantMessage.error
@@ -696,6 +716,123 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
         : { conversationId: conversation.id, task, ok: true as const, text };
     if (progress) this.emit({ type: 'subagent', conversationId: parent.conversationId, callId: progress.callId, status: 'child', index: progress.index, task, state: outcome.ok ? 'done' : 'error' });
     return outcome;
+  }
+
+  /**
+   * 续聊一个子代理会话：追加一条用户消息并重新跑一轮。
+   * 会话必须是子代理会话（subagent 标志），工具面沿用 readonly 子代理约束。
+   * 返回新回复内容；失败时抛出（错误会进工具结果，不会崩父任务）。
+   */
+  async continueSubagent(conversationId: string, messageText: string): Promise<{ ok: boolean; text: string; error?: string }> {
+    const conversation = this.store.getConversation(conversationId);
+    if (!conversation?.subagent) throw new Error('只能续聊子智能体的会话');
+    if (this.isRunning(conversationId)) throw new Error('该子智能体还在运行，请等它结束再续聊');
+    const bot = this.store.getBot(conversation.botId);
+    if (!bot) throw new Error('子智能体对应的 Bot 不存在');
+    const depth = (conversation.subagent.depth ?? 0) + 1;
+    if (depth > SUBAGENT_MAX_DEPTH) throw new Error(`子智能体最多嵌套 ${SUBAGENT_MAX_DEPTH} 层`);
+    // 续聊往往发生在父任务早已结束之后，给它一份独立的输出预算。
+    const child = this.childBotFor(bot, 'readonly');
+    const taskBudget = new TaskOutputBudget(child.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
+    const userMessage: Message = {
+      id: newId('msg'), role: 'user', botId: child.id,
+      content: `${messageText}\n\n（这是对子智能体的一次追问。你仍然只读，回答要自足，父任务只会看到你最后这段回复。）`,
+      createdAt: Date.now(),
+    };
+    this.store.appendMessage(conversation.id, userMessage);
+    const assistantMessage: Message = {
+      id: newId('msg'), role: 'assistant', botId: child.id, botName: child.name, content: '', model: child.model,
+      createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
+    };
+    this.store.appendMessage(conversation.id, assistantMessage);
+    const abort = new AbortController();
+    this.runs.set(conversationId, { abort, conversationId, kind: 'subagent', botId: child.id, startedAt: Date.now() });
+    try {
+      await this.runLoop({
+        bot: child, conversationId, runId: newId('run'), assistantMessage, abort, userMessage,
+        silent: true, depth, taskBudget,
+        maxStepsOverride: SUBAGENT_MAX_STEPS, durationSeconds: SUBAGENT_MAX_SECONDS,
+      });
+    } finally {
+      this.runs.delete(conversationId);
+    }
+    const text = assistantMessage.content.trim();
+    if (assistantMessage.error) return { ok: false, text, error: assistantMessage.error };
+    if (!text) return { ok: false, text, error: assistantMessage.stopped ? '已停止' : '子智能体没有产出结论' };
+    return { ok: true, text };
+  }
+
+  /** 列出子代理会话（含运行状态），供 tool-jobs 与续聊入口使用。 */
+  listSubagents(parentConversationId?: string): { conversationId: string; task: string; depth: number; parentConversationId: string; running: boolean; updatedAt: number }[] {
+    return this.store.listSubagents(parentConversationId).map((conv) => ({
+      conversationId: conv.id,
+      task: conv.subagent!.task,
+      depth: conv.subagent!.depth,
+      parentConversationId: conv.subagent!.parentConversationId,
+      running: this.isRunning(conv.id),
+      updatedAt: conv.updatedAt,
+    }));
+  }
+
+  /** tool-jobs：当前在跑的任务（用户/群聊/子代理），带用时与归属。 */
+  listJobs(): { conversationId: string; kind: RunState['kind']; label: string; seconds: number }[] {
+    return [...this.runs.values()].map((run) => {
+      const conversation = this.store.getConversation(run.conversationId);
+      const bot = run.botId ? this.store.getBot(run.botId) : undefined;
+      return {
+        conversationId: run.conversationId,
+        kind: run.kind,
+        label: run.kind === 'subagent' ? `子任务：${conversation?.subagent?.task ?? conversation?.title ?? run.conversationId}` : bot && !conversation?.group ? `${bot.name}` : conversation?.title ?? run.conversationId,
+        seconds: Math.max(0, Math.round((Date.now() - run.startedAt) / 1000)),
+      };
+    });
+  }
+
+  /**
+   * fork：以父会话最近的上下文为底，开一个只读子代理继续深挖。
+   * 上下文按消息条数截断（不复制工具输出大段），避免把 fork 变成第二次全量对话。
+   */
+  async forkSubagent(parentConversationId: string, prompt: string): Promise<{ ok: boolean; conversationId: string; text: string; error?: string }> {
+    const parentConversation = this.store.getConversation(parentConversationId);
+    if (!parentConversation) throw new Error('父会话不存在');
+    const parentBot = this.store.getBot(parentConversation.botId);
+    if (!parentBot) throw new Error('父会话对应的 Bot 不存在');
+    const depth = (parentConversation.subagent?.depth ?? 0) + 1;
+    if (depth > SUBAGENT_MAX_DEPTH) throw new Error(`子智能体最多嵌套 ${SUBAGENT_MAX_DEPTH} 层`);
+    const context = parentConversation.messages
+      .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.content.trim()))
+      .slice(-24)
+      .map((message) => `${message.role === 'user' ? '用户' : (message.botName ?? '助手')}：${message.content.slice(0, 1200)}`)
+      .join('\n\n');
+    const conversation = this.store.createSubagentConversation(parentBot.id, prompt, depth, parentConversation.id);
+    const userMessage: Message = {
+      id: newId('msg'), role: 'user',
+      content: `${prompt}\n\n已知背景（父对话最近的节选，未经你验证）：\n${context || '（无历史）'}\n\n约束：你只有只读工具，不要尝试改动文件、执行命令或安排任务；结论必须自足，按「1）结论 2）依据 3）未覆盖或不确定之处」输出。`,
+      createdAt: Date.now(),
+    };
+    this.store.appendMessage(conversation.id, userMessage);
+    const assistantMessage: Message = {
+      id: newId('msg'), role: 'assistant', botId: parentBot.id, botName: parentBot.name, content: '', model: parentBot.model,
+      createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
+    };
+    this.store.appendMessage(conversation.id, assistantMessage);
+    const child = this.childBotFor(parentBot, 'readonly');
+    const taskBudget = new TaskOutputBudget(child.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
+    const abort = new AbortController();
+    this.runs.set(conversation.id, { abort, conversationId: conversation.id, kind: 'subagent', botId: child.id, startedAt: Date.now() });
+    try {
+      await this.runLoop({
+        bot: child, conversationId: conversation.id, runId: newId('run'), assistantMessage, abort, userMessage,
+        silent: true, depth, taskBudget,
+        maxStepsOverride: SUBAGENT_MAX_STEPS, durationSeconds: SUBAGENT_MAX_SECONDS,
+      });
+    } finally {
+      this.runs.delete(conversation.id);
+    }
+    const text = assistantMessage.content.trim();
+    if (assistantMessage.error) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.error };
+    if (!text) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.stopped ? '已停止' : '子智能体没有产出结论' };
+    return { ok: true, conversationId: conversation.id, text };
   }
 
     /**

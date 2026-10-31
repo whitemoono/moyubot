@@ -59,8 +59,8 @@ function makeCtx(options = {}) {
 
 const call = (name, args) => ({ id: `c-${name}`, name, arguments: args });
 
-test('TOOL_SCHEMAS 恰好 20 个内置工具', () => {
-  assert.equal(TOOL_SCHEMAS.length, 20);
+test('TOOL_SCHEMAS 恰好 25 个内置工具', () => {
+  assert.equal(TOOL_SCHEMAS.length, 25);
 });
 
 // —— 云端三件套 + 桌面 ——
@@ -222,6 +222,60 @@ test('run_script 汇总编排结果', async () => {
   assert.match(w.summary, /完整权限/);
 });
 
+// —— 任务管理（tool-jobs）——
+test('job_list 列出运行中任务', async () => {
+  const f = makeCtx();
+  f.ctx.listJobs = () => [{ conversationId: 'conv_x', kind: 'subagent', label: '子任务：读 README', seconds: 12 }];
+  const r = await runTool(call('job_list', {}), f.ctx);
+  assert.equal(r.ok, true);
+  assert.match(r.summary, /1 个任务在运行/);
+  assert.match(r.detail, /conv_x/);
+  const empty = makeCtx();
+  empty.ctx.listJobs = () => [];
+  assert.match((await runTool(call('job_list', {}), empty.ctx)).summary, /没有正在运行/);
+});
+test('job_kill 停止运行中任务 / 不存在的拒绝', async () => {
+  const f = makeCtx();
+  let killed;
+  f.ctx.killJob = (id) => { killed = id; return true; };
+  const r = await runTool(call('job_kill', { id: 'conv_x' }), f.ctx);
+  assert.equal(r.ok, true);
+  assert.equal(killed, 'conv_x');
+  const miss = makeCtx();
+  miss.ctx.killJob = () => false;
+  const r2 = await runTool(call('job_kill', { id: 'gone' }), miss.ctx);
+  assert.equal(r2.ok, false);
+});
+// —— 子代理清单 / 续聊 / 分身 ——
+test('subagent_list_agents 列出子代理线程', async () => {
+  const f = makeCtx();
+  f.ctx.listAgents = () => [{ conversationId: 'sub_1', task: '读源码', running: false, updatedAt: Date.now() }];
+  const r = await runTool(call('subagent_list_agents', {}), f.ctx);
+  assert.equal(r.ok, true);
+  assert.match(r.detail, /sub_1/);
+  assert.match(r.detail, /已结束/);
+});
+test('subagent_control send 续聊拿到新结论 / stop 停运行中的', async () => {
+  const f = makeCtx();
+  f.ctx.controlAgent = async (id, action, message) => ({ ok: true, text: `针对「${message}」的补充结论` });
+  f.ctx.killJob = () => true;
+  const sent = await runTool(call('subagent_control', { id: 'sub_1', action: 'send', message: '再查测试' }), f.ctx);
+  assert.equal(sent.ok, true, sent.summary);
+  assert.match(sent.detail, /补充结论/);
+  const stopped = await runTool(call('subagent_control', { id: 'sub_1', action: 'stop' }), f.ctx);
+  assert.equal(stopped.ok, true);
+  const bad = await runTool(call('subagent_control', { id: 'sub_1', action: 'pause' }), f.ctx);
+  assert.equal(bad.ok, false);
+});
+test('subagent_fork 分身返回结论与 id', async () => {
+  const f = makeCtx();
+  f.ctx.forkAgent = async (prompt) => ({ ok: true, conversationId: 'sub_9', text: `分身完成：${prompt}` });
+  const r = await runTool(call('subagent_fork', { prompt: '顺着结论查边界情况' }), f.ctx);
+  assert.equal(r.ok, true);
+  assert.match(r.summary, /sub_9/);
+  assert.match(r.detail, /分身完成/);
+});
+
 // —— 计划模式出口（第 21 个行为）——
 test('exit_plan_mode 必须经批准才切执行', async () => {
   const denied = makeCtx({ ctx: { conversationMode: 'plan', requireApproval: async () => false } });
@@ -246,7 +300,7 @@ test('未知工具被安全拒绝', async () => {
 test('每个内置 schema 工具都在回归表里被覆盖', async () => {
   // 兜底：防止将来加了新工具却忘记加回归。此测试枚举 TOOL_SCHEMAS，
   // 与上面手写用例覆盖到的名字对比（维护时在 covered 里补一项）。
-  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script']);
+  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork']);
   const missing = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `这些新工具还没有回归用例：${missing.join(', ')}`);
 });

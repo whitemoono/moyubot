@@ -40,11 +40,17 @@
 .reply-tool__output { padding: 13px 16px 15px 34px; border-top: 1px solid var(--line); color: var(--text-dim); }
 /* 子任务逐项进度：复用工具卡的状态点，运行中的那一行提亮，扫一眼就知道进度。 */
 .reply-tool__children { display: grid; gap: 3px; padding: 10px 16px 4px 34px; }
-.reply-tool__child { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; color: var(--text-dim); }
+.reply-tool__child { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--text-dim); }
 .reply-tool__child .reply-tool__dot { margin-top: 0; }
-.reply-tool__child-task { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-tool__child-task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-tool__child-state { flex: none; font-size: 11px; color: var(--text-faint); }
 .reply-tool__child .reply-tool__dot[data-state="running"] ~ .reply-tool__child-task { color: var(--text); }
+/* 子任务续聊：停止/追问按钮、追问输入与回复。 */
+.reply-tool__child-action { flex: none; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; color: var(--text-dim); background: var(--surface); cursor: pointer; }
+.reply-tool__child-action:hover { color: var(--text); border-color: var(--accent); }
+.reply-tool__child-reply { grid-column: 1 / -1; margin: 2px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--hover); color: var(--text-dim); font-size: 12px; white-space: pre-wrap; max-height: 180px; overflow: auto; }
+.reply-tool__ask { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; margin: 2px 0 6px; }
+.reply-tool__ask textarea { flex: 1; min-width: 0; }
 .reply-tool__head:focus-visible, .reply-tool__copy:focus-visible, .reply-reasoning summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 @media (max-width: 640px) {
   .reply-tool__input { padding: 12px; gap: 9px; }

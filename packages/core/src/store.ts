@@ -20,6 +20,7 @@ import type {
 } from './types';
 import { DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, normalizeRemoteDirectory, safeJsonParse } from './util';
+import { MemoryLibrary } from './memory-library';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
 import { modelSettings, validateGeneration, validateModelSettings } from './generation';
@@ -173,6 +174,7 @@ export class Store {
   settings: AppSettings;
   private conversations = new Map<string, Conversation>();
   private memories: MemoryFact[] = [];
+  private library?: MemoryLibrary;
   private scheduleList: Schedule[] = [];
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
   private goalList: Goal[] = [];
@@ -528,10 +530,19 @@ export class Store {
       subagent: { task, depth, parentConversationId },
     };
     this.conversations.set(id, conv);
+    this.saveConversation(id);
     // Bounded memory: keep the newest scratch threads for drill-in and drop the rest.
+    // 16 instead of 8 so continued/forked sub-agents survive longer in-process.
     const scratch = [...this.conversations.values()].filter((item) => item.subagent).sort((a, b) => a.createdAt - b.createdAt);
-    for (const stale of scratch.slice(0, Math.max(0, scratch.length - 8))) this.conversations.delete(stale.id);
+    for (const stale of scratch.slice(0, Math.max(0, scratch.length - 16))) this.conversations.delete(stale.id);
     return conv;
+  }
+
+  /** 子代理会话清单（用于 tool-jobs 与续聊入口），按最近更新排序；不含已删除。 */
+  listSubagents(parentConversationId?: string): Conversation[] {
+    return [...this.conversations.values()]
+      .filter((conv) => conv.subagent && !conv.deletedAt && (!parentConversationId || conv.subagent!.parentConversationId === parentConversationId))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   appendMessage(conversationId: string, message: Message): Conversation {
@@ -564,7 +575,8 @@ export class Store {
   saveConversation(id: string): void {
     const conv = this.conversations.get(id);
     if (!conv) return;
-    if (conv.subagent) return; // Sub-agent scratch threads stay in memory; disk and sync never see them.
+    // Sub-agent threads persist to disk so they can be continued after a restart,
+    // but sync/listConversations still exclude them (they are private scratch space).
     writeJsonAtomic(path.join(this.dir('conversations'), `${id}.json`), conv);
   }
 
@@ -593,7 +605,8 @@ export class Store {
 
   applySyncRecords(records: SyncRecord[]): void {
     const valid = (id: unknown) => typeof id === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(id);
-    let settingsChanged = false, memoriesChanged = false;
+    let settingsChanged = false;
+    const memoryScopes = new Set<string>();
     for (const record of [...records].sort((a,b) => (a.collection === 'messages' ? 1 : 0) - (b.collection === 'messages' ? 1 : 0))) {
       if (!valid(record.id)) continue;
       const value = syncValue(record.collection, record.value);
@@ -628,21 +641,65 @@ export class Store {
         conv.updatedAt = Math.max(conv.updatedAt, next.createdAt); this.saveConversation(conv.id);
       } else if (record.collection === 'memories') {
         if (value && (typeof value.text !== 'string' || !valid(value.botId))) continue;
+        const previous = this.memories.find(m => m.id === record.id);
         this.memories = this.memories.filter(m => m.id !== record.id);
-        if (value) this.memories.push({ ...value, id: record.id } as MemoryFact); memoriesChanged = true;
+        if (value) {
+          this.memories.push({ ...value, id: record.id, pinned: !!value.pinned, createdAt: Number.isFinite(value.createdAt) ? value.createdAt : Date.now() } as MemoryFact);
+          memoryScopes.add(value.botId);
+        } else if (previous) memoryScopes.add(previous.botId);
       } else if (record.collection === 'profile' && typeof value?.userName === 'string' && value.userName.trim()) {
         this.settings.userName = value.userName.slice(0,40); settingsChanged = true;
       }
       // Mobile displays schedule status; this device remains the execution owner.
     }
     if (settingsChanged) this.persistSettings();
-    if (memoriesChanged) writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+    for (const scopeId of memoryScopes) {
+      this.memoryLibrary.reconcileScope(scopeId, this.listMemories(scopeId), this.memoryScopeTitle(scopeId));
+    }
+  }
+
+  // 长期记忆以 Markdown 资料库落盘：每个 Bot / 群聊一个目录（MEMORY.md 索引 + 单条记忆文件），
+  // 互不混写；memories.json 只在旧版本数据迁移时读取一次。
+  private get memoryLibrary(): MemoryLibrary {
+    return (this.library ??= new MemoryLibrary(path.join(this.dataDir, 'memories')));
+  }
+
+  private memoryScopeTitle(scopeId: string): string {
+    const bot = this.getBot(scopeId);
+    if (bot) return `${bot.name} 的记忆`;
+    const conversation = this.conversations.get(scopeId);
+    if (conversation?.group) return `群聊「${conversation.title}」的记忆`;
+    return `${scopeId} 的记忆`;
   }
 
   private loadMemories(): void {
+    this.migrateMemoriesJson();
+    const memories: MemoryFact[] = [];
+    for (const scopeId of this.memoryLibrary.listScopes()) {
+      const { facts, adopted } = this.memoryLibrary.loadScope(scopeId);
+      // 手工放进目录的纯 Markdown 文件收编为正式记忆：补上元数据、删除原文件，再刷新索引。
+      for (const item of adopted) {
+        try { fs.unlinkSync(item.file); } catch { /* 被占用时下次启动再收编 */ }
+        this.memoryLibrary.writeEntry(item.fact);
+        facts.push(item.fact);
+      }
+      this.memoryLibrary.writeIndex(scopeId, facts, this.memoryScopeTitle(scopeId));
+      memories.push(...facts);
+    }
+    this.memories = memories;
+  }
+
+  /** 旧版单文件 memories.json 一次性迁入 Markdown 资料库；原文件改名留档，避免重复导入。 */
+  private migrateMemoriesJson(): void {
     const file = path.join(this.dataDir, 'memories.json');
     if (!fs.existsSync(file)) return;
-    this.memories = safeJsonParse<MemoryFact[]>(fs.readFileSync(file, 'utf8'), []);
+    const facts = safeJsonParse<MemoryFact[]>(fs.readFileSync(file, 'utf8'), [])
+      .filter((fact) => fact && typeof fact.id === 'string' && typeof fact.botId === 'string' && typeof fact.text === 'string');
+    for (const fact of facts) this.memoryLibrary.writeEntry(fact);
+    for (const scopeId of new Set(facts.map((fact) => fact.botId))) {
+      this.memoryLibrary.writeIndex(scopeId, facts.filter((fact) => fact.botId === scopeId), this.memoryScopeTitle(scopeId));
+    }
+    try { fs.renameSync(file, `${file}.migrated`); } catch { /* 数据已落盘；改名失败只会让下次启动重复导入相同内容 */ }
   }
 
   listMemories(botId?: string): MemoryFact[] {
@@ -656,19 +713,24 @@ export class Store {
     if (existing) {
       if (pinned && !existing.pinned) {
         existing.pinned = true;
-        writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+        this.memoryLibrary.writeEntry(existing);
+        this.memoryLibrary.writeIndex(botId, this.listMemories(botId), this.memoryScopeTitle(botId));
       }
       return existing;
     }
     const fact: MemoryFact = { id: newId('mem'), botId, text: normalized, pinned, source, createdAt: Date.now() };
     this.memories.push(fact);
-    writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+    this.memoryLibrary.writeEntry(fact);
+    this.memoryLibrary.writeIndex(botId, this.listMemories(botId), this.memoryScopeTitle(botId));
     return fact;
   }
 
   removeMemory(id: string): void {
-    this.memories = this.memories.filter((fact) => fact.id !== id);
-    writeJsonAtomic(path.join(this.dataDir, 'memories.json'), this.memories);
+    const fact = this.memories.find((item) => item.id === id);
+    this.memories = this.memories.filter((item) => item.id !== id);
+    if (!fact) return;
+    this.memoryLibrary.removeEntry(fact.botId, id);
+    this.memoryLibrary.writeIndex(fact.botId, this.listMemories(fact.botId), this.memoryScopeTitle(fact.botId));
   }
 
   // ----- cloud capability inventory (persisted so restarts show the last-known list instantly) -----

@@ -84,6 +84,8 @@ export interface MoyuBridge {
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
   compactConversation(id: string): Promise<ConversationContext>;
+  continueSubagent(id: string, message: string): Promise<{ ok: boolean; text: string; error?: string }>;
+  stopSubagent(id: string): Promise<boolean>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
   updateGroupChat(id: string, action: GroupChatAction): Promise<{ group: Conversation; settings: AppSettings }>;
   setGroupChatsCollapsed(workspaceId: string, collapsed: boolean): Promise<AppSettings>;

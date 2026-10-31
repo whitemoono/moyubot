@@ -235,6 +235,47 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       },
     },
   },
+  {
+    name: 'job_list',
+    description: '列出正在运行的任务（用户会话、群聊、子代理），含已用时和 id；配合 job_kill 使用。',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'job_kill',
+    description: '停止一个正在运行的任务。id 取 job_list 的 conversationId；只能停正在跑的。',
+    parameters: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '目标任务会话 id' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'subagent_list_agents',
+    description: '列出本对话派出的子代理线程（含已完成的）及其 id 与状态，用于续聊或单独停止。',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'subagent_control',
+    description: '控制一个子代理：action=send 向它追问并等它返回新结论；action=stop 单独中止正在跑的子代理。id 取 subagent_list_agents。',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '子代理会话 id' },
+        action: { type: 'string', enum: ['send', 'stop'], description: 'send 追问；stop 中止' },
+        message: { type: 'string', description: 'action=send 时的追问内容，要自足（子代理看不到本对话历史）' },
+      },
+      required: ['id', 'action'],
+    },
+  },
+  {
+    name: 'subagent_fork',
+    description: '开一个只读子代理，带着本对话最近的上下文继续深挖；适合顺着当前思路再查一层，不污染本对话。',
+    parameters: {
+      type: 'object',
+      properties: { prompt: { type: 'string', description: '交给分身的去完成的任务，目标与结论格式要写清' } },
+      required: ['prompt'],
+    },
+  },
 ];
 
 export interface ToolContext {
@@ -252,6 +293,12 @@ export interface ToolContext {
   installSkill?: (directory: string) => Promise<{ target: 'cloud' | 'local'; id?: string; name?: string }>;
   /** Runs read-only sub-agents in isolated conversations; implemented by AgentRuntime. */
   spawnAgents?: (callId: string, tasks: string[], background?: string) => Promise<{ task: string; ok: boolean; text: string; error?: string }[]>;
+  /** tool-jobs：运行中任务清单/停止；子代理清单、续聊、单独中止；fork 分身。由 AgentRuntime 注入。 */
+  listJobs?: () => { conversationId: string; kind: string; label: string; seconds: number }[];
+  killJob?: (conversationId: string) => boolean;
+  listAgents?: () => { conversationId: string; task: string; running: boolean; updatedAt: number }[];
+  controlAgent?: (conversationId: string, action: 'send' | 'stop', message?: string) => Promise<{ ok: boolean; text?: string; error?: string }>;
+  forkAgent?: (prompt: string) => Promise<{ ok: boolean; conversationId: string; text: string; error?: string }>;
   webSearch?: WebSearchSettings;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
@@ -282,7 +329,7 @@ export function toolNamesFor(bot: Bot): string[] {
 }
 
 /** 计划模式要收走的写能力：命令、写文件、桌面操作、绘图、记忆写入、定时任务、能力安装。 */
-const WRITE_TOOLS = new Set(['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'list_tasks', 'update_task', 'install_mcp', 'install_skill']);
+const WRITE_TOOLS = new Set(['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'list_tasks', 'update_task', 'install_mcp', 'install_skill', 'job_kill', 'subagent_control', 'subagent_fork']);
 
 const EXIT_PLAN_TOOL: ToolSchema = {
   name: 'exit_plan_mode',
@@ -518,6 +565,56 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           summary: `${results.length} 个子智能体已返回${failed ? `，${failed} 个未完成` : ''}`,
           detail: results.map((item, index) => `### 子任务 ${index + 1}：${summarize(item.task, 200)}\n${item.ok ? item.text : `失败：${item.error ?? item.text}`}`).join('\n\n'),
         });
+      }
+      case 'job_list': {
+        if (!ctx.listJobs) throw new Error('当前运行时不支持任务清单');
+        const jobs = ctx.listJobs();
+        if (!jobs.length) return finish({ ok: true, summary: '当前没有正在运行的任务' });
+        return finish({
+          ok: true,
+          summary: `${jobs.length} 个任务在运行`,
+          detail: jobs.map((job) => `- ${job.kind} · ${job.label} · ${job.seconds}s · id=${job.conversationId}`).join('\n'),
+        });
+      }
+      case 'job_kill': {
+        if (!ctx.killJob) throw new Error('当前运行时不支持停止任务');
+        const id = requireString(args, 'id');
+        const killed = ctx.killJob(id);
+        if (!killed) return finish({ ok: false, summary: `没有找到正在运行的任务：${id}`, detail: '先用 job_list 查看运行中的任务；已结束的不用停。' });
+        return finish({ ok: true, summary: `已请求停止任务 ${id}` });
+      }
+      case 'subagent_list_agents': {
+        if (!ctx.listAgents) throw new Error('当前运行时不支持子代理清单');
+        const agents = ctx.listAgents();
+        if (!agents.length) return finish({ ok: true, summary: '这个对话还没有派过子智能体' });
+        return finish({
+          ok: true,
+          summary: `${agents.length} 个子智能体线程`,
+          detail: agents.map((agent) => `- ${agent.running ? '运行中' : '已结束'} · ${summarize(agent.task, 80)} · id=${agent.conversationId}`).join('\n'),
+        });
+      }
+      case 'subagent_control': {
+        if (!ctx.controlAgent) throw new Error('当前运行时不支持子代理控制');
+        const id = requireString(args, 'id');
+        const action = String(args.action);
+        if (action !== 'send' && action !== 'stop') throw new Error('action 只能是 send 或 stop');
+        if (action === 'stop') {
+          const stopped = ctx.killJob?.(id) ?? false;
+          return finish(stopped ? { ok: true, summary: `已请求停止子智能体 ${id}` } : { ok: false, summary: `该子智能体没有在运行，无需停止：${id}` });
+        }
+        const message = requireString(args, 'message');
+        const result = await ctx.controlAgent(id, 'send', message);
+        return finish(result.ok
+          ? { ok: true, summary: `子智能体已回复：${summarize(result.text ?? '', 80)}`, detail: pruneOutput(result.text ?? '', 12000, 0.6) }
+          : { ok: false, summary: `续聊失败：${result.error ?? '子智能体没有产出结论'}`, detail: result.text ?? '' });
+      }
+      case 'subagent_fork': {
+        if (!ctx.forkAgent) throw new Error('当前运行时不支持子代理分身');
+        const prompt = requireString(args, 'prompt');
+        const result = await ctx.forkAgent(prompt);
+        return finish(result.ok
+          ? { ok: true, summary: `分身已完成（id=${result.conversationId}）：${summarize(result.text, 80)}`, detail: pruneOutput(result.text, 12000, 0.6) }
+          : { ok: false, summary: `分身失败：${result.error ?? '没有产出结论'}`, detail: result.text });
       }
       case 'desktop_action': {
         if (ctx.bot.workspaceId === 'workspace_local' || !ctx.cloud.desktopAction || !toolNamesFor(ctx.bot).includes(call.name)) throw new Error('此 Bot 未启用云电脑桌面操作');

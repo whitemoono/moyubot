@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { Message, ToolCall, ToolResult } from '@moyu/core';
 import { useMoyu } from '../state';
+import { Button } from './Glass';
 import { Icon, type IconName } from './Icon';
 
 const TOOLS: Record<string, { label: string; icon: IconName }> = {
@@ -16,13 +17,29 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   update_task: { label: '管理任务', icon: 'clock' },
   spawn_agent: { label: '子智能体', icon: 'users' },
   run_script: { label: '工作流', icon: 'grid' },
+  job_list: { label: '查看任务', icon: 'clock' },
+  job_kill: { label: '停止任务', icon: 'close' },
+  subagent_list_agents: { label: '子智能体清单', icon: 'users' },
+  subagent_control: { label: '子智能体续聊', icon: 'users' },
+  subagent_fork: { label: '子智能体分身', icon: 'users' },
+  todo_write: { label: '任务清单', icon: 'edit' },
+  ask_user: { label: '向用户提问', icon: 'chat' },
+  set_goal: { label: '设定目标', icon: 'pin' },
+  update_goal: { label: '更新目标', icon: 'pin' },
+  exit_plan_mode: { label: '提交计划', icon: 'shield' },
+  web_search: { label: '搜索网络', icon: 'globe' },
 };
 
 export function ReplyToolCard({ call, result, message }: { call: ToolCall; result?: ToolResult; message: Pick<Message, 'streaming' | 'stopped'> }) {
-  const { toast, subagents } = useMoyu();
   const bodyId = useId();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  // 子任务续聊：一次只展开一行；askReplies 按行号缓存追问结果（只活在当前卡片，不回灌模型）。
+  const [askFor, setAskFor] = useState<number | null>(null);
+  const [askText, setAskText] = useState('');
+  const [askBusy, setAskBusy] = useState(false);
+  const [askReplies, setAskReplies] = useState<Record<number, { ok: boolean; text: string }>>({});
+  const { toast, subagents, continueSubagent, stopSubagent } = useMoyu();
   const running = !result && !!message.streaming;
   const open = expanded;
   const tool = TOOLS[call.name] ?? { label: call.name, icon: 'plug' as const };
@@ -40,8 +57,8 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
   // 逐项进度：优先用事件推来的实时状态；刷新页面后事件没了，就从参数 + 结果退化还原。
   const progress = subagents[call.id];
   const rows = progress && Object.keys(progress.children).length
-    ? Object.entries(progress.children).map(([index, child]) => ({ index: Number(index), task: child.task, state: child.state })).sort((left, right) => left.index - right.index)
-    : subagentTasks.map((task, index) => ({ index, task, state: (result ? (result.ok ? 'done' : 'error') : running ? 'running' : 'error') as 'running' | 'done' | 'error' }));
+    ? Object.entries(progress.children).map(([index, child]) => ({ index: Number(index), task: child.task, state: child.state, conversationId: child.conversationId })).sort((left, right) => left.index - right.index)
+    : subagentTasks.map((task, index) => ({ index, task, state: (result ? (result.ok ? 'done' : 'error') : running ? 'running' : 'error') as 'running' | 'done' | 'error', conversationId: undefined as string | undefined }));
   const summary = rows.length
     ? `${rows.filter((row) => row.state === 'done').length}/${rows.length} 完成 · ${rows[0]!.task.slice(0, 36)}`
     : scriptLine
@@ -78,6 +95,19 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
           <span className="reply-tool__dot" data-state={row.state} aria-hidden="true" />
           <span className="reply-tool__child-task" title={row.task}>{row.task}</span>
           <span className="reply-tool__child-state">{row.state === 'running' ? '进行中' : row.state === 'done' ? '完成' : '失败'}</span>
+          {row.conversationId && row.state === 'running' ? <button type="button" className="reply-tool__child-action" onClick={() => void stopSubagent(row.conversationId!).then((stopped) => toast(stopped ? '已请求停止该子任务' : '该子任务已结束'))}>停止</button> : null}
+          {row.conversationId && row.state !== 'running' ? <button type="button" className="reply-tool__child-action" onClick={() => { setAskFor(askFor === row.index ? null : row.index); setAskText(''); }}>追问</button> : null}
+          {askReplies[row.index] ? <pre className="reply-tool__child-reply" aria-label="追问回复">{askReplies[row.index]!.ok ? askReplies[row.index]!.text : `失败：${askReplies[row.index]!.text}`}</pre> : null}
+          {askFor === row.index && row.conversationId ? <div className="reply-tool__ask">
+            <textarea className="question__input" rows={2} placeholder={`向这个子任务追问（它看不到主对话，问题要自足）…`} value={askText} onChange={(event) => setAskText(event.target.value)} />
+            <Button size="sm" variant="ghost" loading={askBusy} disabled={!askText.trim() || askBusy} onClick={() => {
+              setAskBusy(true);
+              void continueSubagent(row.conversationId!, askText.trim()).then((reply) => {
+                setAskReplies((previous) => ({ ...previous, [row.index]: { ok: reply.ok, text: reply.ok ? reply.text : reply.error ?? '没有产出结论' } }));
+                setAskFor(null);
+              }).finally(() => setAskBusy(false));
+            }}>发送</Button>
+          </div> : null}
         </div>)}
       </div> : null}
       {output ? <pre className="reply-tool__output" aria-label="执行结果">{output}</pre> : null}
