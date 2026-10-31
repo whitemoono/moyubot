@@ -164,21 +164,29 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: 'set_goal',
     description:
-      '把一件需要跨多轮才能做完的事记成本会话目标：要写清可验收的完成条件，不要写成待办清单；一个会话同时只有一个进行中的目标，新目标取代旧的。',
+      '把一件需要跨多轮才能做完的事记成本会话目标：写清可验收的完成条件；一个会话同时只有一个进行中的目标，新目标取代旧的。给了 successCriteria 时，标 complete 前必须逐条给证据。',
     parameters: {
       type: 'object',
-      properties: { objective: { type: 'string', description: '目标与完成条件，最多 2000 字' } },
+      properties: {
+        objective: { type: 'string', description: '目标，最多 2000 字' },
+        successCriteria: { type: 'array', items: { type: 'string' }, description: '可验收的完成条件（每条可判定真/假，最多 12 条）；留空则从当前任务清单的未完成项生成' },
+      },
       required: ['objective'],
     },
   },
   {
     name: 'update_goal',
-    description: '收尾当前目标：真的做到才标 complete；做不动就写清卡在哪、缺什么，标 blocked，不要拿没核实的进度糊弄。',
+    description: '收尾当前目标：真的做到才标 complete；做不动就写清卡在哪、缺什么，标 blocked。目标若有验收条件，complete 必须为每条附证据。',
     parameters: {
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['complete', 'blocked'] },
         note: { type: 'string', description: '一句话交代：完成了什么，或者卡在哪、缺什么' },
+        evidence: {
+          type: 'array',
+          items: { type: 'object', properties: { criterion: { type: 'string' }, proof: { type: 'string' } }, required: ['criterion', 'proof'] },
+          description: 'status=complete 时逐条附证据：criterion 对应哪条验收条件，proof 是文件/命令输出/URL 等实证',
+        },
       },
       required: ['status'],
     },
@@ -308,9 +316,9 @@ export interface ToolContext {
   requireApproval?: (summary: string) => Promise<boolean>;
   /** 计划获批后的落库回调。 */
   approvePlan?: (plan: { title: string; steps: string[] }) => void;
-  /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。 */
-  setGoal?: (objective: string) => { id: string; objective: string };
-  updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string }) => { status: string; note?: string };
+  /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。successCriteria 留空由运行时从待办生成。 */
+  setGoal?: (objective: string, successCriteria?: string[]) => { id: string; objective: string; criteria?: { text: string; done: boolean; evidence?: string }[] };
+  updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string; evidence?: { criterion: string; proof: string }[] }) => { status: string; note?: string };
   /** 会话内任务清单：整体替换。 */
   writeTodos?: (items: { content: string; done: boolean }[]) => void;
   /** 开放提问；resolve 为用户的文字回答，空串 = 用户跳过。 */
@@ -529,15 +537,27 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       case 'set_goal': {
         if (!ctx.setGoal) throw new Error('当前运行时不支持跨轮目标');
         const objective = requireString(args, 'objective');
-        const goal = ctx.setGoal(objective);
-        return finish({ ok: true, summary: `目标已记录：${summarize(goal.objective, 80)}`, detail: '下一轮对话我会带着这个目标继续。要做完了就调用 update_goal。' });
+        const successCriteria = Array.isArray(args.successCriteria) ? args.successCriteria.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.trim()) : undefined;
+        const goal = ctx.setGoal(objective, successCriteria);
+        const pending = (goal.criteria ?? []).filter((item) => !item.done).length;
+        return finish({
+          ok: true,
+          summary: `目标已记录：${summarize(goal.objective, 80)}${goal.criteria?.length ? ` · 验收 ${goal.criteria.length} 条` : ''}`,
+          detail: pending
+            ? `下一轮对话我会带着这个目标继续。每条验收条件要逐条给证据再 update_goal complete：\n${(goal.criteria ?? []).map((item) => `- ${item.text}`).join('\n')}`
+            : '下一轮对话我会带着这个目标继续。要做完了就调用 update_goal。',
+        });
       }
       case 'update_goal': {
         if (!ctx.updateGoal) throw new Error('当前运行时不支持跨轮目标');
         const status = String(args.status);
         if (status !== 'complete' && status !== 'blocked') throw new Error('status 只能是 complete 或 blocked');
-        const goal = ctx.updateGoal({ status, note: typeof args.note === 'string' ? args.note : undefined });
-        return finish({ ok: true, summary: status === 'complete' ? '目标已标记完成' : '目标已标记受阻', detail: goal.note ?? '' });
+        const evidence = Array.isArray(args.evidence)
+          ? args.evidence.filter((item): item is { criterion: string; proof: string } => !!item && typeof item === 'object' && typeof (item as any).criterion === 'string' && typeof (item as any).proof === 'string')
+          : undefined;
+        // 缺证据时 store 会抛错，被 runTool 顶层 catch 转成 ok:false —— 模型收到"还差哪几条"，不会误标完成。
+        const goal = ctx.updateGoal({ status, note: typeof args.note === 'string' ? args.note : undefined, evidence });
+        return finish({ ok: true, summary: status === 'complete' ? '目标已完成（验收条件已附证据）' : '目标已标记受阻', detail: goal.note ?? '' });
       }
       case 'exit_plan_mode': {
         if (ctx.conversationMode !== 'plan') throw new Error('当前不在计划模式，无需提交计划');

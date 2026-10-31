@@ -436,7 +436,8 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
         {goal ? <div className="chat-goal" role="status" title={`当前目标：${goal.objective}`}>
           <Icon name="spark" size={13} />
           <span className="chat-goal__text">{goal.objective}</span>
-          <button type="button" className="chat-goal__done" aria-label="标记目标完成" title="标记目标完成" onClick={() => void completeGoal()}><Icon name="check" size={13} /></button>
+          {goal.criteria?.length ? <span className="chat-goal__criteria" title="验收条件">✓ {goal.criteria.filter((item) => item.done).length}/{goal.criteria.length}</span> : null}
+          <button type="button" className="chat-goal__done" aria-label="标记目标完成" title={goal.criteria?.some((item) => !item.done) ? '还有验收条件未满足，点击将由你人工确认完成' : '标记目标完成'} onClick={() => void completeGoal()}><Icon name="check" size={13} /></button>
         </div> : null}
         <button type="button" className="chat-goal" title="压缩历史：把较早的对话并入摘要，保留完整记录在本地" onClick={() => void compactConversation()}>
           <Icon name="undo" size={13} />

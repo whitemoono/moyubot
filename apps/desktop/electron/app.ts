@@ -501,7 +501,7 @@ export class MoyuApp {
       return this.store.setConversationMode(id, mode);
     });
     handle('moyu:goal', (_event, conversationId: string) => this.store.activeGoal(conversationId));
-    handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch));
+    handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch, { requireEvidence: false }));
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });

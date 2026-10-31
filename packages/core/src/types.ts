@@ -321,6 +321,8 @@ export interface Goal {
   status: 'active' | 'complete' | 'blocked';
   /** 结束时的一句话交代：完成了什么，或者卡在哪。 */
   note?: string;
+  /** 可验收的完成条件：模型标 complete 前必须逐条给出证据（人类 UI 可越权直接完成）。 */
+  criteria?: { text: string; done: boolean; evidence?: string }[];
   createdAt: number;
   updatedAt: number;
 }

@@ -345,9 +345,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
       // Recomputed per step so a goal set mid-run is visible on the next step without a restart.
             const goalPrompt = () => {
         const goal = this.store.activeGoal(conversationId);
-        return goal
-          ? `\n\n当前目标（跨轮持续，用户下一轮回来时仍然有效）：${goal.objective}\n做到终点用 update_goal 标 complete；做不动就写清卡在哪、缺什么，标 blocked——不要在没核实的情况下声称完成。`
+        if (!goal) return '';
+        const criteriaBlock = goal.criteria?.length
+          ? `\n验收条件（update_goal complete 必须逐条附证据，缺证据不许完成）：\n${goal.criteria.map((item) => `${item.done ? '[x]' : '[ ]'} ${item.text}`).join('\n')}`
           : '';
+        return `\n\n当前目标（跨轮持续，用户下一轮回来时仍然有效）：${goal.objective}${criteriaBlock}\n做到终点用 update_goal 标 complete；做不动就写清卡在哪、缺什么，标 blocked——不要在没核实的情况下声称完成。`;
       };
       const todoPrompt = () => {
         const list = this.store.listTodos(conversationId);
@@ -538,7 +540,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               this.store.setConversationMode(conversationId, 'execute', { ...plan, approvedAt: Date.now() });
               this.emit({ type: 'log', level: 'info', text: '计划已批准，本轮后续步骤恢复写权限' });
             },
-            setGoal: (objective) => this.store.setGoal({ conversationId, botId: bot.id, objective }),
+            setGoal: (objective, successCriteria) => {
+              // todo 绑定：没显式给验收条件时，从当前待办的未完成项自动生成。
+              const criteria = successCriteria?.length ? successCriteria : (this.store.listTodos(conversationId)?.items.filter((item) => !item.done).map((item) => item.content) ?? []);
+              return this.store.setGoal({ conversationId, botId: bot.id, objective, successCriteria: criteria.length ? criteria : undefined });
+            },
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
             writeTodos: (items) => { this.store.writeTodos(conversationId, bot.id, items); },
             askUser: this.requestAnswer

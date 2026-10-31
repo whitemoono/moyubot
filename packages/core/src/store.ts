@@ -806,19 +806,23 @@ export class Store {
     return goal ? { ...goal } : undefined;
   }
 
-  setGoal(input: { conversationId: string; botId: string; objective: string }): Goal {
+  setGoal(input: { conversationId: string; botId: string; objective: string; successCriteria?: string[] }): Goal {
     const conversation = this.getConversation(input.conversationId);
     if (!conversation) throw new Error('会话不存在');
     if (conversation.subagent) throw new Error('子智能体的临时会话不能设定目标');
     const objective = input.objective.trim();
     if (!objective) throw new Error('目标不能为空');
     if (objective.length > 2000) throw new Error('目标描述最多 2000 字，请写清可验收的完成条件');
+    const criteria = (input.successCriteria ?? [])
+      .map((text) => text.trim()).filter((text) => text).slice(0, 12)
+      .map((text) => ({ text, done: false as const }));
     const goal: Goal = {
       id: newId('goal'),
       botId: input.botId,
       conversationId: input.conversationId,
       objective,
       status: 'active',
+      ...(criteria.length ? { criteria } : {}),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -832,13 +836,24 @@ export class Store {
     return { ...goal };
   }
 
-  updateGoal(conversationId: string, patch: { status?: Goal['status']; note?: string }): Goal {
+  updateGoal(conversationId: string, patch: { status?: Goal['status']; note?: string; evidence?: { criterion: string; proof: string }[] }, opts: { requireEvidence?: boolean } = {}): Goal {
     const index = this.goalList.findIndex((item) => item.conversationId === conversationId && item.status === 'active');
     if (index < 0) throw new Error('这个会话没有进行中的目标');
     if (patch.status && !['active', 'complete', 'blocked'].includes(patch.status)) throw new Error('目标状态无效');
     const current = this.goalList[index]!;
+    let criteria = current.criteria;
+    // 完成闸：目标若定义了验收条件，模型标 complete 前必须逐条给出证据；缺一条都不放行。
+    // 人类在 UI 上点「完成」走 requireEvidence:false 越权——人的判断高于自动审计。
+    if (patch.status === 'complete' && criteria?.length && opts.requireEvidence !== false) {
+      const norm = (value: string) => value.trim().toLocaleLowerCase();
+      const provided = new Map((patch.evidence ?? []).map((item) => [norm(item.criterion), item.proof?.trim() ?? '']));
+      const unmet = criteria.filter((item) => !item.done && !(provided.get(norm(item.text))?.length));
+      if (unmet.length) throw new Error(`还有 ${unmet.length} 条验收条件没有证据，逐条给证据再标 complete：\n${unmet.map((item) => `- ${item.text}`).join('\n')}`);
+      criteria = criteria.map((item) => item.done ? item : { ...item, done: true, evidence: provided.get(norm(item.text)) });
+    }
     const goal: Goal = {
       ...current,
+      ...(criteria ? { criteria } : {}),
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.note !== undefined ? { note: patch.note.trim().slice(0, 500) } : {}),
       updatedAt: Date.now(),

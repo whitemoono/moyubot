@@ -45,7 +45,10 @@ async function fixture(script) {
   const runtime = new AgentRuntime({ store, cloud, emit: () => {}, requestApproval: async () => true });
   const round = async (text) => {
     const sent = await runtime.send({ botId: bot.id, text });
-    await runtime['runCompletions'].get(sent.conversationId);
+    // runCompletions 在 runLoop 结束后才删，取到 undefined 会提前返回；轮询 isRunning 更可靠
+    // （runs 里删除发生在 goal/todo 落库之后）。
+    const deadline = Date.now() + 8000;
+    while (runtime.isRunning(sent.conversationId) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
     return sent;
   };
   return { provider, store, bot, conversation, cloud, runtime, round, cleanup: async () => { cloud.dispose(); await provider.close(); } };
@@ -114,4 +117,62 @@ test('goals are conversation-scoped and reject scratch sub-agent threads', async
     assert.throws(() => g.store.setGoal({ conversationId: scratch.id, botId: g.bot.id, objective: '不许' }), /子智能体/);
     assert.throws(() => g.store.updateGoal('conv_other', { status: 'complete' }), /没有进行中的目标/);
   } finally { await g.cleanup(); }
+});
+
+test('验收条件：模型标 complete 必须逐条给证据，缺证据不许完成', async () => {
+  const g = await fixture(() => say('x'));
+  try {
+    const goal = g.store.setGoal({ conversationId: g.conversation.id, botId: g.bot.id, objective: '上线前检查', successCriteria: ['跑通冒烟', '文档已更新'] });
+    assert.equal(goal.criteria.length, 2);
+    assert.equal(goal.criteria[0].done, false);
+    // 无证据 → 拒绝
+    assert.throws(() => g.store.updateGoal(g.conversation.id, { status: 'complete' }), /验收条件没有证据/);
+    // 部分证据 → 仍拒绝，并点名缺的那条
+    assert.throws(
+      () => g.store.updateGoal(g.conversation.id, { status: 'complete', evidence: [{ criterion: '跑通冒烟', proof: 'smoke 23:11 通过' }] }),
+      /文档已更新/,
+    );
+    // 全证据 → 放行，逐条落库
+    const done = g.store.updateGoal(g.conversation.id, {
+      status: 'complete',
+      evidence: [{ criterion: '跑通冒烟', proof: 'smoke 通过' }, { criterion: '文档已更新', proof: 'docs/x.md 已提交' }],
+    });
+    assert.equal(done.status, 'complete');
+    assert.ok(done.criteria.every((item) => item.done));
+    assert.match(done.criteria[1].evidence, /docs/);
+  } finally { await g.cleanup(); }
+});
+
+test('验收条件：人类 UI 完成可越权（requireEvidence:false），无条件的旧目标照旧直接完成', async () => {
+  const g = await fixture(() => say('x'));
+  try {
+    g.store.setGoal({ conversationId: g.conversation.id, botId: g.bot.id, objective: '有验收', successCriteria: ['A', 'B'] });
+    // 人点的完成：不带证据也能成
+    const human = g.store.updateGoal(g.conversation.id, { status: 'complete', note: '我核过了' }, { requireEvidence: false });
+    assert.equal(human.status, 'complete');
+
+    // 没定义验收条件的目标：模型无证据也能完成（向后兼容）
+    const g2 = await fixture(() => say('x'));
+    try {
+      g2.store.setGoal({ conversationId: g2.conversation.id, botId: g2.bot.id, objective: '简单目标' });
+      const legacy = g2.store.updateGoal(g2.conversation.id, { status: 'complete' });
+      assert.equal(legacy.status, 'complete');
+    } finally { await g2.cleanup(); }
+  } finally { await g.cleanup(); }
+});
+
+test('todo 绑定：不给 successCriteria 时，目标验收条件来自当前未完成待办', async () => {
+  const f = await fixture((body) => (toolResults(body).length ? say('好') : call('set_goal', { objective: '完成迁移' })));
+  try {
+    f.store.writeTodos(f.conversation.id, f.bot.id, [
+      { content: '迁移数据库', done: true },
+      { content: '切换域名', done: false },
+      { content: '回归测试', done: false },
+    ]);
+    await f.round('开始迁移');
+    const goal = f.store.activeGoal(f.conversation.id);
+    assert.ok(goal.criteria, '目标应带验收条件');
+    // 只取未完成项，已完成的不算验收点。
+    assert.deepEqual(goal.criteria.map((item) => item.text), ['切换域名', '回归测试']);
+  } finally { await f.cleanup(); }
 });
