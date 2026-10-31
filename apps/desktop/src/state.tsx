@@ -24,7 +24,7 @@ import type { BotActivity, ConversationActivities } from './lib/bot-activity';
 import { appendReplyProgress } from './lib/reply-flow';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
-export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'cloud' | 'usage' | 'feedback' | 'capabilities' | 'plugins';
+export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'memories' | 'cloud' | 'usage' | 'feedback' | 'capabilities' | 'plugins';
 
 export interface Toast {
   id: string;
@@ -115,6 +115,7 @@ interface MoyuContextValue {
   deleteSchedule: (id: string) => Promise<void>;
   refreshMemories: () => Promise<void>;
   addMemory: (text: string) => Promise<void>;
+  updateMemory: (id: string, patch: { text?: string; pinned?: boolean }) => Promise<void>;
   deleteMemory: (id: string) => Promise<void>;
   respondApproval: (approved: boolean) => Promise<void>;
   toast: (text: string, level?: Toast['level']) => void;
@@ -562,6 +563,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       if (conv && !cancelled && selectedBotRef.current === activeBotId) {
         setConversation(conv); setMemories(facts);
         void moyu().goalState(conv.id).then((state) => { if (!cancelled && selectedBotRef.current === activeBotId) { setGoal(state.active); setResumableGoal(state.resumable); } }).catch(() => {});
+        // 重启后从磁盘补上三段快照（实时事件已有则不覆盖）。
+        void moyu().contextUsage(conv.id).then((snap) => { if (snap && !cancelled && selectedBotRef.current === activeBotId) setContextUsage((prev) => (prev[conv.id] ? prev : { ...prev, [conv.id]: snap })); }).catch(() => {});
       }
     }).catch((error: Error) => { if (!cancelled) toast(error.message, 'error'); });
     return () => { cancelled = true; };
@@ -810,6 +813,13 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     },
     [activeBotId, refreshMemories],
   );
+  const updateMemory = useCallback(
+    async (id: string, patch: { text?: string; pinned?: boolean }) => {
+      await moyu().updateMemory(id, patch);
+      await refreshMemories();
+    },
+    [refreshMemories],
+  );
   const deleteMemory = useCallback(
     async (id: string) => {
       await moyu().deleteMemory(id);
@@ -924,6 +934,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     deleteSchedule,
     refreshMemories,
     addMemory,
+    updateMemory,
     deleteMemory,
     respondApproval,
     toast,

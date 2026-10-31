@@ -227,8 +227,9 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   // Report the same token accounting that actually goes to the model, so the UI can
   // show a live breakdown without duplicating the (tool-schema heavy) estimate.
   const reportUsage = (systemText: string, msgs: AgentMessage[]): void => {
-    emit({ type: 'context_usage', conversationId: conversation.id, systemTokens: estimateTokens(systemText),
-      toolTokens: overhead, historyTokens: historyTokens(msgs), windowTokens: window, reserveTokens: reserve });
+    const snapshot = { systemTokens: estimateTokens(systemText), toolTokens: overhead, historyTokens: historyTokens(msgs), windowTokens: window, reserveTokens: reserve };
+    store.recordContextUsage(conversation.id, snapshot);
+    emit({ type: 'context_usage', conversationId: conversation.id, ...snapshot });
   };
   // Only shrink historical allowance on retry; current instructions and input cannot be discarded.
   const budget = Math.min(baseBudget, fixedInput + Math.floor(Math.max(0, baseBudget - fixedInput) * Math.pow(.6, args.recovery ?? 0)));
@@ -410,6 +411,9 @@ export interface ForceCompactArgs {
   provider: ChatProvider;
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
+  /** 传入时，压缩完成后立即刷新三段快照（界面点「压缩历史」后马上变小，不必等下一轮）。 */
+  system?: string;
+  tools?: ToolSchema[];
 }
 
 /**
@@ -465,5 +469,13 @@ export async function forceCompact(args: ForceCompactArgs): Promise<Conversation
   try { store.saveConversation(conversation.id); }
   catch (error) { conversation.context = previous; throw error; }
   emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'done', context: next });
+  // 手动压缩后即时刷新三段快照：摘要并入 system、被折叠的历史从 history 消失 → 界面立刻变小。
+  if (args.system && args.tools) {
+    const toolOverhead = estimateTokens(JSON.stringify(args.tools));
+    const win = contextWindow(store, bot);
+    const historyRemaining = messagesFor(messages.slice(lastUserIndex < 0 ? messages.length : lastUserIndex), conversation.group ? bot.id : undefined);
+    store.recordContextUsage(conversation.id, { systemTokens: estimateTokens(summarySystem(args.system, next.summary)), toolTokens: toolOverhead, historyTokens: historyTokens(historyRemaining), windowTokens: win, reserveTokens: Math.min(4096, Math.floor(win * .2)) });
+    emit({ type: 'context_usage', conversationId: conversation.id, systemTokens: estimateTokens(summarySystem(args.system, next.summary)), toolTokens: toolOverhead, historyTokens: historyTokens(historyRemaining), windowTokens: win, reserveTokens: Math.min(4096, Math.floor(win * .2)) });
+  }
   return next;
 }

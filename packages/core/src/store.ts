@@ -11,6 +11,7 @@ import type {
   Conversation,
   Goal,
   MemoryFact,
+  MemoryScopeSummary,
   TodoList,
   Message,
   Schedule,
@@ -180,6 +181,8 @@ export class Store {
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
   private goalList: Goal[] = [];
   private todoLists: TodoList[] = [];
+  /** 三段上下文快照，按会话 id 存于 context-usage.json（界面重启后仍能显示上次值；压缩后自动变小）。 */
+  private contextUsage: Record<string, import('./types').ContextUsageSnapshot> = {};
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
   constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string }) {
@@ -244,6 +247,7 @@ export class Store {
     this.loadSchedules();
     this.loadGoals();
     this.loadTodos();
+    this.loadContextUsage();
   }
 
   private dir(name: string): string {
@@ -719,10 +723,14 @@ export class Store {
     return this.memories.filter((fact) => !botId || fact.botId === botId);
   }
 
+  /** 记忆查重的归一化键：全角半角、大小写、句末标点不影响判重。 */
+  private memoryDedupKey(value: string): string {
+    return value.normalize('NFKC').toLocaleLowerCase().replace(/[\s。.!！]+/gu, '');
+  }
+
   addMemory(botId: string, text: string, pinned = false, source: MemoryFact['source'] = 'manual'): MemoryFact {
     const normalized = text.trim();
-    const key = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s。.!！]+/gu, '');
-    const existing = this.memories.find((fact) => fact.botId === botId && key(fact.text) === key(normalized));
+    const existing = this.memories.find((fact) => fact.botId === botId && this.memoryDedupKey(fact.text) === this.memoryDedupKey(normalized));
     if (existing) {
       if (pinned && !existing.pinned) {
         existing.pinned = true;
@@ -736,6 +744,55 @@ export class Store {
     this.memoryLibrary.writeEntry(fact);
     this.memoryLibrary.writeIndex(botId, this.listMemories(botId), this.memoryScopeTitle(botId));
     return fact;
+  }
+
+  /** 手动编辑正文或固定 / 取消固定。正文改动会换算新的文件名并同步索引。 */
+  updateMemory(id: string, patch: { text?: string; pinned?: boolean }): MemoryFact {
+    const fact = this.memories.find((item) => item.id === id);
+    if (!fact) throw new Error('这条记忆不存在或已被删除');
+    const next: MemoryFact = { ...fact };
+    if (patch.pinned !== undefined) next.pinned = !!patch.pinned;
+    if (patch.text !== undefined) {
+      const normalized = patch.text.trim();
+      if (!normalized) throw new Error('记忆内容不能为空');
+      const duplicate = this.memories.find((item) => item.id !== id && item.botId === fact.botId && this.memoryDedupKey(item.text) === this.memoryDedupKey(normalized));
+      if (duplicate) throw new Error('这个范围里已有一条相同内容的记忆');
+      next.text = normalized;
+    }
+    if (next.text === fact.text && next.pinned === fact.pinned) return fact;
+    this.memories[this.memories.indexOf(fact)] = next;
+    this.memoryLibrary.writeEntry(next);
+    this.memoryLibrary.writeIndex(next.botId, this.listMemories(next.botId), this.memoryScopeTitle(next.botId));
+    return next;
+  }
+
+  /** 设置页记忆总览：每个 Bot（含没有记忆的）与有记忆的群聊一行统计。 */
+  memoryScopeSummaries(): MemoryScopeSummary[] {
+    const stats = new Map<string, { total: number; pinned: number; latestAt: number }>();
+    for (const fact of this.memories) {
+      const entry = stats.get(fact.botId) ?? { total: 0, pinned: 0, latestAt: 0 };
+      entry.total += 1;
+      if (fact.pinned) entry.pinned += 1;
+      entry.latestAt = Math.max(entry.latestAt, fact.createdAt);
+      stats.set(fact.botId, entry);
+    }
+    const summaries: MemoryScopeSummary[] = this.settings.bots.map((bot) => ({
+      scopeId: bot.id, title: bot.name, kind: 'bot' as const, ...(stats.get(bot.id) ?? { total: 0, pinned: 0, latestAt: 0 }),
+    }));
+    for (const conversation of this.conversations.values()) {
+      const entry = conversation.group && stats.get(conversation.id);
+      if (!entry || conversation.mergedInto) continue;
+      summaries.push({ scopeId: conversation.id, title: conversation.title, kind: 'group', ...entry });
+    }
+    for (const [scopeId, entry] of stats) {
+      if (!summaries.some((item) => item.scopeId === scopeId)) summaries.push({ scopeId, title: scopeId, kind: 'bot', ...entry });
+    }
+    return summaries.sort((a, b) => b.latestAt - a.latestAt || a.title.localeCompare(b.title, 'zh-CN'));
+  }
+
+  /** 记忆资料库目录（可带范围），供界面用系统文件管理器打开。 */
+  memoryLibraryPath(scopeId?: string): string {
+    return scopeId ? this.memoryLibrary.scopeDir(scopeId) : this.memoryLibrary.rootDir;
   }
 
   removeMemory(id: string): void {
@@ -755,6 +812,32 @@ export class Store {
 
   writeCloudInventory(inventory: NonNullable<ReturnType<Store['readCloudInventory']>>): void {
     writeJsonAtomic(path.join(this.dataDir, 'cloud-inventory.json'), inventory);
+  }
+
+  // ----- context usage (three-segment snapshot persisted per conversation) -----
+  private loadContextUsage(): void {
+    const file = path.join(this.dataDir, 'context-usage.json');
+    if (!fs.existsSync(file)) return;
+    this.contextUsage = safeJsonParse<Record<string, import('./types').ContextUsageSnapshot>>(fs.readFileSync(file, 'utf8'), {});
+  }
+
+  getContextUsage(conversationId: string): import('./types').ContextUsageSnapshot | undefined {
+    return this.contextUsage[conversationId];
+  }
+
+  /** prepareContext 每步调用；值没实质变化就不写盘，压缩后历史段变小会自动覆盖。 */
+  recordContextUsage(conversationId: string, usage: Omit<import('./types').ContextUsageSnapshot, 'updatedAt'>): void {
+    const previous = this.contextUsage[conversationId];
+    const stable = previous
+      && previous.systemTokens === usage.systemTokens
+      && previous.toolTokens === usage.toolTokens
+      && previous.historyTokens === usage.historyTokens
+      && previous.windowTokens === usage.windowTokens
+      && previous.reserveTokens === usage.reserveTokens;
+    if (stable) return;
+    this.contextUsage = { ...this.contextUsage, [conversationId]: { ...usage, updatedAt: Date.now() } };
+    // 用量快照只是界面展示缓存；写盘失败（并发下 Windows EPERM 等）绝不能拖垮整轮对话。
+    try { writeJsonAtomic(path.join(this.dataDir, 'context-usage.json'), this.contextUsage); } catch { /* best-effort cache */ }
   }
 
   // ----- todos -----

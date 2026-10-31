@@ -296,6 +296,16 @@ export interface Conversation {
   plan?: { title: string; steps: string[]; approvedAt: number };
 }
 
+/** 一次模型调用前的上下文三段拆分 + 窗口/预留，落盘以便重启后界面仍显示上次值。 */
+export interface ContextUsageSnapshot {
+  systemTokens: number;
+  toolTokens: number;
+  historyTokens: number;
+  windowTokens: number;
+  reserveTokens: number;
+  updatedAt: number;
+}
+
 export interface ConversationContext {
   summary: string;
   throughMessageId: string;
@@ -312,6 +322,16 @@ export interface MemoryFact {
   createdAt: number;
   lastUsedAt?: number;
   source?: 'manual' | 'automatic';
+}
+
+/** 设置页「长期记忆」用的范围概览：一个 Bot 或一个群聊的统计。 */
+export interface MemoryScopeSummary {
+  scopeId: string;
+  title: string;
+  kind: 'bot' | 'group';
+  total: number;
+  pinned: number;
+  latestAt: number;
 }
 
 /**

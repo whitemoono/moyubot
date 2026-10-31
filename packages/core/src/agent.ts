@@ -934,7 +934,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const bot = this.store.getBot(conversation.botId);
     if (!bot) throw new Error('Bot 不存在');
     const { provider } = this.providerFor(bot);
-    return forceCompact({ store: this.store, bot, conversation, provider, signal: new AbortController().signal, emit: (event) => this.emit(event) });
+    const memoryScope = conversation.group ? conversationId : bot.id;
+    return forceCompact({ store: this.store, bot, conversation, provider, signal: new AbortController().signal, emit: (event) => this.emit(event), system: this.buildSystemPrompt(bot, memoryScope), tools: schemasFor(bot, conversation.mode === 'plan' ? 'plan' : 'execute') });
   }
 
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {

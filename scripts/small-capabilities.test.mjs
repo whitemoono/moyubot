@@ -183,10 +183,16 @@ test('command-compact：forceCompact 把历史并入摘要并持久化，历史�
       f.store.appendMessage(f.conversation.id, { id: `user-${n}`, role: 'user', content: '这是一个比较长的讨论点，用来凑够历史长度，保证压缩判定能通过。'.repeat(10), createdAt: n * 100 });
       f.store.appendMessage(f.conversation.id, { id: `assistant-${n}`, role: 'assistant', content: '对应的回答内容，同样反复出现以增加体积。'.repeat(10), createdAt: n * 100 + 1 });
     }
-    const context = await forceCompact({ store: f.store, bot: f.bot, conversation: f.conversation, provider: compactProvider, signal: new AbortController().signal, emit: () => {} });
+    // 先塞一个"压缩前"的大快照，验证压缩会把它改小并落盘
+    f.store.recordContextUsage(f.conversation.id, { systemTokens: 120, toolTokens: 300, historyTokens: 6000, windowTokens: 8000, reserveTokens: 1000 });
+    const context = await forceCompact({ store: f.store, bot: f.bot, conversation: f.conversation, provider: compactProvider, signal: new AbortController().signal, emit: () => {}, system: '你是助手', tools: [] });
     assert.match(context.summary, /项目在推进/);
     assert.ok(context.throughMessageId);
     assert.ok(context.compactedMessages > 0, '要记录压掉了多少条');
+    const shrunk = f.store.getContextUsage(f.conversation.id);
+    assert.ok(shrunk.historyTokens < 6000, `压缩后历史段应变小，实际 ${shrunk.historyTokens}`);
+    const persistedUsage = new Store(f.store.dataDir).getContextUsage(f.conversation.id);
+    assert.equal(persistedUsage.historyTokens, shrunk.historyTokens, '三段快照要落盘，重启后读得到');
     const reopened = new Store(f.store.dataDir).getConversation(f.conversation.id);
     assert.equal(reopened.context.summary, context.summary, '摘要要落盘，重启后还在');
     assert.ok(f.store.listMemories(f.bot.id).some((memory) => memory.text.includes('中文')), '压缩提炼的记忆要进长期记忆');

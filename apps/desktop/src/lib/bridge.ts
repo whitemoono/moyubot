@@ -19,7 +19,9 @@ import type {
   Goal,
   AskRequest,
   ConversationContext,
+  ContextUsageSnapshot,
   MemoryFact,
+  MemoryScopeSummary,
   ProviderTestResult,
   ProviderConfig,
   Schedule,
@@ -87,6 +89,7 @@ export interface MoyuBridge {
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
   compactConversation(id: string): Promise<ConversationContext>;
+  contextUsage(conversationId: string): Promise<ContextUsageSnapshot | undefined>;
   continueSubagent(id: string, message: string): Promise<{ ok: boolean; text: string; error?: string }>;
   stopSubagent(id: string): Promise<boolean>;
   createGroup(title: string, memberBotIds: string[]): Promise<Conversation>;
@@ -112,7 +115,10 @@ export interface MoyuBridge {
   toggleSchedule(id: string): Promise<Schedule[]>;
   memories(botId?: string): Promise<MemoryFact[]>;
   addMemory(botId: string, text: string): Promise<MemoryFact>;
+  updateMemory(id: string, patch: { text?: string; pinned?: boolean }): Promise<MemoryFact>;
   deleteMemory(id: string): Promise<void>;
+  memoryScopes(): Promise<MemoryScopeSummary[]>;
+  openMemoryFolder(scopeId?: string): Promise<void>;
   openArtifact(relPath: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   win(action: 'minimize' | 'maximize' | 'close'): Promise<void>;

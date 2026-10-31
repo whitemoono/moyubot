@@ -18,6 +18,7 @@ import type {
   Conversation,
   ExecResult,
   MemoryFact,
+  MemoryScopeSummary,
   ProviderTestResult,
   ProviderConfig,
   Schedule,
@@ -29,6 +30,7 @@ import type {
   Goal,
   AskRequest,
   ConversationContext,
+  ContextUsageSnapshot,
 } from '@moyu/core';
 import type { ConversationSummary } from '@moyu/core';
 
@@ -80,6 +82,7 @@ const api = {
   updateGoal: (conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => invoke<Goal>('moyu:goal:update', conversationId, patch),
   answerQuestion: (decision: { requestId: string; answer: string }) => invoke<void>('moyu:answer', decision),
   compactConversation: (id: string) => invoke<ConversationContext>('moyu:conversation:compact', id),
+  contextUsage: (conversationId: string) => invoke<ContextUsageSnapshot | undefined>('moyu:context:usage', conversationId),
   continueSubagent: (id: string, message: string) => invoke<{ ok: boolean; text: string; error?: string }>('moyu:subagent:continue', id, message),
   stopSubagent: (id: string) => invoke<boolean>('moyu:subagent:stop', id),
   createGroup: (title: string, memberBotIds: string[]) => invoke<Conversation>('moyu:group:create', title, memberBotIds),
@@ -109,7 +112,10 @@ const api = {
 
   memories: (botId?: string) => invoke<MemoryFact[]>('moyu:memories', botId),
   addMemory: (botId: string, text: string) => invoke<MemoryFact>('moyu:memory:add', { botId, text }),
+  updateMemory: (id: string, patch: { text?: string; pinned?: boolean }) => invoke<MemoryFact>('moyu:memory:update', id, patch),
   deleteMemory: (id: string) => invoke<void>('moyu:memory:delete', id),
+  memoryScopes: () => invoke<MemoryScopeSummary[]>('moyu:memory:scopes'),
+  openMemoryFolder: (scopeId?: string) => invoke<void>('moyu:memory:open-folder', scopeId),
 
   openArtifact: (relPath: string) => invoke<void>('moyu:artifact:open', relPath),
   openExternal: (url: string) => invoke<void>('moyu:open-external', url),

@@ -21,6 +21,7 @@ import type {
   Conversation,
   ExecResult,
   MemoryFact,
+  MemoryScopeSummary,
   ProviderTestResult,
   Schedule,
   SecretBox,
@@ -491,6 +492,7 @@ export class MoyuApp {
       this.send('moyu:event', { type: 'question_done', requestId: decision.requestId, answer, cancelled: !answer.trim() } satisfies AgentEvent);
     });
     handle('moyu:conversation:compact', (_event, id: string): Promise<ConversationContext> => this.runtime.compactConversation(id));
+    handle('moyu:context:usage', (_event, conversationId: string) => this.store.getContextUsage(conversationId));
 
     handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
     handle('moyu:conversations', (_event, botId?: string) => this.store.listConversations(botId));
@@ -565,7 +567,19 @@ export class MoyuApp {
     handle('moyu:memory:add', (_event, input: { botId: string; text: string }): MemoryFact =>
       this.store.addMemory(input.botId, input.text.trim()),
     );
+    handle('moyu:memory:update', (_event, id: string, patch: { text?: string; pinned?: boolean }): MemoryFact => {
+      const next: { text?: string; pinned?: boolean } = {};
+      if (typeof patch?.text === 'string') next.text = patch.text;
+      if (typeof patch?.pinned === 'boolean') next.pinned = patch.pinned;
+      return this.store.updateMemory(id, next);
+    });
     handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
+    handle('moyu:memory:scopes', (): MemoryScopeSummary[] => this.store.memoryScopeSummaries());
+    handle('moyu:memory:open-folder', async (_event, scopeId?: string) => {
+      const folder = this.store.memoryLibraryPath(typeof scopeId === 'string' && scopeId ? scopeId : undefined);
+      fs.mkdirSync(folder, { recursive: true });
+      await shell.openPath(folder);
+    });
 
     handle('moyu:artifact:open', async (_event, relPath: string) => {
       const file = this.resolveWorkspaceArtifact(relPath);

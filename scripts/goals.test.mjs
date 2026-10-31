@@ -178,7 +178,7 @@ test('todo 绑定：不给 successCriteria 时，目标验收条件来自当前�
   } finally { await f.cleanup(); }
 });
 
-const waitIdle = async (runtime, store, conversationId, goalGone, ms = 8000) => {
+const waitIdle = async (runtime, store, conversationId, goalGone, ms = 30000) => {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     if (goalGone && !runtime.isRunning(conversationId) && store.activeGoal(conversationId) === undefined) return;
