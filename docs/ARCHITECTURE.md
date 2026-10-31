@@ -22,7 +22,7 @@ packages/core/src/index.ts        对外 barrel
 | 组件 | 职责 |
 | --- | --- |
 | `SafeSecretBox` | 用 Electron `safeStorage` 加解密，密钥存 `secrets.bin.json` |
-| `Store` | `settings.json`、`conversations/*.json`、`memories.json`、`schedules.json` |
+| `Store` | `settings.json`、`conversations/*.json`、`memories/`（按 Bot / 群聊分目录的 Markdown 记忆库）、`schedules.json` |
 | `CloudHost` | 懒加载 driver，持有云主机状态机与空闲计时器 |
 | `AgentRuntime` | 一次会话内的工具循环，事件以 `moyu:event` 推给渲染层 |
 | `ScheduleRunner` | 30s tick，到点调 `AgentRuntime.runUnattended` |
@@ -55,7 +55,7 @@ artifact:open · open-external · win
    - 调供应商流式接口，`onDelta` 逐字推 `assistant` 增量（含 `reasoning` 增量）。
    - 若返回 `tool_calls`：把 `assistant(tool_calls)` 与 `tool` 结果按规范化 `AgentMessage` 顺序压入历史，执行工具，继续下一轮。
    - 若没有工具调用：本轮结束，落盘。
-3. 工具执行前过审批闸门：`bot.approvalPolicy === 'ask'`（界面上的「每次确认」）时通过 `ApprovalRequest` 阻塞等待 `moyu:approve`；`'never'`（自动执行）与 `'always'`（全部允许）都直接放行。被拒绝的结果以「用户拒绝」文本回灌给模型，而不是抛错中断整轮对话。
+3. 工具执行前过审批闸门：`bot.approvalPolicy === 'ask'`（界面上的「每次确认」）时通过 `ApprovalRequest` 阻塞等待 `moyu:approve`；`'never'`（自动执行）直接放行（历史上还有个行为等同 never 的 `'always'` 档，已在加载时归一为 never）。被拒绝的结果以「用户拒绝」文本回灌给模型，而不是抛错中断整轮对话。
 4. 全程 `try/finally` 保证 `stop()` 之后状态复位，且 `CloudHost.endTask()` 一定会被调用（否则会漏掉空闲挂起）。
 
 `runUnattended()` 复用同一循环，但跳过审批（定时任务与 Telegram 场景），失败只记日志不弹窗。

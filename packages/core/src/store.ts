@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   AppSettings,
+  ApprovalPolicy,
   BotMetadataPatch,
   BotGroupAction,
   GroupChatAction,
@@ -220,6 +221,8 @@ export class Store {
         image: { aspect: bot.image?.aspect ?? base.bots[0]!.image.aspect },
         avatar: { ...base.bots[0]!.avatar, ...bot.avatar },
         workspaceId: bot.workspaceId || 'workspace_cloud',
+        // 旧的「全部允许」和「自动执行」行为完全一样，合并为 never（存量数据归一）。
+        approvalPolicy: (bot.approvalPolicy === 'ask' ? 'ask' : 'never') as ApprovalPolicy,
       }));
     } else {
       this.settings = defaultSettings(dataDir, options?.localDirectory);
@@ -624,7 +627,7 @@ export class Store {
         const previous = this.getBot(record.id);
         if (!value) { this.settings.bots = this.settings.bots.filter(b => b.id !== record.id); settingsChanged = true; continue; }
         if (typeof value.name !== 'string' || typeof value.model !== 'string') continue;
-        const base = previous || { ...defaultSettings(this.dataDir).bots[0]!, id: record.id, tools: [], approvalPolicy: 'always' as const, wakeOnTask: false };
+        const base = previous || { ...defaultSettings(this.dataDir).bots[0]!, id: record.id, tools: [], approvalPolicy: 'never' as const, wakeOnTask: false };
         const workspaceId = this.settings.workspaces.some(w => w.id === value.workspaceId) ? value.workspaceId : 'workspace_cloud';
         const next = { ...base, ...value, id: record.id, workspaceId, avatar: { ...base.avatar, ...value.avatar } } as AppSettings['bots'][number];
         this.settings.bots = [...this.settings.bots.filter(b => b.id !== record.id), next]; settingsChanged = true;

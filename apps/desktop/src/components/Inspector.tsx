@@ -90,7 +90,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
           <section className="inspector-section"><h3>关于这个 Bot</h3><dl className="inspector-facts">
             <div><dt>供应商</dt><dd>{provider?.name ?? '未绑定'}</dd></div>
             <div><dt>模型</dt><dd>{bot?.model || '未选择'}</dd></div>
-            <div><dt>权限</dt><dd>{bot?.approvalPolicy === 'ask' ? '执行前确认' : bot?.approvalPolicy === 'always' ? '全部允许' : '自动执行'}</dd></div>
+            <div><dt>权限</dt><dd>{bot?.approvalPolicy === 'ask' ? '每次确认' : '自动执行'}</dd></div>
             <div><dt>工具</dt><dd>{bot?.tools.length ?? 0} 个已启用</dd></div>
           </dl></section></>}
           <section className="inspector-section context-card"><h3>持续对话</h3>

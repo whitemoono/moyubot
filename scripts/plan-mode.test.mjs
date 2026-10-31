@@ -56,7 +56,7 @@ async function fixture(script, options = {}) {
 
 test('plan mode strips write tools and offers exactly one way out', () => {
   const writeTools = ['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'install_mcp', 'install_skill'];
-  const bot = { id: 'b', name: 'B', handle: 'b', avatar: {}, providerId: 'p', model: 'm', temperature: 0, systemPrompt: '', approvalPolicy: 'always', tools: ['cloud_exec', 'cloud_read', 'remember', 'spawn_agent'], image: { aspect: 'square' }, wakeOnTask: false, createdAt: 0, updatedAt: 0, workspaceId: 'workspace_cloud' };
+  const bot = { id: 'b', name: 'B', handle: 'b', avatar: {}, providerId: 'p', model: 'm', temperature: 0, systemPrompt: '', approvalPolicy: 'never', tools: ['cloud_exec', 'cloud_read', 'remember', 'spawn_agent'], image: { aspect: 'square' }, wakeOnTask: false, createdAt: 0, updatedAt: 0, workspaceId: 'workspace_cloud' };
   const plan = names({ tools: schemasFor(bot, 'plan') });
   assert.ok(plan.includes('exit_plan_mode'), '计划模式必须给出提交计划的出口');
   assert.ok(plan.includes('cloud_read'), '只读工具要保留，否则没法核实事实');

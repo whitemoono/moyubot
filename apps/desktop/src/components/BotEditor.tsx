@@ -178,7 +178,6 @@ export function BotEditor({
               options={[
                 { value: 'never', label: '自动执行' },
                 { value: 'ask', label: '每次确认' },
-                { value: 'always', label: '全部允许' },
               ]}
             />
           </Field>

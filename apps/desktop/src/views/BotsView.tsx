@@ -47,7 +47,7 @@ export function BotsView({ onCreate, embedded = false }: { onCreate: () => void;
               </div>
               <div>
                 <dt>权限</dt>
-                <dd>{item.approvalPolicy === 'ask' ? '执行前确认' : item.approvalPolicy === 'always' ? '全部允许' : '自动执行'}</dd>
+                <dd>{item.approvalPolicy === 'ask' ? '每次确认' : '自动执行'}</dd>
               </div>
               <div>
                 <dt>绘图</dt>

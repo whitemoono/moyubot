@@ -64,7 +64,8 @@ export interface BotAvatar {
   glyph: string;
 }
 
-export type ApprovalPolicy = 'ask' | 'always' | 'never';
+/** 'ask'=写类工具执行前弹审批；'never'=全部直接执行。（历史上的 'always' 与 'never' 行为相同，加载时已归一。） */
+export type ApprovalPolicy = 'ask' | 'never';
 
 export interface ImageConfig {
   /** Images are generated through the Bot's provider image API. */
