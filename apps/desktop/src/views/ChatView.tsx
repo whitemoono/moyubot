@@ -393,7 +393,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, completeGoal, compactConversation, toast } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, compactConversation, toast } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -436,8 +436,16 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
         {goal ? <div className="chat-goal" role="status" title={`当前目标：${goal.objective}`}>
           <Icon name="spark" size={13} />
           <span className="chat-goal__text">{goal.objective}</span>
+          {goal.autonomy === 'until_done' ? <span className="chat-goal__criteria" title="续航轮数">⟳ {goal.roundsUsed ?? 0}/{goal.maxRounds ?? 8}</span> : null}
           {goal.criteria?.length ? <span className="chat-goal__criteria" title="验收条件">✓ {goal.criteria.filter((item) => item.done).length}/{goal.criteria.length}</span> : null}
           <button type="button" className="chat-goal__done" aria-label="标记目标完成" title={goal.criteria?.some((item) => !item.done) ? '还有验收条件未满足，点击将由你人工确认完成' : '标记目标完成'} onClick={() => void completeGoal()}><Icon name="check" size={13} /></button>
+        </div> : null}
+        {resumableGoal ? <div className="chat-goal chat-goal--resume" role="status" title={resumableGoal.note}>
+          <Icon name="clock" size={13} />
+          <span className="chat-goal__text">续航暂停：{resumableGoal.objective}</span>
+          <button type="button" className="chat-goal__done" aria-label="续跑" title="再续 5 轮并继续推进" onClick={async () => {
+            if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined);
+          }}><Icon name="send" size={13} /><span>续跑</span></button>
         </div> : null}
         <button type="button" className="chat-goal" title="压缩历史：把较早的对话并入摘要，保留完整记录在本地" onClick={() => void compactConversation()}>
           <Icon name="undo" size={13} />

@@ -18,6 +18,7 @@ function fakeProvider(script) {
     const body = JSON.parse(raw);
     requests.push(body);
     const delta = script(body, requests.length);
+    if (delta && delta.__error) { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { message: '模型不可用' } })); return; }
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }] })}\n\n`);
     res.end('data: [DONE]\n\n');
@@ -174,5 +175,79 @@ test('todo 绑定：不给 successCriteria 时，目标验收条件来自当前�
     assert.ok(goal.criteria, '目标应带验收条件');
     // 只取未完成项，已完成的不算验收点。
     assert.deepEqual(goal.criteria.map((item) => item.text), ['切换域名', '回归测试']);
+  } finally { await f.cleanup(); }
+});
+
+const waitIdle = async (runtime, store, conversationId, goalGone, ms = 8000) => {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (goalGone && !runtime.isRunning(conversationId) && store.activeGoal(conversationId) === undefined) return;
+    if (!goalGone) { const g = store.activeGoal(conversationId); if (!g || g.status !== 'active') return; }
+    await new Promise((r) => setTimeout(r, 15));
+  }
+};
+
+test('L2 续航：不完成的 until_done 目标跑满 maxRounds 后自动标 blocked（轮数上限）', async () => {
+  const f = await fixture(() => say('继续推进中'));
+  try {
+    f.store.setGoal({ conversationId: f.conversation.id, botId: f.bot.id, objective: '一直做不完的事', autonomy: 'until_done', maxRounds: 3 });
+    await f.round('开工');
+    await waitIdle(f.runtime, f.store, f.conversation.id, false);
+    const goals = f.store.listGoals(f.conversation.id);
+    const goal = goals.find((g) => g.objective === '一直做不完的事');
+    assert.equal(goal.status, 'blocked', '触顶应暂停');
+    assert.match(goal.note, /轮数上限/);
+    assert.equal(goal.roundsUsed, 3, '自动跑了 3 轮');
+    // 1 首轮 + 3 续航轮 = 4 次模型请求
+    assert.equal(f.provider.requests.length, 4, `请求数应为 4，实际 ${f.provider.requests.length}`);
+    // 续航轮的自动 nudge 消息进了历史（诚实轨迹）
+    assert.ok(f.store.getConversation(f.conversation.id).messages.some((m) => String(m.content).includes('自动续航')));
+  } finally { await f.cleanup(); }
+});
+
+test('L2 续航：模型 update_goal complete 后立刻停止续航', async () => {
+  const f = await fixture((body) => {
+    if (toolResults(body).length) return say('已全部完成');
+    if (String(body.messages.at(-1)?.content ?? '').includes('自动续航')) return call('update_goal', { status: 'complete', note: '做完了' });
+    return say('先开着');
+  });
+  try {
+    f.store.setGoal({ conversationId: f.conversation.id, botId: f.bot.id, objective: '可完成的事', autonomy: 'until_done', maxRounds: 8 });
+    await f.round('开工');
+    await waitIdle(f.runtime, f.store, f.conversation.id, true);
+    assert.equal(f.store.activeGoal(f.conversation.id), undefined, '完成后不应还有活动目标');
+    const done = f.store.listGoals(f.conversation.id).find((g) => g.objective === '可完成的事');
+    assert.equal(done.status, 'complete');
+    assert.ok(f.provider.requests.length < 1 + 8, '完成后停止，不该跑满 8 轮');
+  } finally { await f.cleanup(); }
+});
+
+test('L2 续航：某轮出错则标 blocked 暂停，绝不无限重试', async () => {
+  const f = await fixture(() => ({ __error: true }));
+  try {
+    f.store.setGoal({ conversationId: f.conversation.id, botId: f.bot.id, objective: '会出错的事', autonomy: 'until_done', maxRounds: 8 });
+    await f.round('开工');
+    await waitIdle(f.runtime, f.store, f.conversation.id, false);
+    const goal = f.store.listGoals(f.conversation.id).find((g) => g.objective === '会出错的事');
+    assert.equal(goal.status, 'blocked');
+    assert.match(goal.note, /出错|暂停/);
+    // 首轮就 500：不应续航出 8 轮
+    assert.ok(f.provider.requests.length <= 2, `出错后应尽快停，实际请求 ${f.provider.requests.length}`);
+  } finally { await f.cleanup(); }
+});
+
+test('触顶的续航目标可一键续跑（追加轮数并转回 active）', async () => {
+  const f = await fixture(() => say('x'));
+  try {
+    const goal = f.store.setGoal({ conversationId: f.conversation.id, botId: f.bot.id, objective: '续跑测试', autonomy: 'until_done', maxRounds: 2 });
+    f.store.bumpGoalRound(f.conversation.id);
+    f.store.bumpGoalRound(f.conversation.id);
+    f.store.updateGoal(f.conversation.id, { status: 'blocked', note: '已达 2 轮数上限，可一键续跑' }, { requireEvidence: false });
+    const resumed = f.store.resumeGoal(f.conversation.id, 5);
+    assert.equal(resumed.status, 'active');
+    assert.equal(resumed.maxRounds, 7, 'maxRounds 应追加 5');
+    assert.equal(f.store.activeGoal(f.conversation.id).id, goal.id);
+    // 非触顶暂停的目标不能续跑
+    assert.throws(() => f.store.resumeGoal('conv_none'), /只有触顶/);
   } finally { await f.cleanup(); }
 });

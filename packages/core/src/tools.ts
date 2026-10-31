@@ -170,6 +170,8 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       properties: {
         objective: { type: 'string', description: '目标，最多 2000 字' },
         successCriteria: { type: 'array', items: { type: 'string' }, description: '可验收的完成条件（每条可判定真/假，最多 12 条）；留空则从当前任务清单的未完成项生成' },
+        autonomy: { type: 'string', enum: ['turn', 'until_done'], description: 'turn=只在当前轮自动多步（默认）；until_done=框架跨轮自动续航直到完成/受阻/触顶，用户明确要"盯着把它做完"时才用' },
+        maxRounds: { type: 'number', description: 'until_done 的最大续航轮数，默认 8，范围 1–50' },
       },
       required: ['objective'],
     },
@@ -317,7 +319,7 @@ export interface ToolContext {
   /** 计划获批后的落库回调。 */
   approvePlan?: (plan: { title: string; steps: string[] }) => void;
   /** 会话级跨轮目标（不自动续跑，只保证"还记得要做完什么"）。successCriteria 留空由运行时从待办生成。 */
-  setGoal?: (objective: string, successCriteria?: string[]) => { id: string; objective: string; criteria?: { text: string; done: boolean; evidence?: string }[] };
+  setGoal?: (objective: string, successCriteria?: string[], autonomy?: 'turn' | 'until_done', maxRounds?: number) => { id: string; objective: string; criteria?: { text: string; done: boolean; evidence?: string }[] };
   updateGoal?: (patch: { status: 'complete' | 'blocked'; note?: string; evidence?: { criterion: string; proof: string }[] }) => { status: string; note?: string };
   /** 会话内任务清单：整体替换。 */
   writeTodos?: (items: { content: string; done: boolean }[]) => void;
@@ -538,14 +540,18 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         if (!ctx.setGoal) throw new Error('当前运行时不支持跨轮目标');
         const objective = requireString(args, 'objective');
         const successCriteria = Array.isArray(args.successCriteria) ? args.successCriteria.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.trim()) : undefined;
-        const goal = ctx.setGoal(objective, successCriteria);
+        const autonomy = args.autonomy === 'until_done' ? 'until_done' : 'turn';
+        const maxRounds = typeof args.maxRounds === 'number' ? args.maxRounds : undefined;
+        const goal = ctx.setGoal(objective, successCriteria, autonomy, maxRounds);
         const pending = (goal.criteria ?? []).filter((item) => !item.done).length;
         return finish({
           ok: true,
           summary: `目标已记录：${summarize(goal.objective, 80)}${goal.criteria?.length ? ` · 验收 ${goal.criteria.length} 条` : ''}`,
-          detail: pending
-            ? `下一轮对话我会带着这个目标继续。每条验收条件要逐条给证据再 update_goal complete：\n${(goal.criteria ?? []).map((item) => `- ${item.text}`).join('\n')}`
-            : '下一轮对话我会带着这个目标继续。要做完了就调用 update_goal。',
+          detail: autonomy === 'until_done'
+            ? `续航已开启（最多 ${maxRounds ?? 8} 轮）：这一轮结束后我会自动接着推进，直到完成、受阻或触顶。每条验收条件要逐条给证据再 update_goal complete：\n${(goal.criteria ?? []).map((item) => `- ${item.text}`).join('\n') || '（无显式验收条件）'}`
+            : pending
+              ? `下一轮对话我会带着这个目标继续。每条验收条件要逐条给证据再 update_goal complete：\n${(goal.criteria ?? []).map((item) => `- ${item.text}`).join('\n')}`
+              : '下一轮对话我会带着这个目标继续。要做完了就调用 update_goal。',
         });
       }
       case 'update_goal': {

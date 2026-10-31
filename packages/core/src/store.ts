@@ -806,7 +806,15 @@ export class Store {
     return goal ? { ...goal } : undefined;
   }
 
-  setGoal(input: { conversationId: string; botId: string; objective: string; successCriteria?: string[] }): Goal {
+  /** UI 面板用：活动目标 + 最近一个"触顶暂停"的续航目标（可续跑）。模型续航判定仍只看 activeGoal。 */
+  goalState(conversationId: string): { active?: Goal; resumable?: Goal } {
+    const active = this.activeGoal(conversationId);
+    const resumable = [...this.goalList].reverse().find((item) =>
+      item.conversationId === conversationId && item.status === 'blocked' && item.autonomy === 'until_done' && (item.note ?? '').includes('轮数上限'));
+    return { active, ...(resumable ? { resumable: { ...resumable } } : {}) };
+  }
+
+  setGoal(input: { conversationId: string; botId: string; objective: string; successCriteria?: string[]; autonomy?: 'turn' | 'until_done'; maxRounds?: number }): Goal {
     const conversation = this.getConversation(input.conversationId);
     if (!conversation) throw new Error('会话不存在');
     if (conversation.subagent) throw new Error('子智能体的临时会话不能设定目标');
@@ -816,6 +824,7 @@ export class Store {
     const criteria = (input.successCriteria ?? [])
       .map((text) => text.trim()).filter((text) => text).slice(0, 12)
       .map((text) => ({ text, done: false as const }));
+    const maxRounds = Math.min(Math.max(Math.floor(input.maxRounds ?? 8), 1), 50);
     const goal: Goal = {
       id: newId('goal'),
       botId: input.botId,
@@ -823,6 +832,9 @@ export class Store {
       objective,
       status: 'active',
       ...(criteria.length ? { criteria } : {}),
+      autonomy: input.autonomy === 'until_done' ? 'until_done' : 'turn',
+      maxRounds,
+      roundsUsed: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -834,6 +846,28 @@ export class Store {
     );
     this.persistGoals([...next, goal]);
     return { ...goal };
+  }
+
+  /** 续航每完成一轮 +1；返回新的 roundsUsed（仅活动目标）。 */
+  bumpGoalRound(conversationId: string): number {
+    const index = this.goalList.findIndex((item) => item.conversationId === conversationId && item.status === 'active');
+    if (index < 0) return 0;
+    const used = (this.goalList[index].roundsUsed ?? 0) + 1;
+    const next = [...this.goalList];
+    next[index] = { ...next[index], roundsUsed: used, updatedAt: Date.now() };
+    this.persistGoals(next);
+    return used;
+  }
+
+  /** 一键续跑：给触顶 blocked 的目标追加轮数并转回 active（人类判断，不要求证据）。 */
+  resumeGoal(conversationId: string, extraRounds = 5): Goal {
+    const goal = this.goalList.find((item) => item.conversationId === conversationId && item.status === 'blocked' && item.autonomy === 'until_done' && (item.note ?? '').includes('轮数上限'));
+    if (!goal) throw new Error('只有触顶暂停的续航目标才能续跑');
+    const next = [...this.goalList];
+    const index = next.indexOf(goal);
+    next[index] = { ...goal, status: 'active', maxRounds: Math.min((goal.maxRounds ?? 8) + extraRounds, 200), note: `人工续跑 +${extraRounds} 轮`, updatedAt: Date.now() };
+    this.persistGoals(next);
+    return { ...next[index] };
   }
 
   updateGoal(conversationId: string, patch: { status?: Goal['status']; note?: string; evidence?: { criterion: string; proof: string }[] }, opts: { requireEvidence?: boolean } = {}): Goal {

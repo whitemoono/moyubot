@@ -90,6 +90,8 @@ svg { flex-shrink: 0; }
 .chat-goal { display: inline-flex; align-items: center; gap: 7px; max-width: min(420px, 42vw); padding: 4px 6px 4px 9px; border: 1px solid var(--line-strong); border-radius: 999px; background: color-mix(in srgb, var(--surface) 90%, transparent); color: var(--text); font-size: 12px; opacity: .82; pointer-events: auto; }
 .chat-goal__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-goal__criteria { flex: none; padding: 1px 7px; border-radius: 999px; background: var(--surface-raised); color: var(--text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chat-goal--resume { border-color: var(--accent); }
+.chat-goal__done span { font-size: 12px; margin-left: 4px; }
 .chat-goal__done { display: inline-flex; align-items: center; justify-content: center; padding: 3px; border: 0; border-radius: 999px; background: transparent; color: inherit; cursor: pointer; transition: background 160ms ease; }
 .chat-goal__done:hover { background: var(--surface-raised); }
 .chat__who .bot-avatar { width: 28px; height: 28px; flex-shrink: 0; }

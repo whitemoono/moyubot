@@ -81,6 +81,8 @@ export interface MoyuBridge {
   botConversation(botId: string): Promise<Conversation>;
   setConversationMode(id: string, mode: 'execute' | 'plan'): Promise<Conversation>;
   activeGoal(conversationId: string): Promise<Goal | undefined>;
+  goalState(conversationId: string): Promise<{ active?: Goal; resumable?: Goal }>;
+  resumeGoal(conversationId: string, extraRounds?: number): Promise<Goal>;
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
   compactConversation(id: string): Promise<ConversationContext>;

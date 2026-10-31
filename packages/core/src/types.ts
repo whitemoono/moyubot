@@ -323,6 +323,12 @@ export interface Goal {
   note?: string;
   /** 可验收的完成条件：模型标 complete 前必须逐条给出证据（人类 UI 可越权直接完成）。 */
   criteria?: { text: string; done: boolean; evidence?: string }[];
+  /** 'turn'=单轮内自动多步（现状）；'until_done'=跨轮续航，框架自动再来一轮直到达成/受阻/触顶。 */
+  autonomy?: 'turn' | 'until_done';
+  /** 续航最大轮数，默认 8；到顶标 blocked（可一键续跑）。 */
+  maxRounds?: number;
+  /** 已消耗的续航轮数（首轮用户消息不计）。 */
+  roundsUsed?: number;
   createdAt: number;
   updatedAt: number;
 }

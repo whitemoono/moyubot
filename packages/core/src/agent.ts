@@ -70,6 +70,8 @@ export class AgentRuntime {
   private readonly maxSteps: number;
   private runs = new Map<string, RunState>();
   private runCompletions = new Map<string, Promise<void>>();
+  /** 正在做 L2 续航的会话集合；stop() 会把它移除，让外层循环在下一轮边界退出。 */
+  private autonomyLoops = new Set<string>();
 
   constructor(deps: AgentRuntimeDeps) {
     this.capabilities = deps.capabilities;
@@ -95,8 +97,10 @@ export class AgentRuntime {
   }
 
   stop(conversationId: string): boolean {
+    // 先清续航标志：轮次边界靠它退出，就算此刻 runs 里没有该会话（两轮之间）也能叫停后续。
+    const looping = this.autonomyLoops.delete(conversationId);
     const run = this.runs.get(conversationId);
-    if (!run) return false;
+    if (!run) return looping;
     run.abort.abort();
     this.emit({ type: 'log', level: 'info', text: '已请求停止当前任务' });
     return true;
@@ -223,6 +227,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage, modeOverride: options.modeOverride });
     this.runCompletions.set(conversationId, completion);
     void completion.finally(() => { if (this.runCompletions.get(conversationId) === completion) this.runCompletions.delete(conversationId); }).catch(() => {});
+    // L2 续航：首轮结束后，若这本会话挂着 until_done 目标且不在计划模式，自动再来一轮直到达成/受阻/触顶。
+    if (options.modeOverride !== 'plan' && this.store.activeGoal(conversationId)?.autonomy === 'until_done' && !this.autonomyLoops.has(conversationId)) {
+      void completion.then(() => this.autonomyLoop(bot, conversationId)).catch(() => {});
+    }
 
     return { conversationId, runId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id };
   }
@@ -540,10 +548,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               this.store.setConversationMode(conversationId, 'execute', { ...plan, approvedAt: Date.now() });
               this.emit({ type: 'log', level: 'info', text: '计划已批准，本轮后续步骤恢复写权限' });
             },
-            setGoal: (objective, successCriteria) => {
+            setGoal: (objective, successCriteria, autonomy, maxRounds) => {
               // todo 绑定：没显式给验收条件时，从当前待办的未完成项自动生成。
               const criteria = successCriteria?.length ? successCriteria : (this.store.listTodos(conversationId)?.items.filter((item) => !item.done).map((item) => item.content) ?? []);
-              return this.store.setGoal({ conversationId, botId: bot.id, objective, successCriteria: criteria.length ? criteria : undefined });
+              return this.store.setGoal({ conversationId, botId: bot.id, objective, successCriteria: criteria.length ? criteria : undefined, autonomy, maxRounds });
             },
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
             writeTodos: (items) => { this.store.writeTodos(conversationId, bot.id, items); },
@@ -839,6 +847,75 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     if (assistantMessage.error) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.error };
     if (!text) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.stopped ? '已停止' : '子智能体没有产出结论' };
     return { ok: true, conversationId: conversation.id, text };
+  }
+
+  /**
+   * L2 目标续航：在 until_done 目标下自动跑多轮，直到
+   * ① 模型自己 update_goal complete；② 标 blocked；③ 触顶（roundsUsed≥maxRounds）；
+   * ④ 某轮出错；⑤ 用户 stop（autonomyLoops 被清）。触顶标 blocked 且可一键续跑。
+   * 群聊与计划模式不进入这里（send 已挡）。
+   */
+  private async autonomyLoop(bot: Bot, conversationId: string): Promise<void> {
+    if (this.autonomyLoops.has(conversationId)) return;
+    this.autonomyLoops.add(conversationId);
+    try {
+      while (this.autonomyLoops.has(conversationId)) {
+        const goal = this.store.activeGoal(conversationId);
+        if (!goal || goal.autonomy !== 'until_done') return;
+        const last = this.store.getConversation(conversationId)?.messages.at(-1);
+        if (last?.role === 'assistant' && last.error) {
+          this.store.updateGoal(conversationId, { status: 'blocked', note: '本轮出错，已暂停续航' }, { requireEvidence: false });
+          this.emit({ type: 'log', level: 'warn', text: '目标续航因本轮出错而暂停' });
+          return;
+        }
+        const used = goal.roundsUsed ?? 0;
+        const max = goal.maxRounds ?? 8;
+        if (used >= max) {
+          this.store.updateGoal(conversationId, { status: 'blocked', note: `已达 ${max} 轮数上限，可一键续跑` }, { requireEvidence: false });
+          this.emit({ type: 'log', level: 'warn', text: `目标「${goal.objective.slice(0, 40)}」跑满 ${max} 轮仍未完成，暂停` });
+          return;
+        }
+        const outcome = await this.runAutoRound(bot, conversationId, used + 1, max);
+        this.store.bumpGoalRound(conversationId);
+        if (outcome === 'stopped') return;
+        if (outcome === 'error') {
+          this.store.updateGoal(conversationId, { status: 'blocked', note: '本轮出错，已暂停续航' }, { requireEvidence: false });
+          this.emit({ type: 'log', level: 'warn', text: '目标续航因本轮出错而暂停' });
+          return;
+        }
+        const after = this.store.activeGoal(conversationId);
+        if (!after || after.status !== 'active') return;
+      }
+    } finally {
+      this.autonomyLoops.delete(conversationId);
+    }
+  }
+
+  /** 续航的一轮：注入一条"继续推进目标"的用户消息并跑完 runLoop，await 到底。 */
+  private async runAutoRound(bot: Bot, conversationId: string, round: number, max: number): Promise<'ok' | 'stopped' | 'error'> {
+    if (this.runs.has(conversationId)) return 'ok';
+    const goal = this.store.activeGoal(conversationId);
+    const userMessage: Message = {
+      id: newId('msg'), role: 'user',
+      content: `（自动续航 第 ${round}/${max} 轮）继续朝目标推进：${goal?.objective ?? ''}\n只处理还没达成的验收条件，已完成/已验证的不要重做；全部达成就逐条附证据后 update_goal complete，确实做不动就 update_goal blocked 写清卡在哪。`,
+      createdAt: Date.now(),
+    };
+    this.store.appendMessage(conversationId, userMessage);
+    const assistantMessage: Message = {
+      id: newId('msg'), role: 'assistant', botId: bot.id, botName: bot.name, content: '', model: bot.model,
+      createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [],
+    };
+    this.store.appendMessage(conversationId, assistantMessage);
+    const runId = newId('run');
+    const abort = new AbortController();
+    this.runs.set(conversationId, { abort, conversationId, kind: 'user', botId: bot.id, startedAt: Date.now() });
+    this.emit({ type: 'run_start', runId, conversationId });
+    this.emit({ type: 'message_start', conversationId, message: assistantMessage });
+    const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage, modeOverride: 'execute' });
+    this.runCompletions.set(conversationId, completion);
+    try { await completion; } finally { if (this.runCompletions.get(conversationId) === completion) this.runCompletions.delete(conversationId); }
+    if (assistantMessage.stopped) return 'stopped';
+    return assistantMessage.error ? 'error' : 'ok';
   }
 
     /**
