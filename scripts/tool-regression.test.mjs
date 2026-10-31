@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, TOOL_SCHEMAS, runTool } from '../packages/core/dist/index.js';
+import { Store, TOOL_SCHEMAS, runTool, LocalHost, CloudHost } from '../packages/core/dist/index.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'tool-regression', String(Date.now()));
 let serial = 0;
@@ -295,6 +295,40 @@ test('未知工具被安全拒绝', async () => {
   const r = await runTool(call('definitely_not_a_tool', {}), ctx);
   assert.equal(r.ok, false);
   assert.match(r.summary, /未知工具/);
+});
+
+test('botDirName：净化、同名避让、持久化', () => {
+  const f = makeCtx();
+  const name = f.store.botDirName(f.bot.id);
+  assert.ok(name.length > 0 && !/[\\/:*?"<>|]/.test(name), name);
+  assert.equal(f.store.getBot(f.bot.id).dirName, name, '首次推导要落盘，之后改名不影响目录');
+  assert.equal(f.store.botDirName(f.bot.id), name, '再次调用必须稳定');
+  f.store.upsertBot({ ...f.bot, id: 'bot_dup01', name: f.bot.name });
+  assert.notEqual(f.store.botDirName('bot_dup01'), name, '同名 Bot 目录名必须避让');
+  f.store.upsertBot({ ...f.bot, id: 'bot_weird1', name: 'a/b:c*?"<>|' });
+  const weird = f.store.botDirName('bot_weird1');
+  assert.ok(!/[\\/:*?"<>|]/.test(weird), `非法字符必须被净化：${weird}`);
+});
+
+test('每 Bot 工作目录：本地文件隔离 + cwd 锚定 + 云端目录拼接', async () => {
+  const { LocalHost, CloudHost } = await import('../packages/core/dist/index.js');
+  const dir = path.join(root, 'perbot-local');
+  fs.mkdirSync(dir, { recursive: true });
+  const host = new LocalHost({ workspaceDir: dir });
+  await host.writeText('notes.md', 'A 的数据', '大肥鱼');
+  await host.writeText('notes.md', 'B 的数据', '小龙娘');
+  assert.equal(await host.readText('notes.md', '大肥鱼'), 'A 的数据');
+  assert.equal(await host.readText('notes.md', '小龙娘'), 'B 的数据');
+  assert.ok(fs.existsSync(path.join(dir, '大肥鱼', 'notes.md')), '文件必须落在 bot 自己的文件夹里');
+  const pwd = await host.exec(process.platform === 'win32' ? '(Get-Location).Path' : 'pwd', { subDirectory: '大肥鱼' });
+  assert.ok(pwd.stdout.includes('大肥鱼'), `命令 cwd 应锚定 bot 目录：${pwd.stdout.trim()}`);
+  await assert.rejects(() => host.readText('notes.md'), '共享根不应看到 bot 目录里的同名文件');
+  // 云端：mock pwd 回显 req.cwd，验证目录拼接
+  const cloud = new CloudHost({ settings: { driver: 'mock', workspaceDir: dir, remoteWorkspaceDir: '/data/home/moyubot' }, apiKey: () => '' });
+  try {
+    const remote = await cloud.exec('pwd', { subDirectory: '大肥鱼' });
+    assert.ok(remote.stdout.includes('/data/home/moyubot/大肥鱼'), `云端 cwd 应为 <root>/<botDir>：${remote.stdout.trim()}`);
+  } finally { cloud.dispose(); }
 });
 
 test('每个内置 schema 工具都在回归表里被覆盖', async () => {

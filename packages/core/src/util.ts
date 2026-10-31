@@ -10,6 +10,20 @@ export function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`;
 }
 
+/** Bot 专属工作目录名：跨平台安全（剔除 Windows 非法字符、首尾点/空格），限长 48。 */
+export function sanitizeDirName(value: string): string {
+  const cleaned = value
+    .normalize('NFKC')
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.\s]+/, '')
+    .replace(/[.\s]+$/, '')
+    .slice(0, 48)
+    .replace(/[.\s]+$/, '');
+  return cleaned || 'bot';
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

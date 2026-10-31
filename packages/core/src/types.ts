@@ -93,6 +93,8 @@ export interface Bot {
   /** Local navigation preferences, independent of model and conversation identity. */
   sidebar?: { pinned?: boolean; hidden?: boolean; unread?: boolean; group?: string };
   workspaceId?: string;
+  /** Bot 专属工作目录名（跨平台安全、稳定不变）：文件工具的相对路径与命令 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
+  dirName?: string;
 }
 
 export type WorkspaceKind = 'local' | 'cloud';
@@ -449,6 +451,23 @@ export interface AppSettings {
   activeWorkspaceId?: string;
   activeBotId?: string;
   activeView?: string;
+  /** 记忆召回的向量模型（OpenAI 兼容 /embeddings 端点）；不可用时自动降级为纯关键词检索。 */
+  embedding?: EmbeddingSettings;
+}
+
+/** 默认指向硅基流动的 bge-m3（免费档，中文效果好）；API Key 存在 SecretBox 的 embedding:key。 */
+export interface EmbeddingSettings {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  dimensions?: number;
+}
+
+export interface EmbeddingTestResult {
+  ok: boolean;
+  dimensions: number;
+  latencyMs: number;
+  message: string;
 }
 
 export interface McpServerConfig {

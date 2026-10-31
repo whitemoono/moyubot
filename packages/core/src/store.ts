@@ -21,8 +21,10 @@ import type {
   UiSettings,
 } from './types';
 import { DEFAULT_SYSTEM_PROMPT } from './types';
-import { newId, normalizeRemoteDirectory, safeJsonParse } from './util';
-import { MemoryLibrary } from './memory-library';
+import { newId, normalizeRemoteDirectory, safeJsonParse, sanitizeDirName } from './util';
+import { MemoryLibrary, scopeDirName } from './memory-library';
+import { MemoryStore, cosineSimilarity } from './memory-store';
+import { embedTexts } from './embedding';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
 import { modelSettings, validateGeneration, validateModelSettings } from './generation';
@@ -136,6 +138,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
       wakeOnDemand: true,
     },
     telegram: { enabled: false, token: '', allowedIds: [] },
+    embedding: { enabled: true, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' },
     workspaces: [
       { id: 'workspace_cloud', name: '云电脑工作区', kind: 'cloud', computerName: '共享云电脑', createdAt: now },
       { id: 'workspace_local', name: '本地工作区', kind: 'local', computerName: '本机 Windows', directory: localDirectory, createdAt: now },
@@ -176,7 +179,16 @@ export class Store {
   settings: AppSettings;
   private conversations = new Map<string, Conversation>();
   private memories: MemoryFact[] = [];
-  private library?: MemoryLibrary;
+  /** 记忆持久层：单个 SQLite 数据库（memories.db），含检索向量。 */
+  private memoryDb!: MemoryStore;
+  /** 旧版 Markdown 记忆库，仅在启动迁移时读取。 */
+  private markdownLibraryRef?: MemoryLibrary;
+  /** 测试可注入的向量函数；生产路径走 embedTexts + 配置的在线向量模型。 */
+  private embedder?: (texts: string[]) => Promise<Float32Array[] | null>;
+  /** 串行化的向量回填队列：避免并发打爆向量服务。 */
+  private embedChain: Promise<void> = Promise.resolve();
+  private embedCooldownUntil = 0;
+  private queryVectorCache = new Map<string, Float32Array>();
   private scheduleList: Schedule[] = [];
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
   private goalList: Goal[] = [];
@@ -185,9 +197,10 @@ export class Store {
   private contextUsage: Record<string, import('./types').ContextUsageSnapshot> = {};
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
 
-  constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string }) {
+  constructor(dataDir: string, secrets?: SecretBox, options?: { localDirectory?: string; embedder?: (texts: string[]) => Promise<Float32Array[] | null> }) {
     this.dataDir = dataDir;
     this.secrets = secrets ?? new PlainSecretBox(dataDir);
+    this.embedder = options?.embedder;
     fs.mkdirSync(dataDir, { recursive: true });
     fs.mkdirSync(this.dir('conversations'), { recursive: true });
 
@@ -243,7 +256,9 @@ export class Store {
     for (const bot of this.settings.bots) this.botConversation(bot.id);
     this.usage = new UsageLedger(dataDir);
     this.usage.backfill(this.conversations.values(), this.settings.bots);
+    this.memoryDb = new MemoryStore(path.join(dataDir, 'memories.db'));
     this.loadMemories();
+    this.scheduleEmbeddingBackfill();
     this.loadSchedules();
     this.loadGoals();
     this.loadTodos();
@@ -269,6 +284,15 @@ export class Store {
       patch = { ...patch, userName: patch.userName.trim() };
     }
     if (patch.cloud?.remoteWorkspaceDir !== undefined) patch = { ...patch, cloud: { ...patch.cloud, remoteWorkspaceDir: normalizeRemoteDirectory(patch.cloud.remoteWorkspaceDir) } };
+    const embeddingChanged = patch.embedding !== undefined;
+    if (patch.embedding) {
+      const embedding = { ...this.settings.embedding, ...patch.embedding };
+      if (embedding.enabled) {
+        if (!/^https?:\/\//i.test(embedding.baseUrl)) throw new Error('向量模型 Base URL 需要 http(s) 地址');
+        if (!embedding.model.trim()) throw new Error('向量模型名称不能为空');
+      }
+      patch = { ...patch, embedding };
+    }
     this.settings = {
       ...this.settings,
       ...patch,
@@ -276,9 +300,16 @@ export class Store {
       cloud: patch.cloud ? { ...this.settings.cloud, ...patch.cloud } : this.settings.cloud,
       ui: patch.ui ? { ...this.settings.ui, ...patch.ui } : this.settings.ui,
       telegram: patch.telegram ? { ...this.settings.telegram, ...patch.telegram } : this.settings.telegram,
+      embedding: patch.embedding ? { ...this.settings.embedding, ...patch.embedding } : this.settings.embedding,
     };
     this.settings.ui.botGroups = this.listBotGroups();
     this.persistSettings();
+    if (embeddingChanged) {
+      // 配置变化（换模型/换地址/开关）后：清除冷却与查询缓存，重新回填向量。
+      this.embedCooldownUntil = 0;
+      this.queryVectorCache.clear();
+      this.beginEmbeddingBackfill();
+    }
     return this.settings;
   }
 
@@ -308,6 +339,23 @@ export class Store {
     this.settings.ui.botGroups = this.listBotGroups();
     this.persistSettings();
     return bot;
+  }
+
+  /** Bot 专属工作目录名（稳定、跨平台安全）：文件工具的相对路径与命令 cwd 都锚定在这里，
+   *  实现 Bot 间文件隔离。首次调用推导并落盘；之后改名不影响目录。不在 settings 里的临时 Bot（子代理）只推导不落盘。 */
+  botDirName(botId: string): string {
+    const bot = this.settings.bots.find((item) => item.id === botId);
+    if (bot?.dirName) return bot.dirName;
+    const base = sanitizeDirName(bot?.name || botId);
+    const taken = new Set<string>();
+    for (const other of this.settings.bots) {
+      if (other.id === botId) continue;
+      taken.add(other.dirName ?? sanitizeDirName(other.name));
+    }
+    const suffix = botId.replace(/[^a-zA-Z0-9]/g, '').slice(-6) || 'x';
+    const name = taken.has(base) ? `${base}-${suffix}` : base;
+    if (bot) this.upsertBot({ ...bot, dirName: name });
+    return name;
   }
 
   updateBotMetadata(botId: string, patch: BotMetadataPatch) {
@@ -623,7 +671,6 @@ export class Store {
   applySyncRecords(records: SyncRecord[]): void {
     const valid = (id: unknown) => typeof id === 'string' && /^[a-zA-Z0-9_.:-]{1,160}$/.test(id);
     let settingsChanged = false;
-    const memoryScopes = new Set<string>();
     for (const record of [...records].sort((a,b) => (a.collection === 'messages' ? 1 : 0) - (b.collection === 'messages' ? 1 : 0))) {
       if (!valid(record.id)) continue;
       const value = syncValue(record.collection, record.value);
@@ -661,24 +708,24 @@ export class Store {
         const previous = this.memories.find(m => m.id === record.id);
         this.memories = this.memories.filter(m => m.id !== record.id);
         if (value) {
-          this.memories.push({ ...value, id: record.id, pinned: !!value.pinned, createdAt: Number.isFinite(value.createdAt) ? value.createdAt : Date.now() } as MemoryFact);
-          memoryScopes.add(value.botId);
-        } else if (previous) memoryScopes.add(previous.botId);
+          const fact = { ...value, id: record.id, pinned: !!value.pinned, createdAt: Number.isFinite(value.createdAt) ? value.createdAt : Date.now() } as MemoryFact;
+          this.memories.push(fact);
+          this.memoryDb.upsert(fact);
+          this.enqueueEmbedding([fact.id]);
+        } else if (previous) this.memoryDb.remove(record.id);
       } else if (record.collection === 'profile' && typeof value?.userName === 'string' && value.userName.trim()) {
         this.settings.userName = value.userName.slice(0,40); settingsChanged = true;
       }
       // Mobile displays schedule status; this device remains the execution owner.
     }
     if (settingsChanged) this.persistSettings();
-    for (const scopeId of memoryScopes) {
-      this.memoryLibrary.reconcileScope(scopeId, this.listMemories(scopeId), this.memoryScopeTitle(scopeId));
-    }
   }
 
-  // 长期记忆以 Markdown 资料库落盘：每个 Bot / 群聊一个目录（MEMORY.md 索引 + 单条记忆文件），
-  // 互不混写；memories.json 只在旧版本数据迁移时读取一次。
-  private get memoryLibrary(): MemoryLibrary {
-    return (this.library ??= new MemoryLibrary(path.join(this.dataDir, 'memories')));
+  // ----- 长期记忆：SQLite 单库（memories.db）承载全部 Bot / 群聊记忆与检索向量 -----
+  // 旧版「每条一个 Markdown 文件」的资料库与 memories.json 仅在首次迁移时读取，随后归档不再使用。
+
+  private markdownLibrary(): MemoryLibrary {
+    return (this.markdownLibraryRef ??= new MemoryLibrary(path.join(this.dataDir, 'memories')));
   }
 
   private memoryScopeTitle(scopeId: string): string {
@@ -690,33 +737,40 @@ export class Store {
   }
 
   private loadMemories(): void {
-    this.migrateMemoriesJson();
-    const memories: MemoryFact[] = [];
-    for (const scopeId of this.memoryLibrary.listScopes()) {
-      const { facts, adopted } = this.memoryLibrary.loadScope(scopeId);
-      // 手工放进目录的纯 Markdown 文件收编为正式记忆：补上元数据、删除原文件，再刷新索引。
-      for (const item of adopted) {
-        try { fs.unlinkSync(item.file); } catch { /* 被占用时下次启动再收编 */ }
-        this.memoryLibrary.writeEntry(item.fact);
-        facts.push(item.fact);
-      }
-      this.memoryLibrary.writeIndex(scopeId, facts, this.memoryScopeTitle(scopeId));
-      memories.push(...facts);
-    }
-    this.memories = memories;
+    this.migrateLegacyMemories();
+    this.memories = this.memoryDb.list();
   }
 
-  /** 旧版单文件 memories.json 一次性迁入 Markdown 资料库；原文件改名留档，避免重复导入。 */
-  private migrateMemoriesJson(): void {
-    const file = path.join(this.dataDir, 'memories.json');
-    if (!fs.existsSync(file)) return;
-    const facts = safeJsonParse<MemoryFact[]>(fs.readFileSync(file, 'utf8'), [])
-      .filter((fact) => fact && typeof fact.id === 'string' && typeof fact.botId === 'string' && typeof fact.text === 'string');
-    for (const fact of facts) this.memoryLibrary.writeEntry(fact);
-    for (const scopeId of new Set(facts.map((fact) => fact.botId))) {
-      this.memoryLibrary.writeIndex(scopeId, facts.filter((fact) => fact.botId === scopeId), this.memoryScopeTitle(scopeId));
+  /** 一次性把旧版 memories.json 与 Markdown 记忆库迁入 SQLite，之后旧目录改名归档。 */
+  private migrateLegacyMemories(): void {
+    if (this.memoryDb.count() > 0) return;
+    const facts: MemoryFact[] = [];
+    const seen = new Set<string>();
+    const push = (fact: MemoryFact) => {
+      if (!fact || typeof fact.id !== 'string' || typeof fact.botId !== 'string' || typeof fact.text !== 'string' || seen.has(fact.id)) return;
+      seen.add(fact.id);
+      facts.push({ ...fact, pinned: !!fact.pinned, createdAt: Number.isFinite(fact.createdAt) ? fact.createdAt : Date.now(), source: fact.source === 'automatic' ? 'automatic' : 'manual' });
+    };
+    const jsonPath = path.join(this.dataDir, 'memories.json');
+    if (fs.existsSync(jsonPath)) {
+      for (const fact of safeJsonParse<MemoryFact[]>(fs.readFileSync(jsonPath, 'utf8'), [])) push(fact);
+      try { fs.renameSync(jsonPath, `${jsonPath}.migrated`); } catch { /* 改名失败只会导致下次启动重复导入相同内容 */ }
     }
-    try { fs.renameSync(file, `${file}.migrated`); } catch { /* 数据已落盘；改名失败只会让下次启动重复导入相同内容 */ }
+    const library = this.markdownLibrary();
+    for (const scopeId of library.listScopes()) {
+      const { facts: scopeFacts, adopted } = library.loadScope(scopeId);
+      // 手工放进目录、没有元数据的 Markdown 文件同样收编为正式记忆。
+      for (const item of adopted) {
+        try { fs.unlinkSync(item.file); } catch { /* 无碍 */ }
+        scopeFacts.push(item.fact);
+      }
+      for (const fact of scopeFacts) push(fact);
+    }
+    if (!facts.length) return;
+    for (const fact of facts) this.memoryDb.upsert(fact);
+    this.memories = facts;
+    const legacyDir = path.join(this.dataDir, 'memories');
+    try { if (fs.existsSync(legacyDir)) fs.renameSync(legacyDir, path.join(this.dataDir, 'memories-md-archive')); } catch { /* 归档失败无碍：旧目录不再被读取 */ }
   }
 
   listMemories(botId?: string): MemoryFact[] {
@@ -734,19 +788,18 @@ export class Store {
     if (existing) {
       if (pinned && !existing.pinned) {
         existing.pinned = true;
-        this.memoryLibrary.writeEntry(existing);
-        this.memoryLibrary.writeIndex(botId, this.listMemories(botId), this.memoryScopeTitle(botId));
+        this.memoryDb.upsert(existing);
       }
       return existing;
     }
     const fact: MemoryFact = { id: newId('mem'), botId, text: normalized, pinned, source, createdAt: Date.now() };
     this.memories.push(fact);
-    this.memoryLibrary.writeEntry(fact);
-    this.memoryLibrary.writeIndex(botId, this.listMemories(botId), this.memoryScopeTitle(botId));
+    this.memoryDb.upsert(fact);
+    this.enqueueEmbedding([fact.id]);
     return fact;
   }
 
-  /** 手动编辑正文或固定 / 取消固定。正文改动会换算新的文件名并同步索引。 */
+  /** 手动编辑正文或固定 / 取消固定。正文改动后旧向量作废，重新回填。 */
   updateMemory(id: string, patch: { text?: string; pinned?: boolean }): MemoryFact {
     const fact = this.memories.find((item) => item.id === id);
     if (!fact) throw new Error('这条记忆不存在或已被删除');
@@ -761,8 +814,11 @@ export class Store {
     }
     if (next.text === fact.text && next.pinned === fact.pinned) return fact;
     this.memories[this.memories.indexOf(fact)] = next;
-    this.memoryLibrary.writeEntry(next);
-    this.memoryLibrary.writeIndex(next.botId, this.listMemories(next.botId), this.memoryScopeTitle(next.botId));
+    this.memoryDb.upsert(next);
+    if (next.text !== fact.text) {
+      this.memoryDb.clearEmbedding(next.id);
+      this.enqueueEmbedding([next.id]);
+    }
     return next;
   }
 
@@ -790,17 +846,137 @@ export class Store {
     return summaries.sort((a, b) => b.latestAt - a.latestAt || a.title.localeCompare(b.title, 'zh-CN'));
   }
 
-  /** 记忆资料库目录（可带范围），供界面用系统文件管理器打开。 */
-  memoryLibraryPath(scopeId?: string): string {
-    return scopeId ? this.memoryLibrary.scopeDir(scopeId) : this.memoryLibrary.rootDir;
+  /** 记忆存储位置：单个 SQLite 数据库文件。 */
+  memoryLibraryPath(): string {
+    return path.join(this.dataDir, 'memories.db');
   }
 
   removeMemory(id: string): void {
     const fact = this.memories.find((item) => item.id === id);
     this.memories = this.memories.filter((item) => item.id !== id);
     if (!fact) return;
-    this.memoryLibrary.removeEntry(fact.botId, id);
-    this.memoryLibrary.writeIndex(fact.botId, this.listMemories(fact.botId), this.memoryScopeTitle(fact.botId));
+    this.memoryDb.remove(id);
+  }
+
+  // ----- 向量召回：回填 + 关键词 / 语义混合检索 -----
+
+  private embeddingApiKey(): string {
+    return this.secrets.get('embedding:key') ?? '';
+  }
+
+  private runEmbedder(texts: string[]): Promise<Float32Array[] | null> {
+    if (this.embedder) return this.embedder(texts);
+    return embedTexts(this.settings.embedding, this.embeddingApiKey(), texts).catch(() => null);
+  }
+
+  /** 立即为指定记忆生成向量；返回是否全部成功（失败进入 60 秒冷却）。 */
+  private async embedNow(items: { id: string; text: string }[]): Promise<boolean> {
+    try {
+      const vectors = await this.runEmbedder(items.map((item) => item.text));
+      if (!vectors) return false;
+      const model = this.settings.embedding?.model ?? '';
+      items.forEach((item, index) => {
+        const vector = vectors[index];
+        if (vector) this.memoryDb.setEmbedding(item.id, vector, model);
+      });
+      return true;
+    } catch {
+      this.embedCooldownUntil = Date.now() + 60_000;
+      return false;
+    }
+  }
+
+  private enqueueEmbedding(ids: string[]): void {
+    const config = this.settings.embedding;
+    if (!config?.enabled || (!this.embedder && !this.embeddingApiKey())) return;
+    this.embedChain = this.embedChain.then(async () => {
+      if (Date.now() < this.embedCooldownUntil) return;
+      const items = ids
+        .map((id) => this.memories.find((fact) => fact.id === id))
+        .filter((fact): fact is MemoryFact => !!fact)
+        .map((fact) => ({ id: fact.id, text: fact.text }));
+      if (items.length) await this.embedNow(items);
+    }).catch(() => {});
+  }
+
+  /** 启动后 / 配置变化后分批补算缺失向量；失败自动冷却，之后由下次触发续跑。返回队列以便测试等待。 */
+  beginEmbeddingBackfill(): Promise<void> {
+    this.embedChain = this.embedChain.then(async () => {
+      const config = this.settings.embedding;
+      if (!config?.enabled || (!this.embedder && !this.embeddingApiKey())) return;
+      for (let batch = 0; batch < 128; batch++) {
+        if (Date.now() < this.embedCooldownUntil) return;
+        const pending = this.memoryDb.pendingEmbeddings(config.model, 16);
+        if (!pending.length) return;
+        if (!(await this.embedNow(pending))) return;
+      }
+    }).catch(() => {});
+    return this.embedChain;
+  }
+
+  private scheduleEmbeddingBackfill(): void {
+    const timer = setTimeout(() => this.beginEmbeddingBackfill(), 3000);
+    timer.unref?.();
+  }
+
+  private async embedQuery(query: string): Promise<Float32Array | null> {
+    const cached = this.queryVectorCache.get(query);
+    if (cached) return cached;
+    if (Date.now() < this.embedCooldownUntil) return null;
+    const vectors = await this.runEmbedder([query]);
+    if (!vectors?.[0]) return null;
+    if (this.queryVectorCache.size > 64) this.queryVectorCache.clear();
+    this.queryVectorCache.set(query, vectors[0]!);
+    return vectors[0]!;
+  }
+
+  /**
+   * 混合检索：关键词命中 ∪ 语义相似（余弦 ≥ 0.4），按 关键词×2 + 语义×4 排序。
+   * 向量服务不可用时自动退化为纯关键词检索；两种方式都无命中则返回空。
+   */
+  async searchMemories(scopeId: string, query: string, limit = 8): Promise<string[]> {
+    const facts = this.listMemories(scopeId);
+    if (!facts.length) return [];
+    const terms = query.trim().normalize('NFKC').toLowerCase().split(/[\s,，。.；;、!！?？]+/).filter(Boolean);
+    const queryVector = await this.embedQuery(query);
+    const vectors = queryVector ? this.memoryDb.embeddings(this.settings.embedding?.model ?? '') : null;
+    const scored = facts.map((fact) => {
+      const text = fact.text.normalize('NFKC').toLowerCase();
+      const keywordHits = terms.filter((term) => text.includes(term)).length;
+      const similarity = queryVector && vectors ? cosineSimilarity(queryVector, vectors.get(fact.id) ?? new Float32Array()) : 0;
+      const semantic = similarity >= 0.4 ? similarity : 0;
+      return { fact, score: keywordHits * 2 + semantic * 4 + (fact.pinned ? 0.2 : 0), matched: keywordHits > 0 || semantic > 0 };
+    }).filter((item) => item.matched)
+      .sort((a, b) => b.score - a.score || b.fact.createdAt - a.fact.createdAt)
+      .slice(0, limit);
+    if (scored.length) {
+      const now = Date.now();
+      for (const item of scored) this.memoryDb.setLastUsed(item.fact.id, now);
+      return scored.map((item) => item.fact.text);
+    }
+    if (!queryVector || !vectors) return [];
+    // 向量可用但阈值内无命中：放宽取最相近的 3 条，保证召回不至于空手而归
+    return facts.map((fact) => ({ fact, similarity: cosineSimilarity(queryVector, vectors.get(fact.id) ?? new Float32Array()) }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 3)
+      .map((item) => item.fact.text);
+  }
+
+  /** 把当前全部记忆导出为每个范围一个 Markdown 文件，返回导出目录（人工浏览 / 备份用）。 */
+  exportMemoriesMarkdown(): string {
+    const dir = path.join(this.dataDir, 'memories-export');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const scopeId of new Set(this.memories.map((fact) => fact.botId))) {
+      const facts = this.listMemories(scopeId).sort((a, b) => a.createdAt - b.createdAt);
+      const lines: string[] = [`# ${this.memoryScopeTitle(scopeId)}`, '', `导出时间：${new Date().toLocaleString('zh-CN')} · 共 ${facts.length} 条`, ''];
+      for (const fact of facts) {
+        const firstLine = (fact.text.split(/\r?\n/, 1)[0] || '').slice(0, 40) || '未命名记忆';
+        lines.push('---', '', `## ${fact.pinned ? '📌 ' : ''}${firstLine}`);
+        lines.push(`> id: ${fact.id} · ${fact.source === 'automatic' ? '对话整理' : '主动记录'} · ${new Date(fact.createdAt).toLocaleString('zh-CN')}`, '', fact.text, '');
+      }
+      fs.writeFileSync(path.join(dir, `${scopeDirName(scopeId)}.md`), lines.join('\n'), 'utf8');
+    }
+    return dir;
   }
 
   // ----- cloud capability inventory (persisted so restarts show the last-known list instantly) -----

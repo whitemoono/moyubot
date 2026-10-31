@@ -257,17 +257,18 @@ export class LocalHost {
   touch(): void { /* local hosts never auto-suspend */ }
   armIdleIfNeeded(): void { /* local hosts stay available */ }
   async ensureAwake(_reason: string): Promise<MachineSummary> { return { id: 'local-windows', name: '本机 Windows', state: 'running', autoSuspendAfterSeconds: null }; }
-  async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
+  async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal; subDirectory?: string } = {}): Promise<ExecResult> {
     if (options.signal?.aborted) throw new Error('任务已停止');
-    await fs.mkdir(this.settings.workspaceDir, { recursive: true });
+    const cwd = this.workspaceRoot(options.subDirectory);
+    await fs.mkdir(cwd, { recursive: true });
     if (options.signal?.aborted) throw new Error('任务已停止');
     this.beginTask('在本机执行命令');
     try {
       return await new Promise<ExecResult>((resolve, reject) => {
         const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $OutputEncoding=[Console]::OutputEncoding;\n${command}\nif ($LASTEXITCODE) { exit $LASTEXITCODE }`;
         const child = process.platform === 'win32'
-          ? spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { cwd: this.settings.workspaceDir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-          : spawn('/bin/sh', ['-c', command], { cwd: this.settings.workspaceDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+          ? spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+          : spawn('/bin/sh', ['-c', command], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '', stderr = '', timedOut = false, truncated = false;
         const stop = () => {
           if (!child.pid) return;
@@ -290,13 +291,24 @@ export class LocalHost {
       });
     } finally { this.endTask(); }
   }
-  async readText(file: string): Promise<string> { return fs.readFile(await this.safePath(file), 'utf8'); }
-  async readBytes(file: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(await this.safePath(file))), machineId: 'local-windows' }; }
-  async writeText(file: string, content: string): Promise<void> { const target = await this.safePath(file); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
+  async readText(file: string, subDirectory?: string): Promise<string> { return fs.readFile(await this.safePath(file, subDirectory), 'utf8'); }
+  async readBytes(file: string, subDirectory?: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(await this.safePath(file, subDirectory))), machineId: 'local-windows' }; }
+  async writeText(file: string, content: string, subDirectory?: string): Promise<void> { const target = await this.safePath(file, subDirectory); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
   async suspend(_reason: string): Promise<void> { /* no-op for local */ }
   dispose(): void { this.processes.forEach((stop) => stop()); }
-  private async safePath(file: string): Promise<string> {
-    const root = await fs.realpath(this.settings.workspaceDir); const target = path.resolve(root, file);
+  /** botDir 锚点：子目录必须仍在本机工作区内（逃逸保护，非法子目录退回共享根）。 */
+  private workspaceRoot(subDirectory?: string): string {
+    if (!subDirectory) return this.settings.workspaceDir;
+    const root = path.resolve(this.settings.workspaceDir);
+    const target = path.resolve(root, subDirectory);
+    const relative = path.relative(root, target);
+    return !relative || (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) ? target : root;
+  }
+  private async safePath(file: string, subDirectory?: string): Promise<string> {
+    const base = this.workspaceRoot(subDirectory);
+    await fs.mkdir(base, { recursive: true });
+    const root = await fs.realpath(base);
+    const target = path.resolve(root, file);
     const inside = (candidate: string) => { const relative = path.relative(root, candidate); return !relative || relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative); };
     if (!inside(target)) throw new Error('路径必须位于本地工作区内');
     let existing = target;
@@ -660,8 +672,8 @@ export class CloudHost {
     }
   }
 
-  async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal } = {}): Promise<ExecResult> {
-    const directory = normalizeRemoteDirectory(this.settings.remoteWorkspaceDir ?? '/data/moyubot');
+  async exec(command: string, options: { timeoutSeconds?: number; onStdout?: (chunk: string) => void; signal?: AbortSignal; subDirectory?: string } = {}): Promise<ExecResult> {
+    const directory = this.remoteDirectory(options.subDirectory);
     const machine = await this.ensureAwake('在云主机上执行命令');
     this.touch();
     this.setStatus({ state: 'busy' });
@@ -684,8 +696,15 @@ export class CloudHost {
     }
   }
 
-  async readText(remotePath: string): Promise<string> {
-    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+  /** 云端每 Bot 一个子目录：<remoteWorkspaceDir>/<botDirName>。subDirectory 为空时退回共享根。 */
+  private remoteDirectory(subDirectory?: string): string {
+    const root = this.settings.remoteWorkspaceDir ?? '/data/moyubot';
+    if (!subDirectory) return normalizeRemoteDirectory(root);
+    return normalizeRemoteDirectory(`${root.replace(/\/+$/, '')}/${subDirectory.replace(/^\/+|\/+$/g, '')}`);
+  }
+
+  async readText(remotePath: string, subDirectory?: string): Promise<string> {
+    remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
     const machine = await this.ensureAwake('读取云主机文件');
     const bytes = await this.driver.readFile(machine.id, remotePath);
     return new TextDecoder().decode(bytes);
@@ -754,15 +773,15 @@ export class CloudHost {
     return { text: `桌面操作已完成：${args.action}。操作后先截图确认结果，再决定下一步。` };
   }
 
-  async readBytes(remotePath: string): Promise<{ bytes: Uint8Array; machineId: string }> {
-    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+  async readBytes(remotePath: string, subDirectory?: string): Promise<{ bytes: Uint8Array; machineId: string }> {
+    remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
     const machine = await this.ensureAwake('读取云主机文件');
     const bytes = await this.driver.readFile(machine.id, remotePath);
     return { bytes, machineId: machine.id };
   }
 
-  async writeText(remotePath: string, content: string): Promise<void> {
-    remotePath = path.posix.resolve(this.settings.remoteWorkspaceDir ?? '/data/moyubot', remotePath);
+  async writeText(remotePath: string, content: string, subDirectory?: string): Promise<void> {
+    remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
     const machine = await this.ensureAwake('写入云主机文件');
     await this.driver.writeFile(machine.id, remotePath, content);
     this.touch();

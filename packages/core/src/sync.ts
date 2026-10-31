@@ -1,6 +1,6 @@
 /** Device-independent data replication. Never runs agents, tools or schedules. */
 export const SYNC_FIELDS: Record<string, string[]> = {
-  bots: ['id','name','handle','avatar','model','providerId','systemPrompt','temperature','workspaceId','createdAt','updatedAt','sidebar'],
+  bots: ['id','name','dirName','handle','avatar','model','providerId','systemPrompt','temperature','workspaceId','createdAt','updatedAt','sidebar'],
   conversations: ['id','botId','workspaceId','title','group','createdAt','updatedAt','deletedAt'],
   messages: ['id','conversationId','botId','botName','role','content','createdAt','model','error','stopped','streaming'],
   memories: ['id','botId','text','pinned','createdAt','source'],

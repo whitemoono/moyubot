@@ -481,6 +481,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             : await runTool(call, {
             bot,
             cloud: this.computerFor(bot),
+            botDir: this.store.botDirName(bot.id),
             workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
@@ -498,11 +499,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                     }, signal).then(approved => { signal.throwIfAborted(); return approved; })
                 : undefined,
             remember: (text, pinned) => this.store.addMemory(memoryScope, text, pinned),
-            recall: (query) =>
-              this.store
-                .listMemories(memoryScope)
-                .filter((fact) => fact.text.toLowerCase().includes(query.toLowerCase()))
-                .map((fact) => fact.text),
+            recall: (query) => this.store.searchMemories(memoryScope, query),
             createSchedule: (input) => this.store.createSchedule(bot.id, input),
             listTasks: (includeClosed) => this.store.listSchedules().filter((task) => task.botId === bot.id && (includeClosed || !task.closedAt && !task.completedAt)),
             updateTask: (id, patch) => this.store.updateSchedule(bot.id, id, patch),

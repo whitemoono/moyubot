@@ -295,7 +295,8 @@ export interface ToolContext {
   imageApiKey: string;
   requestApproval?: (call: ToolCall, summary: string) => Promise<boolean>;
   remember: (text: string, pinned: boolean) => { id: string };
-  recall: (query: string) => string[];
+  /** 混合检索（关键词 + 语义向量），向量服务不可用时自动退化为纯关键词。 */
+  recall: (query: string) => Promise<string[]>;
   createSchedule: (input: ScheduleInput) => Schedule;
   listTasks: (includeClosed: boolean) => Schedule[];
   updateTask: (id: string, patch: ScheduleUpdate) => Schedule;
@@ -327,6 +328,8 @@ export interface ToolContext {
   askUser?: (question: string) => Promise<string>;
   /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
+  /** Bot 专属工作目录（botDirName）：cloud_exec/read/write 的相对路径与 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
+  botDir?: string;
   signal?: AbortSignal;
 }
 
@@ -540,7 +543,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         if (!ctx.setGoal) throw new Error('当前运行时不支持跨轮目标');
         const objective = requireString(args, 'objective');
         const successCriteria = Array.isArray(args.successCriteria) ? args.successCriteria.filter((item): item is string => typeof item === 'string' && !!item.trim()).map((item) => item.trim()) : undefined;
-        const autonomy = args.autonomy === 'until_done' ? 'until_done' : 'turn';
+        const autonomy = args.autonomy === 'until_done' ? 'until_done' : args.autonomy === 'turn' ? 'turn' : undefined;
         const maxRounds = typeof args.maxRounds === 'number' ? args.maxRounds : undefined;
         const goal = ctx.setGoal(objective, successCriteria, autonomy, maxRounds);
         const pending = (goal.criteria ?? []).filter((item) => !item.done).length;
@@ -670,6 +673,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           const result = await ctx.cloud.exec(cmd, {
             timeoutSeconds,
             signal: ctx.signal,
+            subDirectory: ctx.botDir,
           });
           const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
           return finish({
@@ -691,7 +695,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         await acquireComputer();
         ctx.cloud.beginTask('读取云电脑文件');
         try {
-          const text = await ctx.cloud.readText(remotePath);
+          const text = await ctx.cloud.readText(remotePath, ctx.botDir);
           return finish({ ok: true, summary: `读取 ${remotePath}（${text.length} 字符）`, detail: pruneOutput(text, 20000, 0.7) });
         } finally {
           ctx.cloud.endTask();
@@ -707,7 +711,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         await acquireComputer();
         ctx.cloud.beginTask('写入云电脑文件');
         try {
-          await ctx.cloud.writeText(remotePath, content);
+          await ctx.cloud.writeText(remotePath, content, ctx.botDir);
           return finish({ ok: true, summary: `已写入 ${remotePath}（${content.length} 字符）` });
         } finally {
           ctx.cloud.endTask();
@@ -732,7 +736,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       }
       case 'recall': {
         const query = requireString(args, 'query');
-        const hits = ctx.recall(query);
+        const hits = await ctx.recall(query);
         return finish({
           ok: true,
           summary: hits.length ? `找到 ${hits.length} 条记忆` : '没有匹配的记忆',
