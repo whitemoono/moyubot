@@ -146,6 +146,49 @@ export function pruneToolMessages(messages: AgentMessage[], cap: number): { mess
 /** 由宽到窄的精简阶梯；第一个能装进预算的宽度即胜出，全部装不下才交给摘要压缩。 */
 const PRUNE_LADDER = [4000, 2000, 800, 300];
 
+/**
+ * 工具 schema 的瘦身阶梯：description 才是大头（实测 20 个工具 4340 → 全去掉描述 1155），
+ * 顶层和参数里的 property description 都要处理，只砍顶层等于没砍。
+ * top/param=0 表示连键一起删（比留空串更省）。
+ */
+const TOOL_SLIM_TIERS = [
+  { top: 160, param: 96 },
+  { top: 96, param: 48 },
+  { top: 0, param: 0 },
+];
+
+function cutDescription(text: string, max: number): string {
+  if (!max) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function stripDescriptions(node: unknown, max: number): unknown {
+  if (Array.isArray(node)) return node.map((item) => stripDescriptions(item, max));
+  if (node && typeof node === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'description' && typeof value === 'string') {
+        if (!max) continue;
+        out[key] = cutDescription(value, max);
+      } else out[key] = stripDescriptions(value, max);
+    }
+    return out;
+  }
+  return node;
+}
+
+function slimTools(tools: ToolSchema[], tier: { top: number; param: number }): ToolSchema[] {
+  return tools.map((tool) => {
+    const next: Record<string, unknown> = { ...tool };
+    if (typeof next.description === 'string') {
+      const cut = cutDescription(next.description, tier.top);
+      if (cut) next.description = cut; else delete next.description;
+    }
+    next.parameters = stripDescriptions(tool.parameters, tier.param);
+    return next as unknown as ToolSchema;
+  });
+}
+
 interface PrepareArgs {
   store: Store;
   bot: Bot;
@@ -199,19 +242,21 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   const initial = [...messagesFor(older, viewer), ...live];
   // 小窗口 + 工具多：工具列表本身就可能挤爆预算。先试完整描述，装不下就按阶梯截短
   // （名字和参数保留，模型仍能调用），瘦身后的列表随返回值交给 provider，预算口径与实际输入一致。
-  // 触发条件必须看完整 initial（含历史），只看当前轮会漏掉"压缩路径装不下"的场景。
+  // 两轮选择：先找"连历史都装得下"的最宽档；都装不下时退一步，只要"完整输入+摘要预留"装得下即可——
+  // 否则压缩路径里 `system+overhead+summaryAllowance` 这个下限永远比不过，会像之前那样无解地抛错。
   if (estimateTokens(system) + overhead + historyTokens(initial) > budget) {
-    for (const maxChars of [110, 60]) {
-      const slim = effectiveTools.map((tool) => {
-        const description = String(tool.description ?? '');
-        return description.length > maxChars ? { ...tool, description: `${description.slice(0, maxChars - 1)}…` } : tool;
-      });
-      const slimOverhead = estimateTokens(JSON.stringify(slim));
-      if (estimateTokens(system) + slimOverhead + historyTokens(initial) <= budget) {
-        effectiveTools = slim;
-        overhead = slimOverhead;
-        break;
-      }
+    const summaryAllowanceFloor = Math.min(1800, Math.floor(window * .15));
+    let slimmed: { tools: ToolSchema[]; overhead: number } | undefined;
+    for (const tier of TOOL_SLIM_TIERS) {
+      const attempt = slimTools(effectiveTools, tier);
+      const attemptOverhead = estimateTokens(JSON.stringify(attempt));
+      if (estimateTokens(system) + attemptOverhead + historyTokens(initial) <= budget) { slimmed = { tools: attempt, overhead: attemptOverhead }; break; }
+      if (!slimmed && estimateTokens(system) + attemptOverhead + summaryAllowanceFloor <= budget) slimmed = { tools: attempt, overhead: attemptOverhead };
+    }
+    if (slimmed) {
+      effectiveTools = slimmed.tools;
+      overhead = slimmed.overhead;
+      emit({ type: 'log', level: 'info', text: `上下文窗口较小，已精简工具描述以留出预算（overhead≈${overhead} tokens）` });
     }
   }
   if (!args.recovery && estimateTokens(summarySystem(system, summary)) + overhead + historyTokens(initial) <= budget) {

@@ -60,6 +60,40 @@ async function fixture(script, options = {}) {
   return { provider, store, bot, conversation, workspaceDir, cloud, runtime, round, cleanup: async () => { cloud.dispose(); await provider.close(); } };
 }
 
+test('小窗口 + 全部工具：工具描述会按阶梯瘦身，绝不因工具列表本身撑爆窗口', async () => {
+  const { prepareContext } = await import('../packages/core/dist/context.js');
+  const { TOOL_SCHEMAS } = await import('../packages/core/dist/index.js');
+  const est = (s) => { let a = 0, o = 0; for (const c of s) c.codePointAt(0) <= 127 ? a++ : o++; return Math.ceil(a / 3 + o * 2); };
+  const fullOverhead = est(JSON.stringify(TOOL_SCHEMAS));
+  const provider = {
+    kind: 'openai',
+    async chat(args, handlers) {
+      const isCompact = /压缩同一个 Bot/.test(args.system || '');
+      handlers.onText(isCompact ? JSON.stringify({ summary: '项目讨论已摘要', memories: [] }) : '好的');
+      return { finishReason: 'stop' };
+    },
+  };
+  const f = await fixture(() => say('好'));
+  try {
+    assert.ok(TOOL_SCHEMAS.length >= 18, '本用例依赖工具数量足够多来撑小窗口');
+    f.store.updateSettings({ providers: [{ ...f.store.getSettings().providers[0], contextWindowTokens: 8192 }] });
+    for (let n = 0; n < 14; n++) {
+      f.store.appendMessage(f.conversation.id, { id: `u-${n}`, role: 'user', content: `历史问题${n} ${'这是一段较长的中文用来占据上下文窗口。'.repeat(6)}`, createdAt: Date.now() - 1000 + n });
+      f.store.appendMessage(f.conversation.id, { id: `a-${n}`, role: 'assistant', content: `回答${n} ${'助手也输出了同样长度的一段内容来填充窗口。'.repeat(6)}`, createdAt: Date.now() - 1000 + n + 0.1 });
+    }
+    const last = f.store.getConversation(f.conversation.id).messages.at(-1);
+    const result = await prepareContext({
+      store: f.store, bot: f.bot, provider, conversation: f.store.getConversation(f.conversation.id), userMessageId: last.id,
+      live: [{ role: 'user', content: '现在总结' }], system: '你是助手', tools: TOOL_SCHEMAS, signal: new AbortController().signal, emit: () => {},
+    });
+    assert.ok(Array.isArray(result.tools), 'prepareContext 必须返回工具列表');
+    assert.equal(result.tools.length, TOOL_SCHEMAS.length, '工具不能被整条丢弃，只能瘦身描述');
+    const slimOverhead = est(JSON.stringify(result.tools));
+    assert.ok(slimOverhead < fullOverhead, `8K 窗口 + ${TOOL_SCHEMAS.length} 个工具应触发描述瘦身：full=${fullOverhead} slim=${slimOverhead}`);
+    assert.ok(slimOverhead < 4340, `瘦身后开销应显著下降，实际 ${slimOverhead}`);
+  } finally { await f.cleanup(); }
+});
+
 test('agent-instructions：工作区 AGENTS.md 注入系统提示，改动后按 mtime 刷新', async () => {
   const f = await fixture(() => say('好'));
   try {
