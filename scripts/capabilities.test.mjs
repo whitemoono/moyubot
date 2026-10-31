@@ -51,8 +51,8 @@ test('skills are copied, persisted, loaded on demand, scoped and constrained to 
 
 test('MCP imports validate atomically and keep authentication out of settings', async () => {
   const { store, manager } = fixture();
-  assert.throws(() => manager.importMcp('workspace_cloud', '{broken-auth-SECRET'), error => !error.message.includes('SECRET'));
-  assert.throws(() => manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { good: { command: 'node' }, bad: { args: [5] } } })));
+  await assert.rejects(() => manager.importMcp('workspace_cloud', '{broken-auth-SECRET'), error => !error.message.includes('SECRET'));
+  await assert.rejects(() => manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { good: { command: 'node' }, bad: { args: [5] } } })));
   assert.equal(store.settings.mcpServers?.length ?? 0, 0);
   manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer fixture-token' } } } }));
   assert.ok(!JSON.stringify(store.settings).includes('fixture-token'));
