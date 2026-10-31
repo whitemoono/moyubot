@@ -81,7 +81,6 @@ const api = {
   resumeGoal: (conversationId: string, extraRounds?: number) => invoke<Goal>('moyu:goal:resume', conversationId, extraRounds),
   updateGoal: (conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => invoke<Goal>('moyu:goal:update', conversationId, patch),
   answerQuestion: (decision: { requestId: string; answer: string }) => invoke<void>('moyu:answer', decision),
-  compactConversation: (id: string) => invoke<ConversationContext>('moyu:conversation:compact', id),
   contextUsage: (conversationId: string) => invoke<ContextUsageSnapshot | undefined>('moyu:context:usage', conversationId),
   continueSubagent: (id: string, message: string) => invoke<{ ok: boolean; text: string; error?: string }>('moyu:subagent:continue', id, message),
   stopSubagent: (id: string) => invoke<boolean>('moyu:subagent:stop', id),

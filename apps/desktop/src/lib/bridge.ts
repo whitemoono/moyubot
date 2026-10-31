@@ -88,7 +88,6 @@ export interface MoyuBridge {
   resumeGoal(conversationId: string, extraRounds?: number): Promise<Goal>;
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
-  compactConversation(id: string): Promise<ConversationContext>;
   contextUsage(conversationId: string): Promise<ContextUsageSnapshot | undefined>;
   continueSubagent(id: string, message: string): Promise<{ ok: boolean; text: string; error?: string }>;
   stopSubagent(id: string): Promise<boolean>;

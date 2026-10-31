@@ -396,7 +396,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, compactConversation, toast } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, toast } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -450,10 +450,6 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
             if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined);
           }}><Icon name="send" size={13} /><span>续跑</span></button>
         </div> : null}
-        <button type="button" className="chat-goal" title="压缩历史：把较早的对话并入摘要，保留完整记录在本地" onClick={() => void compactConversation()}>
-          <Icon name="undo" size={13} />
-          <span className="chat-goal__text">压缩历史</span>
-        </button>
       </header>
 
       <div className="chat__stage">

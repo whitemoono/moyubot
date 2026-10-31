@@ -30,7 +30,6 @@ import type {
   ScheduleUpdate,
   AskRequest,
   AskDecision,
-  ConversationContext,
   UsageQuery,
 } from '@moyu/core';
 import { createChatProvider } from '@moyu/core';
@@ -491,7 +490,6 @@ export class MoyuApp {
       pending.resolve(answer);
       this.send('moyu:event', { type: 'question_done', requestId: decision.requestId, answer, cancelled: !answer.trim() } satisfies AgentEvent);
     });
-    handle('moyu:conversation:compact', (_event, id: string): Promise<ConversationContext> => this.runtime.compactConversation(id));
     handle('moyu:context:usage', (_event, conversationId: string) => this.store.getContextUsage(conversationId));
 
     handle('moyu:usage', (_event, query: UsageQuery) => this.store.usage.query(query));
@@ -578,7 +576,18 @@ export class MoyuApp {
     handle('moyu:memory:open-folder', async (_event, scopeId?: string) => {
       const folder = this.store.memoryLibraryPath(typeof scopeId === 'string' && scopeId ? scopeId : undefined);
       fs.mkdirSync(folder, { recursive: true });
-      await shell.openPath(folder);
+      // shell.openPath 走 ShellExecute，在目录关联被改或安全软件拦截的机器上会弹
+      // “Windows 无法访问指定设备、路径或文件”；直接调资源管理器最稳。
+      const opened = await new Promise<boolean>((resolve) => {
+        try {
+          const child = spawn('explorer.exe', [folder], { detached: true, stdio: 'ignore' });
+          child.on('error', () => resolve(false));
+          child.unref();
+          // explorer.exe 立即返回且退出码不可靠，能启动进程即视为成功
+          setTimeout(() => resolve(true), 250);
+        } catch { resolve(false); }
+      });
+      if (!opened) await shell.openPath(folder);
     });
 
     handle('moyu:artifact:open', async (_event, relPath: string) => {

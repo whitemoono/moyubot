@@ -23,7 +23,7 @@ import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
 import { newId, formatDuration, pruneOutput, summarize, truncate } from './util';
 import { runWorkflow } from './workflow';
-import { contextWindow, outputBudget, forceCompact, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
+import { contextWindow, outputBudget, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
 import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generation';
 
@@ -927,17 +927,6 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
    * 手动压缩（界面按钮触发）：不看预算，把最后一条用户消息之前的历史并进摘要。
    * 生成中禁止，避免和正在推进的任务上下文互相踩。
    */
-  async compactConversation(conversationId: string): Promise<ConversationContext> {
-    const conversation = this.store.getConversation(conversationId);
-    if (!conversation) throw new Error('会话不存在');
-    if (this.isRunning(conversationId)) throw new Error('会话正在生成中，请等它结束再压缩');
-    const bot = this.store.getBot(conversation.botId);
-    if (!bot) throw new Error('Bot 不存在');
-    const { provider } = this.providerFor(bot);
-    const memoryScope = conversation.group ? conversationId : bot.id;
-    return forceCompact({ store: this.store, bot, conversation, provider, signal: new AbortController().signal, emit: (event) => this.emit(event), system: this.buildSystemPrompt(bot, memoryScope), tools: schemasFor(bot, conversation.mode === 'plan' ? 'plan' : 'execute') });
-  }
-
   async runUnattended(botId: string, prompt: string): Promise<{ conversationId: string }> {
     const bot = this.store.getBot(botId);
     if (!bot) throw new Error('Bot 不存在');

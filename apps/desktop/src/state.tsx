@@ -79,8 +79,6 @@ interface MoyuContextValue {
   /** 待回答的开放提问；null 表示没有。 */
   question: AskRequest | null;
   answerQuestion: (decision: { requestId: string; answer: string }) => Promise<void>;
-  /** 手动压缩当前会话的历史（command-compact）。 */
-  compactConversation: () => Promise<void>;
   continueSubagent: (childConversationId: string, message: string) => Promise<{ ok: boolean; text: string; error?: string }>;
   stopSubagent: (childConversationId: string) => Promise<boolean>;
   completeGoal: () => Promise<void>;
@@ -282,18 +280,6 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     setQuestion((prev) => prev?.id === decision.requestId ? null : prev);
     try { await moyu().answerQuestion(decision); }
     catch (error) { toast((error as Error).message, 'error'); }
-  }, [toast]);
-
-  const compactConversation = useCallback(async () => {
-    const current = conversationRef.current;
-    if (!current || runningRef.current.has(current.id)) return;
-    try {
-      const context = await moyu().compactConversation(current.id);
-      if (conversationRef.current?.id === current.id) setConversation((prev) => prev?.id === current.id ? { ...prev, context } : prev);
-      toast('历史已压缩，较早对话并入摘要');
-    } catch (error) {
-      toast((error as Error).message, 'error');
-    }
   }, [toast]);
 
   const continueSubagent = useCallback(async (childConversationId: string, message: string) => {
@@ -909,7 +895,6 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     subagents,
     question,
     answerQuestion,
-    compactConversation,
     continueSubagent,
     stopSubagent,
     updateBotGroup,
