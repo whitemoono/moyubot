@@ -251,3 +251,22 @@ test('触顶的续航目标可一键续跑（追加轮数并转回 active）', a
     assert.throws(() => f.store.resumeGoal('conv_none'), /只有触顶/);
   } finally { await f.cleanup(); }
 });
+
+test('会话开了「自动跑到底」：模型 set_goal 不带 autonomy 也继承 until_done 并自动续跑完成', async () => {
+  // 模型只会 set_goal（不带 autonomy），随后在续航轮里 update_goal complete。
+  const f = await fixture((body) => {
+    const last = String(body.messages.at(-1)?.content ?? '');
+    // 先认续航轮（续航轮的请求历史里也带上一轮的 tool 结果，不能只按 tr.length 判）。
+    if (last.includes('自动续航')) return call('update_goal', { status: 'complete', note: '验收通过' });
+    if (toolResults(body).length) return say('目标已完成');
+    return call('set_goal', { objective: '把报表修好' });
+  });
+  try {
+    f.store.setConversationAutonomy(f.conversation.id, 'until_done');
+    await f.round('修报表');
+    await waitIdle(f.runtime, f.store, f.conversation.id, true);
+    const goal = f.store.listGoals(f.conversation.id).find((g) => g.objective === '把报表修好');
+    assert.equal(goal.autonomy, 'until_done', '会话偏好应被 set_goal 继承');
+    assert.equal(goal.status, 'complete', '应自动续跑一轮并完成任务');
+  } finally { await f.cleanup(); }
+});

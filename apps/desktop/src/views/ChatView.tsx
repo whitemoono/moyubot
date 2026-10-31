@@ -194,7 +194,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 });
 
 function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
-  const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, toast } = useMoyu();
+  const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
   const recipient = group ? conversation.title : bot.name;
   const [text, setText] = useState('');
@@ -305,6 +305,10 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           {!group ? <Select label="会话模式" className={`composer-policy-picker composer-mode-picker--${conversation?.mode ?? 'execute'}`} icon={conversation?.mode === 'plan' ? 'shield' : 'sliders'} iconOnly menuMinWidth={250} value={conversation?.mode ?? 'execute'} onChange={(value) => void setConversationMode(value as 'execute' | 'plan')} options={[
             { value: 'execute', label: '执行模式', hint: '正常干活，按上面的执行权限逐步确认' },
             { value: 'plan', label: '计划模式', hint: '只读核查，先把计划交给你批准再动手' },
+          ]} /> : null}
+          {!group ? <Select label="续航" className={`composer-policy-picker composer-autonomy-picker--${conversation?.autonomy ?? 'turn'}`} icon={conversation?.autonomy === 'until_done' ? 'spark' : 'clock'} iconOnly menuMinWidth={250} value={conversation?.autonomy ?? 'turn'} disabled={conversation?.mode === 'plan'} onChange={(value) => void setConversationAutonomy(value as 'turn' | 'until_done')} options={[
+            { value: 'turn', label: '单轮', hint: '目标只在当前轮内自动多步' },
+            { value: 'until_done', label: '自动跑到底', hint: '新目标自动跨轮续航，直到完成或触顶（建议配「自动执行」）' },
           ]} /> : null}
         </div>
         <textarea

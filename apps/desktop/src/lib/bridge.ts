@@ -80,6 +80,7 @@ export interface MoyuBridge {
   conversation(id: string): Promise<Conversation | undefined>;
   botConversation(botId: string): Promise<Conversation>;
   setConversationMode(id: string, mode: 'execute' | 'plan'): Promise<Conversation>;
+  setConversationAutonomy(id: string, autonomy: 'turn' | 'until_done'): Promise<Conversation>;
   activeGoal(conversationId: string): Promise<Goal | undefined>;
   goalState(conversationId: string): Promise<{ active?: Goal; resumable?: Goal }>;
   resumeGoal(conversationId: string, extraRounds?: number): Promise<Goal>;

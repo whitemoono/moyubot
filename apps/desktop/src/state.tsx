@@ -72,6 +72,7 @@ interface MoyuContextValue {
   runningGroupIds: Set<string>;
   conversation: Conversation | null;
   setConversationMode: (mode: 'execute' | 'plan') => Promise<void>;
+  setConversationAutonomy: (autonomy: 'turn' | 'until_done') => Promise<void>;
   /** 当前会话还在推进的跨轮目标；不自动续跑，只负责让人和模型都记得它。 */
   goal: Goal | undefined;
   subagents: Record<string, SubagentProgress>;
@@ -259,6 +260,18 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     try {
       const updated = await moyu().setConversationMode(current.id, mode);
       if (conversationRef.current?.id === updated.id) setConversation(updated);
+    } catch (error) {
+      toast((error as Error).message, 'error');
+    }
+  }, [toast]);
+
+  const setConversationAutonomy = useCallback(async (autonomy: 'turn' | 'until_done') => {
+    const current = conversationRef.current;
+    if (!current || current.subagent || current.group) return;
+    try {
+      const updated = await moyu().setConversationAutonomy(current.id, autonomy);
+      if (conversationRef.current?.id === updated.id) setConversation(updated);
+      toast(autonomy === 'until_done' ? '已开启自动跑到底：新目标会自动跨轮续航' : '续航已关闭：目标只在当前轮内自动多步');
     } catch (error) {
       toast((error as Error).message, 'error');
     }
@@ -878,6 +891,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     saveBot,
     updateBotMetadata,
     setConversationMode,
+    setConversationAutonomy,
     completeGoal,
     goal,
     resumableGoal,

@@ -281,6 +281,11 @@ export interface Conversation {
    */
   subagent?: { task: string; depth: number; parentConversationId: string };
   /**
+   * 会话级续航偏好：省略即 'turn'（只在单轮内自动多步）。
+   * 'until_done' 时，模型 set_goal 若没显式指定 autonomy 就默认续航，且系统提示引导它这么做。
+   */
+  autonomy?: 'turn' | 'until_done';
+  /**
    * 计划模式。省略即等同 'execute'，所以旧会话文件不需要迁移。
    * 计划态下模型只拿到只读工具（MCP 工具一并隐藏），必须用 exit_plan_mode 把方案交给
    * 人批准，批准后才切回执行态。

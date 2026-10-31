@@ -227,10 +227,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const completion = this.runLoop({ bot, conversationId, runId, assistantMessage, abort, userMessage, modeOverride: options.modeOverride });
     this.runCompletions.set(conversationId, completion);
     void completion.finally(() => { if (this.runCompletions.get(conversationId) === completion) this.runCompletions.delete(conversationId); }).catch(() => {});
-    // L2 续航：首轮结束后，若这本会话挂着 until_done 目标且不在计划模式，自动再来一轮直到达成/受阻/触顶。
-    if (options.modeOverride !== 'plan' && this.store.activeGoal(conversationId)?.autonomy === 'until_done' && !this.autonomyLoops.has(conversationId)) {
-      void completion.then(() => this.autonomyLoop(bot, conversationId)).catch(() => {});
-    }
+    // L2 续航：首轮结束后再判断——目标可能正是在这一轮里由 set_goal 创建的，
+    // 若在 send 返回时同步读 activeGoal 会读到空，永远挂不上链。群聊走 sendGroup 不在这条路径。
+    void completion.then(() => {
+      if (options.modeOverride !== 'plan' && this.store.activeGoal(conversationId)?.autonomy === 'until_done') {
+        void this.autonomyLoop(bot, conversationId);
+      }
+    }).catch(() => {});
 
     return { conversationId, runId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id };
   }
@@ -402,7 +405,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
           if (['anthropic-budget', 'gemini-budget'].includes(reasoning.reasoningControl ?? '') && reasoning.thinkingBudgetTokens && reasoning.thinkingBudgetTokens >= outputTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');
           const context = await prepareContext({
             store: this.store, bot, provider, conversation: this.store.getConversation(conversationId)!,
-            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : '') + goalPrompt() + todoPrompt(), tools,
+            userMessageId: params.userMessage.id, live: history, system: this.buildSystemPrompt(bot, memoryScope) + (mode === 'plan' ? '\n\n当前处于计划模式：你只有只读工具，不得改动任何文件、命令、桌面或记忆。先核实事实，再用 exit_plan_mode 把可执行方案交给用户批准；批准前不要声称已经开始执行。' : '') + (params.group ? `\n\n你正在群聊「${conversation.title}」中，以 ${bot.name} 的身份发言。群成员：${conversation.group!.memberBotIds.map((id) => this.store.getBot(id)?.name ?? '已移除的 Bot').join('、')}。每轮按成员顺序回复，参考其他成员的发言，补充有用观点；只代表自己，不冒充用户或其他成员。` : '') + goalPrompt() + todoPrompt() + (conversation.autonomy === 'until_done' && mode !== 'plan' ? '\n\n用户已对本会话开启「自动跑到底」：遇到值得跨轮完成的多步任务，用 set_goal 时把 autonomy 设为 until_done（默认最多 8 轮），并尽量给出可逐条验收的 successCriteria；框架会在每轮结束后自动续跑，直到目标完成、受阻或触顶——所以把能自动推进的事一次交给你即可。' : ''), tools,
             signal, emit: params.silent ? () => {} : this.emit, recovery, outputTokens, taskBudget, taskContext,
           });
           callStart = Date.now();
@@ -551,7 +554,9 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             setGoal: (objective, successCriteria, autonomy, maxRounds) => {
               // todo 绑定：没显式给验收条件时，从当前待办的未完成项自动生成。
               const criteria = successCriteria?.length ? successCriteria : (this.store.listTodos(conversationId)?.items.filter((item) => !item.done).map((item) => item.content) ?? []);
-              return this.store.setGoal({ conversationId, botId: bot.id, objective, successCriteria: criteria.length ? criteria : undefined, autonomy, maxRounds });
+              // 会话若开了续航偏好，模型没显式选档就默认 until_done（这样"自动跑到底"不必靠话术）。
+              const resolved = autonomy ?? (this.store.getConversation(conversationId)?.autonomy === 'until_done' ? 'until_done' : undefined);
+              return this.store.setGoal({ conversationId, botId: bot.id, objective, successCriteria: criteria.length ? criteria : undefined, autonomy: resolved, maxRounds });
             },
             updateGoal: (patch) => this.store.updateGoal(conversationId, patch),
             writeTodos: (items) => { this.store.writeTodos(conversationId, bot.id, items); },

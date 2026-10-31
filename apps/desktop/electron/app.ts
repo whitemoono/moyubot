@@ -500,6 +500,7 @@ export class MoyuApp {
       if (this.runtime.isRunning(id)) throw new Error('这个会话正在生成中，请等它结束再切换模式');
       return this.store.setConversationMode(id, mode);
     });
+    handle('moyu:conversation:autonomy', (_event, id: string, autonomy: 'turn' | 'until_done'): Conversation => this.store.setConversationAutonomy(id, autonomy));
     handle('moyu:goal', (_event, conversationId: string) => this.store.activeGoal(conversationId));
     handle('moyu:goal:state', (_event, conversationId: string) => this.store.goalState(conversationId));
     handle('moyu:goal:resume', (_event, conversationId: string, extraRounds?: number) => this.store.resumeGoal(conversationId, extraRounds));

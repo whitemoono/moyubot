@@ -73,6 +73,7 @@ const api = {
   conversation: (id: string) => invoke<Conversation | undefined>('moyu:conversation', id),
   botConversation: (botId: string) => invoke<Conversation>('moyu:conversation:bot', botId),
   setConversationMode: (id: string, mode: 'execute' | 'plan') => invoke<Conversation>('moyu:conversation:mode', id, mode),
+  setConversationAutonomy: (id: string, autonomy: 'turn' | 'until_done') => invoke<Conversation>('moyu:conversation:autonomy', id, autonomy),
   activeGoal: (conversationId: string) => invoke<Goal | undefined>('moyu:goal', conversationId),
   goalState: (conversationId: string) => invoke<{ active?: Goal; resumable?: Goal }>('moyu:goal:state', conversationId),
   resumeGoal: (conversationId: string, extraRounds?: number) => invoke<Goal>('moyu:goal:resume', conversationId, extraRounds),

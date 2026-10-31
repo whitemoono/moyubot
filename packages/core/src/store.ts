@@ -572,6 +572,16 @@ export class Store {
     return conv;
   }
 
+  setConversationAutonomy(id: string, autonomy: 'turn' | 'until_done'): Conversation {
+    const conv = this.getConversation(id);
+    if (!conv) throw new Error('会话不存在');
+    if (conv.subagent) throw new Error('子智能体的临时会话不支持切换续航');
+    conv.autonomy = autonomy === 'until_done' ? 'until_done' : undefined;
+    conv.updatedAt = Date.now();
+    this.saveConversation(id);
+    return conv;
+  }
+
   saveConversation(id: string): void {
     const conv = this.conversations.get(id);
     if (!conv) return;
