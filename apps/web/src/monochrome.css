@@ -38,17 +38,17 @@
 .studio .preview-pages .current>span,.studio .preview-pages .current .icon,.studio .preview-pages small { color:var(--soft-ink); }
 .studio .preview-pages>button>span,.studio .preview-size button { color:var(--muted); }
 .studio.dark .dynamic-island { background:#020203; }
-.studio .mini-tabs button,.studio .bot-card-arrow,.studio .new-partner-card>.icon,.studio .profile-card>.icon,.studio .install-card>.icon,.studio .setting-row>.icon,.studio .resource-grid>button>.icon { color:var(--muted); }
+.studio .mini-tabs button,.studio .bot-card-arrow,.studio .new-partner-card>.icon,.studio .profile-card>.icon,.studio .setting-row>.icon,.studio .resource-grid>button>.icon { color:var(--muted); }
 .studio button:focus-visible,.studio a:focus-visible { outline-color:var(--ink); }
 .studio .preview-size { background:#e3e3e866; border-color:#d9d9e080; }
 .studio .preview-size .selected { background:#fff; color:#202024; }
 .studio.dark .preview-size { background:#ffffff08; border-color:#ffffff12; }
 .studio.dark .preview-size .selected { background:#3b3b42; color:#fff; }
-.studio .studio-brand img,.studio .about-note img,.studio .install-preview img { filter:none; }
+.studio .studio-brand img,.studio .about-note img { filter:none; }
 .studio .title-period { color:#b2b2bb; }
 .studio .greeting-card,.studio .bot-card,.studio .computer-card,.studio .resource-grid>button,
 .studio .settings-group,.studio .stats-card,.studio .task-list,.studio .profile-card,
-.studio .cloud-strip,.studio .install-card,.studio .new-partner-card,.studio .plan-card,
+.studio .cloud-strip,.studio .new-partner-card,.studio .plan-card,
 .studio .memory-card,.studio .search-field,.studio .sheet-input,.studio .cloud-detail-stats,
 .studio .usage-summary,.studio .attachment-choices>button {
   --glass-fill:#ffffff70; --glass-highlight:#ffffffa6;
@@ -58,7 +58,7 @@
 }
 .studio.dark .greeting-card,.studio.dark .bot-card,.studio.dark .computer-card,.studio.dark .resource-grid>button,
 .studio.dark .settings-group,.studio.dark .stats-card,.studio.dark .task-list,.studio.dark .profile-card,
-.studio.dark .cloud-strip,.studio.dark .install-card,.studio.dark .new-partner-card,.studio.dark .plan-card,
+.studio.dark .cloud-strip,.studio.dark .new-partner-card,.studio.dark .plan-card,
 .studio.dark .memory-card,.studio.dark .search-field,.studio.dark .sheet-input,.studio.dark .cloud-detail-stats,
 .studio.dark .usage-summary,.studio.dark .attachment-choices>button {
   --glass-fill:#1c1c2180; --glass-highlight:#ffffff0d;
@@ -93,11 +93,11 @@
 }
 .studio.dark .primary-button,.studio.dark .send-button,.studio.dark .icon-button.filled,.studio.dark .category-tabs>button.selected { background:linear-gradient(150deg,#fff,#ddddE3);color:#18181b;border-color:#fff9;box-shadow:inset 0 1px 1px #fff,0 3px 9px #0002; }
 .studio .primary-button:hover { filter:brightness(1.12); }
-.studio .cloud-strip-icon,.studio .install-icon,.studio .resource-icon,.studio .resource-icon.violet,
+.studio .cloud-strip-icon,.studio .resource-icon,.studio .resource-icon.violet,
 .studio .task-icon,.studio .setting-icon,.studio .profile-badge,.studio .privacy-illustration,
 .studio .demo-badge,.studio .status-pill,.studio .status-pill.awake { background:#8c8c990e;color:var(--soft-ink); }
 .studio .setting-icon { background:transparent; }
-.studio .cloud-strip small,.studio .cloud-strip strong,.studio .sleep-label,.studio .install-card small,.studio .computer-card>p,.studio .computer-specs,.studio .plan-card>.tiny-label,.studio .plan-row>span,.studio .plan-footer,.studio .memory-card>span,.studio .about-note strong,.studio .about-note span,.studio .about-note small,.studio .usage-summary>span,.studio .stats-card small,.studio .stats-card strong>span { color:var(--muted); }
+.studio .cloud-strip small,.studio .cloud-strip strong,.studio .sleep-label,.studio .computer-card>p,.studio .computer-specs,.studio .plan-card>.tiny-label,.studio .plan-row>span,.studio .plan-footer,.studio .memory-card>span,.studio .about-note strong,.studio .about-note span,.studio .about-note small,.studio .usage-summary>span,.studio .stats-card small,.studio .stats-card strong>span { color:var(--muted); }
 .studio .mini-tabs button.selected { color:var(--ink); }
 .studio .unread { background:#202024; }
 .studio.dark .unread { background:#dedee4;color:#17171b; }

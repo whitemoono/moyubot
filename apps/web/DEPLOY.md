@@ -106,6 +106,5 @@ docker compose -p moyubot-pwa start sync
 ```
 
 恢复时停止 sync，把备份的整个 data 目录复制回 /data，确保 UID/GID 1000 可写后启动。
-SQLite 与 WAL/SHM 组合保持一致。静态 PWA 在 sync 停止时仍能打开。
-检查 /healthz、/api/health、/manifest.webmanifest 和 /sw.js。
-Service Worker 只缓存公开应用壳，API、凭据和对话不进入 Cache Storage。
+SQLite 与 WAL/SHM 组合保持一致。静态页面在 sync 停止时仍能打开。
+检查 /healthz 和 /api/health。
