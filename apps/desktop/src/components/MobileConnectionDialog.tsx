@@ -141,8 +141,8 @@ export function MobileConnectionDialog({ onClose }: { onClose: () => void }) {
 
       <section>
         <h3 className={sectionTitle}>2 · 配对手机</h3>
-        {!connected ? <p className="inspector-note">先保存服务器（需要连接密钥），再生成二维码。手机打开同一服务器的 PWA，在「我的 → 连接电脑」扫码，然后在这里确认。</p> : null}
-        <Button size="sm" loading={busy === 'pair'} disabled={!connected} onClick={() => void generatePair()}>生成连接二维码</Button>
+        {!status?.configured ? <p className="inspector-note">先填写并保存服务器地址。</p> : !status.hasSetupKey ? <p className="inspector-note">先在上方填入部署时设置的连接密钥并保存服务器，然后生成二维码。手机打开同一服务器的 PWA，在「我的 → 连接电脑」扫码，然后在这里确认。</p> : <p className="inspector-note">生成二维码后，手机打开同一服务器的 PWA，在「我的 → 连接电脑」扫码，然后在这里确认。</p>}
+        <Button size="sm" loading={busy === 'pair'} disabled={!status?.configured || !status.hasSetupKey} onClick={() => void generatePair()}>生成连接二维码</Button>
         {pair && qr ? <div style={{ display: 'grid', gap: 8, justifyItems: 'start', marginTop: 10 }}>
           <img src={qr} alt="配对二维码" width={180} height={180} style={{ borderRadius: 12 }} />
           <p className="inspector-note">五分钟内有效、单次使用；也可以把链接发给手机打开。</p>
