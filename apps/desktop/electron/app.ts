@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, GitHubClient, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { spawn } from 'node:child_process';
@@ -508,6 +508,27 @@ export class MoyuApp {
     handle('moyu:goal:resume', (_event, conversationId: string, extraRounds?: number) => this.store.resumeGoal(conversationId, extraRounds));
     handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch, { requireEvidence: false }));
     handle('moyu:todos:list', (_event, conversationId: string) => this.store.listTodos(conversationId));
+    // GitHub Codespaces（实验）：Device Flow 登录、额度查询。token 存加密密钥库，不进 settings。
+    const githubClient = () => new GitHubClient(this.store.settings.github?.oauthClientId ?? '');
+    handle('moyu:github:login:start', async () => {
+      const clientId = this.store.settings.github?.oauthClientId ?? '';
+      if (!clientId.trim()) throw new Error('先填写 GitHub OAuth App 的 Client ID（github.com/settings/developers 创建）');
+      return githubClient().startDeviceFlow();
+    });
+    handle('moyu:github:login:poll', (_event, clientId: string, deviceCode: string) => new GitHubClient(clientId).pollDeviceFlow(deviceCode));
+    handle('moyu:github:token:store', (_event, token: string) => { this.store.secrets.set('github:codespaces', String(token)); return { ok: true }; });
+    handle('moyu:github:status', async () => {
+      const token = this.store.secrets.get('github:codespaces');
+      if (!token) return { loggedIn: false as const };
+      try { return { loggedIn: true as const, user: await githubClient().getUser(token) }; }
+      catch (error) { return { loggedIn: true as const, user: undefined, error: (error as Error).message }; }
+    });
+    handle('moyu:github:quota', async () => {
+      const token = this.store.secrets.get('github:codespaces');
+      if (!token) throw new Error('未登录 GitHub');
+      return githubClient().getQuota(token);
+    });
+    handle('moyu:github:logout', () => { this.store.secrets.delete('github:codespaces'); return { ok: true }; });
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });

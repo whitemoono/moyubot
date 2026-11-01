@@ -445,6 +445,8 @@ export interface AppSettings {
   providers: ProviderConfig[];
   bots: Bot[];
   cloud: CloudHostSettings;
+  /** GitHub（Codespaces 接入）：OAuth App 的 Client ID；token 在加密密钥库里，不进 settings。 */
+  github?: { oauthClientId?: string };
   telegram: TelegramSettings;
   ui: UiSettings;
   workspaces: Workspace[];

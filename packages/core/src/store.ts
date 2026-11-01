@@ -137,6 +137,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
       remoteWorkspaceDir: '/data/home/moyubot',
       wakeOnDemand: true,
     },
+    github: { oauthClientId: '' },
     telegram: { enabled: false, token: '', allowedIds: [] },
     embedding: { enabled: true, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' },
     workspaces: [
