@@ -87,7 +87,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       setGhConnect(await moyu().githubConnect());
       setSshKey(undefined);
-      void moyu().githubRegisterKey('generate').then((r) => setSshKey({ publicKey: r.publicKey ?? '', registered: r.registered, manual: r.manual, manualUrl: r.manualUrl, error: r.error })).catch(() => setSshKey(undefined));
+      void moyu().githubRegisterKey('generate').then((r) => setSshKey({ publicKey: r.publicKey ?? '', registered: r.registered, manual: !r.registered, manualUrl: r.manualUrl, error: r.error })).catch(() => setSshKey(undefined));
     }
     catch (error) {
       setGhError((error as Error).message);
