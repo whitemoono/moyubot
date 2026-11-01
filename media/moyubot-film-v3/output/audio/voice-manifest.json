@@ -1,0 +1,128 @@
+[
+  {
+    "id": "c01",
+    "start": 0.6,
+    "dur": 4.18,
+    "file": "voice/c01.wav",
+    "text": "晚上十一点，方案改到第三版——你还在陪电脑加班。"
+  },
+  {
+    "id": "c02",
+    "start": 5.9,
+    "dur": 1.018,
+    "file": "voice/c02.wav",
+    "text": "换 AI 来。"
+  },
+  {
+    "id": "c03",
+    "start": 8.0,
+    "dur": 6.818,
+    "file": "voice/c03.wav",
+    "text": "MoyuBot，开源的桌面 Agent 工作空间。多个 Bot，一台按需唤醒的共享云电脑。"
+  },
+  {
+    "id": "c04",
+    "start": 16.2,
+    "dur": 4.748,
+    "file": "voice/c04.wav",
+    "text": "每个 Bot 有独立的固定对话和工作目录，文件互不可见。"
+  },
+  {
+    "id": "c05",
+    "start": 22.0,
+    "dur": 5.55,
+    "file": "voice/c05.wav",
+    "text": "工作区在本地 Windows，也可以放到 InstaBox 云电脑，随时切换。"
+  },
+  {
+    "id": "c06",
+    "start": 29.2,
+    "dur": 5.416,
+    "file": "voice/c06.wav",
+    "text": "真正的 Agent 循环，二十五个内置工具，从命令执行到生成图片。"
+  },
+  {
+    "id": "c07",
+    "start": 36.0,
+    "dur": 4.688,
+    "file": "voice/c07.wav",
+    "text": "自动执行，或每步审批；计划模式先出方案再动手。"
+  },
+  {
+    "id": "c08",
+    "start": 41.1,
+    "dur": 2.568,
+    "file": "voice/c08.wav",
+    "text": "上下文快满，还会自动压缩。"
+  },
+  {
+    "id": "c09",
+    "start": 44.2,
+    "dur": 6.216,
+    "file": "voice/c09.wav",
+    "text": "云端 Bot 共用一台 InstaBox 云主机，纯聊天不打扰，一碰命令才唤醒。"
+  },
+  {
+    "id": "c10",
+    "start": 51.4,
+    "dur": 4.634,
+    "file": "voice/c10.wav",
+    "text": "任务结束自动休眠，双重兜底，忘了关也不烧配额。"
+  },
+  {
+    "id": "c11",
+    "start": 58.2,
+    "dur": 2.644,
+    "file": "voice/c11.wav",
+    "text": "七套内置角色，各有各的性格。"
+  },
+  {
+    "id": "c12",
+    "start": 74.0,
+    "dur": 3.556,
+    "file": "voice/c12.wav",
+    "text": "表情跟着状态流动，一眼看清它在忙什么。"
+  },
+  {
+    "id": "c13",
+    "start": 78.2,
+    "dur": 5.246,
+    "file": "voice/c13.wav",
+    "text": "拉个群，二到十二个 Bot 按顺序接力，各有各的模型和权限。"
+  },
+  {
+    "id": "c14",
+    "start": 84.4,
+    "dur": 4.872,
+    "file": "voice/c14.wav",
+    "text": "大任务派子代理并行调研，脚本编排，进度实时可见。"
+  },
+  {
+    "id": "c15",
+    "start": 90.2,
+    "dur": 5.434,
+    "file": "voice/c15.wav",
+    "text": "长期记忆按 Bot 隔离、自动去重；定时任务说一句话就能安排。"
+  },
+  {
+    "id": "c16",
+    "start": 95.95,
+    "dur": 4.194,
+    "file": "voice/c16.wav",
+    "text": "每次调用都记账，Token 花在哪，图表一目了然。"
+  },
+  {
+    "id": "c17",
+    "start": 100.55,
+    "dur": 4.169,
+    "file": "voice/c17.wav",
+    "text": "MoyuBot，MIT 开源，Windows 安装包即下即用。"
+  },
+  {
+    "id": "c18",
+    "start": 105.05,
+    "dur": 5.197,
+    "file": "voice/c18.wav",
+    "text": "让 AI 上班，你负责摸鱼。链接在评论区，摸鱼愉快。"
+  }
+]

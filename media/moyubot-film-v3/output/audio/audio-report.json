@@ -1,0 +1,69 @@
+{
+  "voice_mode": "edge-tts zh-CN-XiaoxiaoNeural",
+  "sample_rate": 44100,
+  "duration": 111.0,
+  "music": {
+    "bpm": 108,
+    "sections": [
+      {
+        "name": "intro",
+        "start": 0.0,
+        "end": 15.5,
+        "notes": "气氛围垫 + 五音动机，音乐盒点缀"
+      },
+      {
+        "name": "grooveA",
+        "start": 15.5,
+        "end": 43.5,
+        "notes": "轻鼓组进入，拨弦琶音 Am F C G"
+      },
+      {
+        "name": "grooveB",
+        "start": 43.5,
+        "end": 57.5,
+        "notes": "加贝斯与科技感 blip，F G Am Em"
+      },
+      {
+        "name": "musicbox",
+        "start": 57.5,
+        "end": 77.5,
+        "notes": "半拍音乐盒，角色巡游主题 C G Am F"
+      },
+      {
+        "name": "build",
+        "start": 77.5,
+        "end": 89.5,
+        "notes": "鼓组推进 + riser，F G Am G"
+      },
+      {
+        "name": "grooveA2",
+        "start": 89.5,
+        "end": 100.0,
+        "notes": "回归轻快，F C G Am"
+      },
+      {
+        "name": "outro",
+        "start": 100.0,
+        "end": 111.0,
+        "notes": "动机再现 + 氛围垫，渐弱"
+      }
+    ]
+  },
+  "sfx": {
+    "swoosh": 0.5,
+    "pop": 0.12,
+    "boop": 0.15,
+    "ping": 0.5,
+    "ping2": 0.5,
+    "chime": 1.0,
+    "sparkle": 1.3,
+    "click": 0.02,
+    "key": 0.2,
+    "notify": 0.63,
+    "bubble": 0.13,
+    "page": 0.22,
+    "power_up": 0.95,
+    "power_down": 0.8
+  },
+  "fit_problems": []
+}

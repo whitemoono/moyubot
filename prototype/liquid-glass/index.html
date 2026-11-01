@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>墨鱼 · Liquid Glass 原型</title>
+<meta name="theme-color" content="#F3F3F6">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="stage">
+  <div id="app">
+
+    <!-- 液态背景（让玻璃有东西可折射） -->
+    <div class="bg-liquid" aria-hidden="true">
+      <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i>
+    </div>
+
+    <!-- 仿状态栏（仅桌面预览时显示；手机上用真实状态栏） -->
+    <div class="statusbar" aria-hidden="true">
+      <span class="sb-left">
+        <span class="sb-time">2:08</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="#111"><circle cx="12" cy="7.5" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7v1H4v-1Z"/></svg>
+      </span>
+      <span class="sb-right">
+        <svg width="80" height="14" viewBox="0 0 80 14" fill="#111">
+          <rect x="0" y="8" width="3" height="5" rx="1"/>
+          <rect x="4.6" y="6" width="3" height="7" rx="1"/>
+          <rect x="9.2" y="3.5" width="3" height="9.5" rx="1"/>
+          <rect x="13.8" y="1" width="3" height="12" rx="1" opacity=".35"/>
+          <g fill="none" stroke="#111" stroke-width="2" stroke-linecap="round">
+            <path d="M24 5.6a9.5 9.5 0 0 1 12.4 0"/>
+            <path d="M26.6 8.8a5.5 5.5 0 0 1 7.2 0"/>
+          </g>
+          <circle cx="30.2" cy="12" r="1.7"/>
+          <rect x="43" y="1" width="30" height="12" rx="4"/>
+          <text x="58" y="9.8" font-size="8.2" fill="#fff" text-anchor="middle" font-weight="700" font-family="-apple-system,system-ui">33</text>
+          <rect x="74.5" y="4.5" width="2.5" height="5" rx="1.2" opacity=".45"/>
+        </svg>
+      </span>
+    </div>
+
+    <!-- ============ 会话列表 ============ -->
+    <section class="view view-home" id="view-home">
+      <div class="home-scroll" id="homeScroll">
+        <div class="hero" id="hero">
+          <div class="hero-avatar">
+            <svg viewBox="0 0 100 100" width="100" height="100">
+              <defs><clipPath id="heroClip"><circle cx="50" cy="50" r="50"/></clipPath></defs>
+              <g clip-path="url(#heroClip)">
+                <rect width="100" height="100" fill="#FFF3DE"/>
+                <path d="M50 16 C 44 4, 60 0, 64 8 C 57 6, 54 10, 55 17 Z" fill="#F2C14E"/>
+                <path d="M37 16 L41 5 L50 13 L59 5 L63 16 Z" fill="#F2B33D"/>
+                <circle cx="50" cy="54" r="30" fill="#F7CE68"/>
+                <circle cx="21" cy="60" r="14" fill="#F7CE68"/>
+                <circle cx="79" cy="60" r="14" fill="#F7CE68"/>
+                <ellipse cx="50" cy="60" rx="22" ry="20" fill="#FFE9CF"/>
+                <path d="M27 54 Q33 30 50 30 Q67 30 73 54 Q65 41 58 47 Q54 38 50 45 Q45 37 40 47 Q34 41 27 54 Z" fill="#F7CE68"/>
+                <circle cx="41" cy="61" r="3.5" fill="#6B3F1D"/>
+                <circle cx="59" cy="61" r="3.5" fill="#6B3F1D"/>
+                <circle cx="42.2" cy="59.8" r="1.2" fill="#fff"/>
+                <circle cx="60.2" cy="59.8" r="1.2" fill="#fff"/>
+                <path d="M46 69 Q50 75 54 69 Q50 71 46 69 Z" fill="#A0522D"/>
+                <ellipse cx="35" cy="67" rx="4" ry="2.4" fill="#FFB3A0" opacity=".55"/>
+                <ellipse cx="65" cy="67" rx="4" ry="2.4" fill="#FFB3A0" opacity=".55"/>
+                <circle cx="22" cy="47" r="5" fill="#B23A48"/>
+                <circle cx="78" cy="47" r="5" fill="#2A2A33"/>
+              </g>
+            </svg>
+          </div>
+          <div class="hero-name">小喵</div>
+        </div>
+        <div id="chatList"><!-- JS 渲染分组与行 --></div>
+        <button class="hidden-row pressable" id="hiddenRow">
+          已隐藏对话 <b>1</b>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div class="dock-fade"></div>
+      <div class="menu-scrim" id="homeMenuScrim"></div>
+      <div class="chat-menu home-menu glass" id="homeMenu" role="menu">
+        <button class="chat-menu-item" role="menuitem" data-act="newbot"><span>新建 Bot</span></button>
+        <button class="chat-menu-item" role="menuitem" data-act="newgroup"><span>新建群聊</span></button>
+      </div>
+      <div class="home-top">
+        <button class="glass glass-circle pressable" data-glint id="meBtn" aria-label="我的资料">
+          <span class="me-ava">
+            <svg viewBox="0 0 100 100" width="46" height="46">
+              <defs><clipPath id="meClip"><circle cx="50" cy="50" r="50"/></clipPath></defs>
+              <g clip-path="url(#meClip)">
+                <rect width="100" height="100" fill="#EDE9F3"/>
+                <circle cx="50" cy="92" r="27" fill="#3A3F52"/>
+                <circle cx="50" cy="47" r="25" fill="#2E3346"/>
+                <ellipse cx="50" cy="56" rx="16.5" ry="15.5" fill="#FDE9D2"/>
+                <path d="M33 50 Q37 29 50 29 Q63 29 67 50 Q60 40 54 45 Q50 38 46 45 Q40 40 33 50 Z" fill="#2E3346"/>
+                <circle cx="44" cy="58" r="2.5" fill="#2B2B33"/>
+                <circle cx="56" cy="58" r="2.5" fill="#2B2B33"/>
+              </g>
+            </svg>
+            <i class="me-dot"></i>
+          </span>
+        </button>
+        <button class="glass glass-circle pressable" data-glint id="addBtn" aria-label="新建">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <footer class="home-dock">
+        <button class="glass glass-circle dock-scan pressable" data-glint aria-label="扫一扫">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="2"/>
+            <rect x="14" y="3" width="7" height="7" rx="2"/>
+            <rect x="3" y="14" width="7" height="7" rx="2"/>
+            <path d="M14.5 14.5h2v2h-2zM19 14.5h1.5M21 18v2.5M14.5 19.5V21M18 21h3" stroke-width="1.8"/>
+          </svg>
+        </button>
+        <button class="glass glass-pill dock-search pressable" data-glint id="openSearch">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <span>搜索</span>
+        </button>
+      </footer>
+    </section>
+
+    <!-- ============ 搜索 ============ -->
+    <section class="view view-search" id="view-search" aria-hidden="true">
+      <div class="chips-bar" id="chipsBar">
+        <i class="chip-thumb" id="chipThumb"></i>
+        <button class="chip on" data-f="all" style="--i:0">全部</button>
+        <button class="chip" data-f="msg" style="--i:1">消息</button>
+        <button class="chip" data-f="bot" style="--i:2">Bot</button>
+        <button class="chip" data-f="group" style="--i:3">群聊</button>
+        <button class="chip" data-f="file" style="--i:4">文件</button>
+        <button class="chip" data-f="task" style="--i:5">定时任务</button>
+      </div>
+      <div class="search-scroll" id="searchScroll">
+        <div id="searchResults"><!-- JS 渲染 --></div>
+        <div class="empty" id="searchEmpty" hidden>
+          <div class="empty-emoji">🗂️</div>
+          <div>这里什么都没有</div>
+        </div>
+      </div>
+      <footer class="search-dock">
+        <div class="glass glass-pill search-field" data-glint id="searchField">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <input id="searchInput" type="search" placeholder="搜索" autocomplete="off" enterkeyhint="search">
+        </div>
+        <button class="glass glass-circle pressable" data-glint id="closeSearch" aria-label="关闭搜索">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </footer>
+    </section>
+
+    <!-- ============ 聊天 ============ -->
+    <section class="view view-chat" id="view-chat" aria-hidden="true">
+      <div class="chat-scroll" id="chatScroll">
+        <div class="msg bot">我查了一下，先说结论：不像官方。<b>FlorkAgent</b> 预售刚开始，用 BNB 付款，换 100 万枚 $FLORK，只限持有 .ai Agent ID、用 Binance Agentic Wallet 打。打满 5000 份后上 PancakeSwap。剩余份数、合约地址、有没有退款我都还没查到，官方 X 号也只有约 122 个粉丝。<a class="msg-link"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.7 3H21l-7.3 8.3L22.2 21h-6.7l-5.3-6.2L4.2 21H1l7.8-8.9L1.5 3h6.9l4.8 5.6L17.7 3Zm-1.2 16h1.9L6.4 4.9H4.4L16.5 19Z"/></svg>官帖</a> · <a class="msg-link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18-3-4-3-14.5 0-18Z"/></svg>官网</a><br><br>Doge Punk 免费，只付一点 gas，你想要的话我可以先帮你领 1 张。</div>
+        <div class="msg me">Agent Nakamigos 这个有人买吗 卖的掉吗</div>
+        <div class="msg bot">我去查一下 Agent Nakamigos 最近有没有成交、地板价多少、挂单的人多不多。</div>
+        <div class="msg bot">在查了，有结果马上告诉你。</div>
+        <div class="unread-divider">新消息</div>
+        <div class="msg bot">BIBIAI 现在值 <b>19.45 U</b> 左右，比成本 14.9 U 涨了约 30%（02:08 北京时间）。</div>
+        <div class="subagent" id="subagent">
+          <button class="subagent-chip glass" id="subagentChip" data-glint>
+            <span class="bot-mini" id="subagentIcon"></span>
+            <span class="shimmer">调查NFT项目流动性</span>
+            <svg class="sa-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#98A0A8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="subagent-card glass" data-glint>
+            <div class="sa-title">子任务 · 调查NFT项目流动性</div>
+            <div class="step done">
+              <i class="step-ico"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></i>
+              检索 OpenSea 地板价
+            </div>
+            <div class="step run">
+              <i class="step-ico spin"></i>
+              统计 24h 成交与挂单量
+            </div>
+            <div class="progress"><i></i></div>
+          </div>
+        </div>
+      </div>
+      <header class="chat-top">
+        <button class="glass glass-circle pressable" data-glint id="backBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="chat-title-wrap">
+          <div class="glass glass-pill chat-title" data-glint id="chatTitle">
+            <span class="ct-ava" id="chatTitleIcon"></span>
+            <span class="ct-name" id="chatTitleName">AI AGENT Bot</span>
+          </div>
+        </div>
+        <button class="glass glass-circle pressable" data-glint id="moreBtn" aria-label="更多">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#1c1c1e"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
+        </button>
+      </header>
+      <footer class="chat-dock">
+        <div class="glass glass-pill composer" data-glint>
+          <button class="comp-plus pressable" aria-label="附件">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3a3a3e" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <input id="composerInput" type="text" placeholder="向 AI AGENT Bot 提问" autocomplete="off">
+          <button class="comp-mic" aria-label="语音输入">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b6b72" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18.5V21.5"/></svg>
+          </button>
+          <button class="voice-btn pressable" id="voiceBtn" aria-label="语音通话">
+            <svg width="17" height="17" viewBox="0 0 18 18"><g fill="#fff"><rect class="w1" x="0.5" y="6" width="2.6" height="6" rx="1.3"/><rect class="w2" x="5" y="3" width="2.6" height="12" rx="1.3"/><rect class="w3" x="9.5" y="6" width="2.6" height="6" rx="1.3"/><rect class="w4" x="14" y="4.5" width="2.6" height="9" rx="1.3"/></g></svg>
+          </button>
+        </div>
+      </footer>
+      <div class="menu-scrim" id="chatMenuScrim"></div>
+      <div class="chat-menu glass" id="chatMenu" role="menu">
+        <button class="chat-menu-item" role="menuitem" data-act="profile">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.6" r="3.1"/><path d="M5.8 18.6c1.1-2.6 3.4-4 6.2-4s5.1 1.4 6.2 4"/></svg>
+          <span>查看资料</span>
+        </button>
+        <button class="chat-menu-item" role="menuitem" data-act="find">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"/><path d="M15.8 15.8L21 21"/></svg>
+          <span>在聊天中查找</span>
+        </button>
+        <button class="chat-menu-item" role="menuitem" data-act="share">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.5v-10M8.5 7.5L12 4l3.5 3.5"/><path d="M7.5 11H6.8A2.8 2.8 0 0 0 4 13.8v4.4A2.8 2.8 0 0 0 6.8 21h10.4a2.8 2.8 0 0 0 2.8-2.8v-4.4a2.8 2.8 0 0 0-2.8-2.8h-.7"/></svg>
+          <span>分享为模板</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ Bot 资料页 ============ -->
+    <section class="view view-profile" id="view-profile" aria-hidden="true">
+      <div class="pf-scroll" id="profileScroll">
+        <div class="pf-hero">
+          <div class="pf-icon" id="profileIcon"></div>
+          <div class="pf-name" id="profileName">AI AGENT Bot</div>
+          <button class="pf-edit pressable" id="editBtn">编辑</button>
+        </div>
+        <div class="pf-card">
+          <button class="pf-row" id="pfTasksRow">
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#7C7C82" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 2"/></svg>
+            <span>定时任务</span>
+            <svg class="pf-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+          <button class="pf-row" id="pfLibraryRow">
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#7C7C82" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.6c0-1.1.9-2 2-2h3.4l2 2.2h7.6c1.1 0 2 .9 2 2v8.6c0 1.1-.9 2-2 2h-13c-1.1 0-2-.9-2-2V7.6Z"/><path d="M7.5 12.4h6M7.5 15.4h4"/></svg>
+            <span>资料库</span>
+            <svg class="pf-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+          <button class="pf-row" id="pfPcRow">
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#7C7C82" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12.5" rx="2"/><path d="M9.5 20.5h5M12 17v3.5"/></svg>
+            <span>电脑</span>
+            <span class="pf-status">空闲</span>
+            <svg class="pf-chev" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="pf-card">
+          <div class="pf-row pf-row-static">
+            <span>通知</span>
+            <button class="switch on" id="notifyToggle" role="switch" aria-checked="true" aria-label="通知开关"></button>
+          </div>
+        </div>
+        <div class="pf-caption">Bot 完成任务或等你处理时通知你</div>
+      </div>
+      <header class="profile-top">
+        <button class="glass glass-circle pressable" data-glint id="profileBackBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <button class="glass glass-circle pressable" data-glint id="profileMoreBtn" aria-label="更多">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#1c1c1e"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
+        </button>
+      </header>
+    </section>
+
+    <!-- ============ 定时任务 ============ -->
+    <section class="view view-tasks" id="view-tasks" aria-hidden="true">
+      <div class="tasks-scroll" id="tasksScroll">
+        <div class="pf-card">
+          <div class="task-item">
+            <div class="task-info">
+              <div class="task-name">X 上 Web3 与羊毛消息监控</div>
+              <div class="task-meta">Every 30 minutes · <span class="task-status">运行中</span></div>
+            </div>
+            <button class="switch on task-switch" role="switch" aria-checked="true" aria-label="X 上 Web3 与羊毛消息监控"></button>
+          </div>
+        </div>
+      </div>
+      <header class="tasks-top">
+        <button class="glass glass-circle pressable" data-glint id="tasksBackBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="tasks-title">定时任务</div>
+        <span></span>
+      </header>
+    </section>
+
+    <!-- ============ 资料库 ============ -->
+    <section class="view view-tasks" id="view-library" aria-hidden="true">
+      <div class="tasks-scroll" id="libraryScroll">
+        <div class="lib-date">今天</div>
+        <div class="pf-card" id="libList"><!-- JS 渲染链接记录 --></div>
+      </div>
+      <header class="tasks-top">
+        <button class="glass glass-circle pressable" data-glint id="libraryBackBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="tasks-title">资料库</div>
+        <span></span>
+      </header>
+    </section>
+
+    <!-- ============ 电脑（远程屏幕） ============ -->
+    <section class="view view-pc" id="view-pc" aria-hidden="true">
+      <div class="stream-frame">
+        <i class="stream-swoosh s1"></i>
+        <i class="stream-swoosh s2"></i>
+        <div class="stream-taskbar">
+          <span class="tsk-ico tsk-chrome"></span>
+          <span class="tsk-ico tsk-app1"></span>
+          <span class="tsk-ico tsk-app2"></span>
+        </div>
+      </div>
+      <button class="glass pc-takeover pressable" data-glint id="takeoverBtn">接管控制</button>
+      <header class="tasks-top">
+        <button class="glass glass-circle pressable" data-glint id="pcBackBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="pc-title"><span class="pc-title-icon" id="pcTitleIcon"></span><span id="pcTitleName">AI AGENT Bot</span></div>
+        <button class="glass glass-circle pressable" data-glint id="pcHelpBtn" aria-label="帮助"><span class="pc-q">?</span></button>
+      </header>
+    </section>
+
+    <!-- ============ 已隐藏对话 ============ -->
+    <section class="view view-tasks" id="view-hidden" aria-hidden="true">
+      <div class="tasks-scroll" id="hiddenScroll">
+        <div id="hiddenList">
+          <div class="hidden-item">
+            <span class="hidden-ava">
+              <svg viewBox="0 0 100 100" width="54" height="54" style="transform:rotate(-8deg)">
+                <path d="M50 5 C58 33 67 42 95 50 C67 58 58 67 50 95 C42 67 33 58 5 50 C33 42 42 33 50 5 Z" fill="#0f0f0f"/>
+                <rect x="39" y="38" width="8.5" height="24" rx="4.2" fill="#fff"/>
+                <rect x="52.5" y="38" width="8.5" height="24" rx="4.2" fill="#fff"/>
+              </svg>
+            </span>
+            <span class="hidden-name">X POST BOT</span>
+            <button class="unhide-btn pressable">取消隐藏</button>
+          </div>
+        </div>
+        <div class="hidden-empty" id="hiddenEmpty" hidden>没有隐藏的对话</div>
+      </div>
+      <header class="tasks-top">
+        <button class="glass glass-circle pressable" data-glint id="hiddenBackBtn" aria-label="返回">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="hidden-title glass glass-pill" data-glint>已隐藏对话</div>
+        <button class="glass glass-circle pressable" data-glint id="hiddenHelpBtn" aria-label="帮助"><span class="pc-q">?</span></button>
+      </header>
+    </section>
+
+    <!-- ============ 创建新 Bot 弹层 ============ -->
+    <div class="create-scrim" id="createScrim"></div>
+    <section class="create-sheet" id="createSheet" role="dialog" aria-modal="true" aria-hidden="true">
+      <header class="cs-top">
+        <button class="glass glass-circle pressable" data-glint id="createCloseBtn" aria-label="关闭">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <div class="cs-title">创建新 Bot</div>
+        <span></span>
+      </header>
+      <div class="cs-scroll">
+        <div class="cs-preview" id="csPreview"></div>
+        <input id="csName" class="cs-name" type="text" placeholder="为 Bot 取个名字" maxlength="16" autocomplete="off">
+        <div class="cs-grid" id="csShapes"></div>
+        <div class="cs-colors" id="csColors"></div>
+        <button class="cs-create" id="csCreateBtn" disabled>创建</button>
+      </div>
+    </section>
+
+    <!-- ============ 新建群聊 弹层 ============ -->
+    <div class="create-scrim" id="groupScrim"></div>
+    <section class="create-sheet" id="groupSheet" role="dialog" aria-modal="true" aria-hidden="true">
+      <header class="cs-top">
+        <button class="glass glass-circle pressable" id="groupCloseBtn" aria-label="关闭">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <button class="glass glass-circle pressable" id="groupBackBtn" aria-label="返回" hidden>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="cs-title">新建群聊</div>
+        <button class="gs-next pressable" id="groupNextBtn">下一步</button>
+        <span id="groupTopSpacer" hidden></span>
+      </header>
+      <div class="gs-body">
+        <div class="gs-page gs-page1">
+          <div class="gs-count" id="gsCount">2 selected</div>
+          <div class="gs-list" id="gsList"></div>
+        </div>
+        <div class="gs-page gs-page2">
+          <div class="gs-stack" id="gsStack"></div>
+          <input id="gsName" class="gs-name" type="text" placeholder="例如：猎鹰项目" maxlength="20" autocomplete="off">
+          <button class="gs-skip pressable" id="gsSkipBtn">跳过</button>
+        </div>
+      </div>
+      <div class="gs-search glass glass-pill">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+        <input id="gsSearch" type="text" placeholder="再添加一个" autocomplete="off">
+      </div>
+    </section>
+
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "moyubot-film-v3",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MoyuBot v0.1.4 product introduction film — Remotion 16:9",
+  "scripts": {
+    "studio": "remotion studio --no-open",
+    "render": "remotion render MoyuBotIntro output/MoyuBot-Introduction-v3-1080p.mp4",
+    "stills": "remotion render MoyuBotIntro output/qa --frames=30,240,540,900,1290,1500,1830,2100,2400,2640,2880,3060 --image-format=png"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/transitions": "4.0.539",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/web": "^0.0.166",
+    "typescript": "^5.8.2"
+  }
+}
