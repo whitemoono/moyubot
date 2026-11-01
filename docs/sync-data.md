@@ -55,26 +55,29 @@ moyubot 的云端能力**不再写 `~/.claude`**（那是云机自带 Claude Cod
 ├── .moyu/shared/                       ← 共享（moyubot 管理，设置页导入，全部 Bot 可用）
 │   ├── mcp.json
 │   └── skills/<name>/
+│   └── .migrated-from-claude           ← 一次性迁移的 marker（幂等）
 ├── <dirName>/                          ← Bot 家目录（文件工具的 cwd 锚点，见第 3 节）
 │   ├── .moyu/
 │   │   ├── mcp.json                    ← 自有 MCP（Bot 对话里 install_mcp 写这里）
 │   │   └── skills/<name>/              ← 自有技能（install_skill 写这里）
 │   └── …（Bot 的工作文件）
-~/.claude.json + ~/.claude/skills       ← claude（外部，instabox 自带）：只读盘点展示为「claude」，moyubot 永不写入
+~/.claude*                              ← 云机自带 claude：moyubot 不读也不写（迁移后彻底不碰）
 ```
 
-右侧栏三档徽标：**自有**（当前 Bot 的 .moyu）/ **共享**（.moyu/shared）/ **claude**（外部，只读）。
+右侧栏两档徽标：**自有**（当前 Bot 的 .moyu）/ **共享**（.moyu/shared）。
+
+**一次性迁移**：首次盘点时（云机在线）自动把 `~/.claude.json` 的 mcpServers 和 `~/.claude/skills`、`~/.agents/skills` 的技能**复制**进 `.moyu/shared`（拷贝不是移动，云机 claude 不受影响；`.moyu` 已有条目优先不被覆盖；marker 文件幂等）。迁移后探针不再读 `~/.claude`，回归测试断言部署/探针脚本不含 `.claude`。
 
 已实现：
-- **盘点**：探针一次读三处（claude 外部 / .moyu/shared / 各 Bot 的 .moyu），条目带 `botId/botDirName` 归属；右侧栏与设置页按当前 Bot 过滤并标徽标
+- **盘点**：探针只读 .moyu（共享 + 各 Bot 家目录），条目带 `botId/botDirName` 归属；右侧栏与设置页按当前 Bot 过滤并标徽标
 - **部署分流**：Bot 对话里 `install_mcp` / `install_skill` → `<botDir>/.moyu/`（自动建目录）；设置页工作区级导入 → `.moyu/shared/`
-- 回归测试断言部署脚本**不得包含 .claude**（防止回归回旧路径）
+- **claude 迁移**：上述一次性复制
 
 待实现：
-1. 执行桥接：跑云端 Claude agent 时 `CLAUDE_CONFIG_DIR=<botDir>/.moyu/claude`，部署时把自有+共享合成一份 claude 格式写入那里（两条数据源互不污染）
+1. 执行桥接：跑云端 Claude agent 时 `CLAUDE_CONFIG_DIR=<botDir>/.moyu/claude`，把自有+共享合成 claude 格式写入那里（两条数据源互不污染）
 2. `load_skill` 物化到 `<botDir>/.moyu/skills/<name>/`
 3. 本地 stdio MCP 按 Bot 启动（per-bot 连接池：`(serverId, botDir)` 键控）
-4. 共享项"提升为 Bot 专属"的 UI（把 .moyu/shared 条目迁入某 Bot）
+4. 共享项"提升为 Bot 专属"的 UI
 
 ## 5. 冲突与语义（沿用现有引擎）
 

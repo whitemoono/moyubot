@@ -30,11 +30,13 @@ export class CapabilityManager {
   private cloudInventory?: { at: number; servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> };
   /** 部署 MCP/技能后置位：下次盘点跳过缓存直接探测，让新部署立刻出现在清单里。 */
   private cloudInventoryStale = false;
+  /** 云机 claude → .moyu 的一次性迁移：本会话已尝试次数（成功或达上限后不再跑）。 */
+  private claudeMigrationAttempts = 0;
   constructor(private store: Store, private cloud: () => Pick<ComputerHost, 'status' | 'exec' | 'ensureAwake' | 'writeText'> | undefined = () => undefined) {}
 
   /**
-   * 盘点云电脑上真实部署的 MCP 与技能：共享 ~/.claude.json、~/.claude/skills、~/.agents/skills，
-   * 加上每个 Bot 的家目录 <remoteWorkspaceDir>/<dirName>/.claude*（按 botId/botDirName 标记）。
+   * 盘点云电脑上 moyubot 管理的能力：共享 .moyu/shared + 每个 Bot 家目录的 .moyu（按 botId/botDirName 标记）。
+   * 不读云机自带 claude 的 ~/.claude（那是一次性迁移的来源，迁移后彻底不碰）。
    * 本地优先：清单落盘（cloud-inventory.json）且永久有效，总是先回上次已知结果，绝不为了盘点唤醒云电脑——
    * 只有云电脑本来在线（ready/busy/waking）时才顺带重新探测。探测失败保留旧清单，force=true 供手动刷新（允许唤醒）。
    */
@@ -51,6 +53,12 @@ export class CapabilityManager {
     const awake = state === 'ready' || state === 'busy' || state === 'waking';
     if (!force && !awake) return cached ?? empty;
     if (!force && !this.cloudInventoryStale && cached && now - cached.at < 5 * 60_000) return cached;
+    // 一次性迁移：云机自带 claude 的 MCP/技能 → .moyu/shared（云机侧 marker 幂等）。
+    // 之后盘点不再读 ~/.claude。成功（或达重试上限）后本会话不再尝试。
+    if (this.claudeMigrationAttempts < 5) {
+      this.claudeMigrationAttempts++;
+      if (await this.migrateClaudeCapabilities().catch(() => false)) this.claudeMigrationAttempts = 5;
+    }
     const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
     const botDirs = this.store.settings.bots
       .filter((bot) => (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud')
@@ -59,16 +67,14 @@ export class CapabilityManager {
     const probe = [
       'node -e \'',
       'const fs=require("fs"),os=require("os"),path=require("path");',
-      `const h=os.homedir(),root=${embed(root)},dirs=${embed(botDirs)};`,
-      'const out={moyu:{shared:{mcp:[],skills:[]},bots:{}},claude:{mcp:[],skills:[]}};',
+      `const root=${embed(root)},dirs=${embed(botDirs)};`,
+      'const out={shared:{mcp:[],skills:[]},bots:{}};',
       'const readMcp=(file)=>{try{const c=JSON.parse(fs.readFileSync(file,"utf8")||"{}");return Object.entries(c.mcpServers||{}).map(([n,g])=>({name:n,transport:g.type==="http"?"http":"stdio",command:g.command,args:g.args,url:g.url}))}catch(e){return[]}};',
       'const readSkills=(base)=>{const r=[];try{for(const f of fs.readdirSync(base)){const p=path.join(base,f);try{if(fs.statSync(p).isDirectory()&&fs.existsSync(path.join(p,"SKILL.md")))r.push({name:f,path:p})}catch(e){}}}catch(e){}return r};',
-      'out.claude.mcp=readMcp(path.join(h,".claude.json"));',
-      'out.claude.skills=readSkills(path.join(h,".claude/skills")).concat(readSkills(path.join(h,".agents/skills")));',
       'const sharedBase=path.join(root,".moyu","shared");',
-      'out.moyu.shared={mcp:readMcp(path.join(sharedBase,"mcp.json")),skills:readSkills(path.join(sharedBase,"skills"))};',
+      'out.shared={mcp:readMcp(path.join(sharedBase,"mcp.json")),skills:readSkills(path.join(sharedBase,"skills"))};',
       'for(const d of dirs){const dir=path.join(root,d);let st;try{st=fs.statSync(dir)}catch(e){continue}if(!st.isDirectory())continue;const base=path.join(dir,".moyu");',
-      'out.moyu.bots[d]={mcp:readMcp(path.join(base,"mcp.json")),skills:readSkills(path.join(base,"skills"))};}',
+      'out.bots[d]={mcp:readMcp(path.join(base,"mcp.json")),skills:readSkills(path.join(base,"skills"))};}',
       'console.log(JSON.stringify(out))',
       '\'',
     ].join('');
@@ -79,30 +85,17 @@ export class CapabilityManager {
       type McpRow = { name: string; transport: string; command?: string; url?: string };
       type SkillRow = { name: string; path: string };
       const data = JSON.parse(line) as {
-        moyu?: { shared?: { mcp?: McpRow[]; skills?: SkillRow[] }; bots?: Record<string, { mcp?: McpRow[]; skills?: SkillRow[] }> };
-        claude?: { mcp?: McpRow[]; skills?: SkillRow[] };
-        mcpServers?: McpRow[]; claudeSkills?: SkillRow[]; agentSkills?: SkillRow[];
+        shared?: { mcp?: McpRow[]; skills?: SkillRow[] };
+        bots?: Record<string, { mcp?: McpRow[]; skills?: SkillRow[] }>;
       };
       const servers: NonNullable<CapabilityStatus['cloudServers']> = [];
       const skills: NonNullable<CapabilityStatus['cloudSkills']> = [];
-      if (data.moyu || data.claude) {
-        // claude（外部）：云机自带 Claude Code 的配置，moyubot 只读展示，永不写入。
-        for (const [index, item] of (data.claude?.mcp ?? []).entries()) servers.push({ id: `claude-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: 'claude（外部）' });
-        for (const [index, item] of (data.claude?.skills ?? []).entries()) skills.push({ id: `claude-skill-${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
-        // 共享：moyubot 管理的 .moyu/shared，全部 Bot 可用。
-        for (const [index, item] of (data.moyu?.shared?.mcp ?? []).entries()) servers.push({ id: `moyu-shared-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '共享 · .moyu/shared' });
-        for (const [index, item] of (data.moyu?.shared?.skills ?? []).entries()) skills.push({ id: `moyu-shared-skill-${index}`, name: item.name, path: item.path, source: '共享 · .moyu/shared' });
-        // 自有：每个 Bot 家目录的 .moyu。
-        for (const [dirName, botInv] of Object.entries(data.moyu?.bots ?? {})) {
-          const botId = this.store.settings.bots.find((bot) => (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' && this.store.botDirName(bot.id) === dirName)?.id;
-          for (const item of botInv.mcp ?? []) servers.push({ id: `moyu-bot-mcp-${dirName}-${servers.length}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '自有 · .moyu', botId, botDirName: dirName });
-          for (const item of botInv.skills ?? []) skills.push({ id: `moyu-bot-skill-${dirName}-${skills.length}`, name: item.name, path: item.path, source: '自有 · .moyu/skills', botId, botDirName: dirName });
-        }
-      } else {
-        // 旧版探针输出（扁平清单）：全部视为 claude 外部项
-        for (const [index, item] of (data.mcpServers ?? []).entries()) servers.push({ id: `claude-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: 'claude（外部）' });
-        for (const [index, item] of (data.claudeSkills ?? []).entries()) skills.push({ id: `claude-skill-${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
-        for (const [index, item] of (data.agentSkills ?? []).entries()) skills.push({ id: `claude-skill-a${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
+      for (const [index, item] of (data.shared?.mcp ?? []).entries()) servers.push({ id: `moyu-shared-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '共享 · .moyu/shared' });
+      for (const [index, item] of (data.shared?.skills ?? []).entries()) skills.push({ id: `moyu-shared-skill-${index}`, name: item.name, path: item.path, source: '共享 · .moyu/shared' });
+      for (const [dirName, botInv] of Object.entries(data.bots ?? {})) {
+        const botId = this.store.settings.bots.find((bot) => (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' && this.store.botDirName(bot.id) === dirName)?.id;
+        for (const item of botInv.mcp ?? []) servers.push({ id: `moyu-bot-mcp-${dirName}-${servers.length}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '自有 · .moyu', botId, botDirName: dirName });
+        for (const item of botInv.skills ?? []) skills.push({ id: `moyu-bot-skill-${dirName}-${skills.length}`, name: item.name, path: item.path, source: '自有 · .moyu/skills', botId, botDirName: dirName });
       }
       this.cloudInventory = { at: Date.now(), servers, skills };
       this.cloudInventoryStale = false;
@@ -111,6 +104,38 @@ export class CapabilityManager {
     } catch {
       return cached ?? empty;
     }
+  }
+
+  /** 一次性迁移：把云机自带 claude 的能力复制进 .moyu/shared（~/.claude.json 的 mcpServers、
+   *  ~/.claude/skills 与 ~/.agents/skills 的技能目录）。云机侧 marker 文件保证只跑一次；
+   *  .moyu 已有条目优先不被覆盖；复制是拷贝不是移动，云机 claude 自身不受影响。成功返回 true。 */
+  private async migrateClaudeCapabilities(): Promise<boolean> {
+    const host = this.cloud();
+    if (!host) return false;
+    const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
+    const script = [
+      'node -e \'',
+      'const fs=require("fs"),os=require("os"),path=require("path");',
+      `const root=${JSON.stringify(root).replace(/'/g, '\\u0027')};`,
+      'const dir=path.join(root,".moyu","shared"),marker=path.join(dir,".migrated-from-claude");',
+      'if(fs.existsSync(marker)){console.log("migrated:already");process.exit(0)}',
+      'const h=os.homedir();let mcp={};try{mcp=JSON.parse(fs.readFileSync(path.join(h,".claude.json"),"utf8")||"{}").mcpServers||{}}catch(e){}',
+      'fs.mkdirSync(path.join(dir,"skills"),{recursive:true});',
+      'let conf={};try{conf=JSON.parse(fs.readFileSync(path.join(dir,"mcp.json"),"utf8")||"{}")}catch(e){}',
+      'conf.mcpServers={...mcp,...(conf.mcpServers||{})};',
+      'const tmp=path.join(dir,"mcp.json.tmp"+Date.now());fs.writeFileSync(tmp,JSON.stringify(conf,null,2));fs.renameSync(tmp,path.join(dir,"mcp.json"));',
+      'let copied=0;',
+      'for(const src of [path.join(h,".claude/skills"),path.join(h,".agents/skills")]){try{for(const f of fs.readdirSync(src)){const from=path.join(src,f),dst=path.join(dir,"skills",f);try{if(fs.statSync(from).isDirectory()&&fs.existsSync(path.join(from,"SKILL.md"))&&!fs.existsSync(dst)){fs.cpSync(from,dst,{recursive:true});copied++}}catch(e){}}}catch(e){}}',
+      'fs.writeFileSync(marker,String(Date.now()));',
+      'console.log("migrated:"+Object.keys(mcp).length+","+copied)',
+      '\'',
+    ].join('');
+    await host.ensureAwake('迁移云机 claude 能力到 .moyu').catch(() => {});
+    const result = await host.exec(script, { timeoutSeconds: 120 }).catch(() => null);
+    if (!result || result.exitCode !== 0) return false;
+    this.cloudInventory = undefined; // 迁移完立即重新盘点
+    this.cloudInventoryStale = true;
+    return true;
   }
 
   private workspace(id: string) {

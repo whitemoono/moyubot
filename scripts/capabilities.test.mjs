@@ -175,10 +175,11 @@ test('cloud inventory is local-first: serves persisted list offline, survives pr
   const host = {
     status: () => ({ state: sleeping ? 'suspended' : 'ready' }),
     ensureAwake: async () => { wakes++; return { id: 'fixture' }; },
-    exec: async () => {
+    exec: async (cmd) => {
       execs++;
       if (failProbe) return { stdout: '', stderr: 'connection refused', exitCode: 1, timedOut: false };
-      return { stdout: JSON.stringify({ mcpServers: [{ name: 'fresh', transport: 'http', url: 'https://example.com/mcp' }], claudeSkills: [{ name: 'fresh-skill', path: '/root/.claude/skills/fresh-skill' }] }), stderr: '', exitCode: 0, timedOut: false };
+      if (cmd.includes('.migrated-from-claude')) return { stdout: 'migrated:1,1', stderr: '', exitCode: 0, timedOut: false };
+      return { stdout: JSON.stringify({ shared: { mcp: [{ name: 'fresh', transport: 'http', url: 'https://example.com/mcp' }], skills: [{ name: 'fresh-skill', path: '/data/moyubot/.moyu/shared/skills/fresh-skill' }] }, bots: {} }), stderr: '', exitCode: 0, timedOut: false };
     },
     writeText: async () => {},
   };
@@ -244,17 +245,14 @@ test('agent asks before MCP calls and honors a declined approval', async () => {
   } finally { cloud.dispose(); await new Promise(resolve => server.close(resolve)); }
 });
 
-test('云端盘点分三档来源（自有/共享/claude 外部），Bot 安装写入它的 .moyu，不再写 ~/.claude', async () => {
+test('云端盘点分两档（自有/共享），探针不读 ~/.claude，Bot 安装写入它的 .moyu', async () => {
   const store = new Store(path.join(root, String(++serial)));
   const bot = { ...store.settings.bots[0], workspaceId: 'workspace_cloud' };
   store.updateSettings({ bots: [bot] });
   const dirName = store.botDirName(bot.id);
   const probe = {
-    claude: { mcp: [{ name: 'claude-mcp', transport: 'http', url: 'https://c.example/mcp' }], skills: [{ name: 'claude-skill', path: '/root/.claude/skills/claude-skill' }] },
-    moyu: {
-      shared: { mcp: [{ name: 'shared-mcp', transport: 'http', url: 'https://x.example/mcp' }], skills: [{ name: 'shared-skill', path: `/data/moyubot/.moyu/shared/skills/shared-skill` }] },
-      bots: { [dirName]: { mcp: [{ name: 'bot-mcp', transport: 'stdio', command: 'node' }], skills: [{ name: 'bot-skill', path: `/data/moyubot/${dirName}/.moyu/skills/bot-skill` }] } },
-    },
+    shared: { mcp: [{ name: 'shared-mcp', transport: 'http', url: 'https://x.example/mcp' }], skills: [{ name: 'shared-skill', path: `/data/moyubot/.moyu/shared/skills/shared-skill` }] },
+    bots: { [dirName]: { mcp: [{ name: 'bot-mcp', transport: 'stdio', command: 'node' }], skills: [{ name: 'bot-skill', path: `/data/moyubot/${dirName}/.moyu/skills/bot-skill` }] } },
   };
   const execs = [];
   const host = {
@@ -263,35 +261,62 @@ test('云端盘点分三档来源（自有/共享/claude 外部），Bot 安装�
     writeText: async () => {},
     exec: async (cmd) => {
       execs.push(cmd);
-      const body = cmd.includes('const out={moyu') ? JSON.stringify(probe) : 'deployed:demo';
+      const body = cmd.includes('const out={shared') ? JSON.stringify(probe) : 'migrated:0,0';
       return { stdout: body + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
     },
   };
   const manager = new CapabilityManager(store, () => host);
   const inventory = await manager.inventoryCloud(true);
-  // claude 外部项：只读展示，无归属
-  const external = inventory.servers.find(s => s.name === 'claude-mcp');
-  assert.ok(external && !external.botId && external.source.includes('claude'));
-  // 共享：.moyu/shared，无归属
   assert.ok(inventory.servers.some(s => s.name === 'shared-mcp' && !s.botId && s.source.includes('共享')));
-  // 自有：Bot 家目录的 .moyu，带归属
   const own = inventory.servers.find(s => s.name === 'bot-mcp');
   assert.equal(own.botId, bot.id, 'Bot 家目录里的 MCP 要标记归属');
   assert.equal(own.botDirName, dirName);
   assert.ok(own.source.includes('自有'));
   const ownSkill = inventory.skills.find(s => s.name === 'bot-skill');
   assert.equal(ownSkill.botId, bot.id);
+  // 探针不得读 ~/.claude
+  const probeCmd = execs.find(c => c.includes('const out={shared'));
+  assert.ok(probeCmd && !probeCmd.includes('.claude'), '盘点探针不得出现 .claude');
   // Bot 在对话里安装 MCP → 写它自己的 .moyu/mcp.json（并先创建目录）
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { command: 'node' } } }), { botDirName: dirName });
-  const perBot = execs.find(c => c.includes('conf.mcpServers=') && c.includes(dirName));
+  const perBot = execs.find(c => c.includes('deployed:') && c.includes(dirName));
   assert.ok(perBot, '部署脚本必须指向该 Bot 家目录的 .moyu/mcp.json');
   assert.ok(perBot.includes('".moyu"') && perBot.includes('"mcp.json"'));
   assert.ok(perBot.includes('mkdirSync'), '家目录可能不存在，部署前要先创建');
   assert.ok(!perBot.includes('.claude'), 'moyubot 不得写入 ~/.claude');
   // 设置页导入（不带 bot）→ 写 .moyu/shared/mcp.json，同样不碰 ~/.claude
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo2: { command: 'node' } } }));
-  const shared = execs.find(c => c.includes('conf.mcpServers=') && c.includes('"shared"'));
+  const shared = execs.find(c => c.includes('deployed:') && c.includes('"shared"'));
   assert.ok(shared && shared.includes('".moyu"'), '共享部署写 .moyu/shared/mcp.json');
   assert.ok(!shared.includes('.claude'), '共享部署不得写 ~/.claude');
+  await manager.dispose();
+});
+
+test('一次性迁移：云机 claude 的 MCP/技能复制进 .moyu/shared，之后探针不再读 ~/.claude', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const bot = { ...store.settings.bots[0], workspaceId: 'workspace_cloud' };
+  store.updateSettings({ bots: [bot] });
+  const execs = [];
+  const host = {
+    status: () => ({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 }),
+    ensureAwake: async () => ({ id: 'm1', name: 'mock', state: 'running', autoSuspendAfterSeconds: null }),
+    writeText: async () => {},
+    exec: async (cmd) => {
+      execs.push(cmd);
+      const body = cmd.includes('const out={shared') ? JSON.stringify({ shared: { mcp: [{ name: 'migrated-mcp', transport: 'http', url: 'https://m.example/mcp' }], skills: [] }, bots: {} } ) : 'migrated:2,26';
+      return { stdout: body + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    },
+  };
+  const manager = new CapabilityManager(store, () => host);
+  const inventory = await manager.inventoryCloud(true);
+  const migration = execs.find(c => c.includes('.migrated-from-claude'));
+  assert.ok(migration, '必须先跑迁移脚本');
+  assert.ok(migration.includes('.claude.json'), '迁移读取云机 claude 的 mcpServers');
+  assert.ok(migration.includes('cpSync'), '迁移复制技能目录');
+  assert.ok(migration.includes('...(conf.mcpServers||{})'), '已有 .moyu 条目优先，不被 claude 覆盖');
+  // 迁移成功后：清单里是 .moyu/shared 的内容，探针脚本不再含 .claude
+  assert.ok(inventory.servers.some(s => s.name === 'migrated-mcp' && s.source.includes('共享')));
+  const probeCmd = execs.find(c => c.includes('const out={shared'));
+  assert.ok(probeCmd && !probeCmd.includes('.claude'), '迁移后的探针不读 ~/.claude');
   await manager.dispose();
 });

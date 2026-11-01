@@ -47,14 +47,14 @@ export function CapabilitiesSettings() {
     </Panel>
     {workspaceId === 'workspace_cloud' && ((status.cloudServers?.length) || (status.cloudSkills?.length)) ? <Panel className="settings-card">
       <h3>云电脑已部署 <small>由云主机盘点 · 只读</small></h3>
-      <p className="settings-note">云电脑上的能力分三档：自有（Bot 家目录的 .moyu）、共享（.moyu/shared，moyubot 管理）、claude（云机自带 ~/.claude，只读展示，moyubot 不写入）。</p>
+      <p className="settings-note">云电脑上的能力分两档，都在 .moyu 命名空间：共享（.moyu/shared，moyubot 管理，全部 Bot 可用）和自有（各 Bot 家目录的 .moyu）。云机自带 claude 的 ~/.claude 不再读取；首次盘点会把它里面的 MCP/技能一次性复制进共享（marker 幂等，云机 claude 不受影响）。</p>
       {status.cloudServers?.length ? <details className="capability-cloud-block capability-cloud-block--fold" open>
         <summary className="capability-cloud-title">MCP 服务（{status.cloudServers.length}）</summary>
-        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudServers.map(server => <div className="capability-item" key={server.id}><span className="capability-cloud-badge">{server.botId ? '自有' : server.source.includes('claude') ? 'claude' : '共享'}</span><div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · {server.source}</small></div></div>)}</div>
+        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudServers.map(server => <div className="capability-item" key={server.id}><span className="capability-cloud-badge">{server.botId ? '自有' : '共享'}</span><div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · {server.source}</small></div></div>)}</div>
       </details> : null}
       {status.cloudSkills?.length ? <details className="capability-cloud-block capability-cloud-block--fold" style={{ marginTop: 12 }}>
         <summary className="capability-cloud-title">技能（{status.cloudSkills.length}）</summary>
-        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudSkills.map(skill => <div className="capability-item" key={skill.id}><span className="capability-cloud-badge">{skill.botId ? '自有' : skill.source.includes('claude') ? 'claude' : '共享'}</span><div><strong>{skill.name}</strong><small>{skill.source}</small></div></div>)}</div>
+        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudSkills.map(skill => <div className="capability-item" key={skill.id}><span className="capability-cloud-badge">{skill.botId ? '自有' : '共享'}</span><div><strong>{skill.name}</strong><small>{skill.source}</small></div></div>)}</div>
       </details> : null}
     </Panel> : null}
     <Panel className="settings-card">
