@@ -121,6 +121,22 @@ export class RemoteAgentDriver implements CloudDriver {
 
 ## 8. 实施拆分（里程碑）
 
+### 8.1 GitHub Codespaces 驱动（第三个 CloudDriver 实现）
+
+```
+登录（Device Flow，scopes: codespace + repo + admin:public_key）
+  → ensureWorkspaceRepo：自动创建/复用私有仓库 moyubot-workspace（auto_init，无需用户手动建）
+  → createCodespace：从该仓库创建 2 核 8GB Codespace（basicLinux32gb）
+  → SSH 密钥注册（生成 ed25519 → POST /user/keys）→ exec / 文件走 SSH（ssh2）
+  → 桌面：SSH 安装 XFCE + VNC + noVNC（容器内 6080），Codespaces 端口转发自带 GitHub 登录鉴权
+  → 驱动接管：lifecycle（REST）+ exec/files（SSH）+ desktop（noVNC URL 嵌入 UI）
+```
+
+- 设置页入口：云电脑 → GitHub Codespaces 卡片（① 登录 + 额度卡已上线；token 在加密密钥库）
+- 额度：`GET /user/codespaces/quota`，免费 120 core-小时/月（2 核 60 小时）+ 15GB 存储，卡片实时展示
+- 睡眠映射：Codespaces idle_timeout（默认 30 分钟，上限 4 小时）；停止后重启 10–30 秒
+- 限制：exec 走 SSH 通道（无官方 REST exec），需自行管理连接复用与断线重连
+
 | 里程碑 | 内容 | 依赖 |
 | --- | --- | --- |
 | M1 | `packages/server`：headless core + **复用现成 SyncEngine** 接 WSS 传输（桌面↔服务器互通） | SyncEngine 已存在，只差传输层，工程量最小 |
