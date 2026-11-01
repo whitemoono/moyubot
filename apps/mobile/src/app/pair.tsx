@@ -27,11 +27,11 @@ export default function Pair() {
     setScanning(true);
   };
 
-  const claim = async () => {
+  const claim = async (rawInput?: string) => {
     setError(''); setNote('');
     try {
       const base = normalizeServer(server);
-      let raw = link.trim();
+      let raw = (rawInput ?? link).trim();
       if (raw.includes('#pair=')) {
         const parsed = new URL(raw);
         if (parsed.origin !== base) throw new Error(`这个链接属于 ${parsed.origin}，和上面填的服务器地址不一致`);
