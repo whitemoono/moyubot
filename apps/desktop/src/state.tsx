@@ -300,6 +300,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     try {
       await moyu().updateGoal(current.id, { status: 'complete' });
       setGoal(undefined);
+      setResumableGoal(undefined);
       toast('目标已标记完成');
     } catch (error) {
       toast((error as Error).message, 'error');

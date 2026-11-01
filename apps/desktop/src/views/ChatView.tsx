@@ -507,10 +507,12 @@ function EmptyState({ bot }: { bot: Bot }) {
   );
 }
 
-/** 头部小胶囊：hover/点击展开浮层查看完整内容，Esc 或点外部关闭。 */
+/** 头部小胶囊：hover/点击展开浮层查看完整内容，移开 160ms 或 Esc 关闭。 */
 function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: React.ReactNode; label: React.ReactNode; popover: React.ReactNode; align?: 'left' | 'right'; tone?: 'resume' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const leaveTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => { if (leaveTimer.current) window.clearTimeout(leaveTimer.current); }, []);
   useEffect(() => {
     if (!open) return;
     const onDown = (event: globalThis.MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
@@ -520,8 +522,13 @@ function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: Reac
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
   }, [open]);
   return (
-    <div className={`head-pill ${tone === 'resume' ? 'head-pill--resume' : ''}`} ref={ref} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <button type="button" className={`head-pill__chip ${open ? 'is-open' : ''}`} aria-expanded={open} onClick={() => setOpen((v) => !v)}>{icon}{label}</button>
+    <div
+      className={`head-pill ${tone === 'resume' ? 'head-pill--resume' : ''}`}
+      ref={ref}
+      onMouseEnter={() => { if (leaveTimer.current) { window.clearTimeout(leaveTimer.current); leaveTimer.current = undefined; } setOpen(true); }}
+      onMouseLeave={() => { leaveTimer.current = window.setTimeout(() => setOpen(false), 160); }}
+    >
+      <button type="button" className={`head-pill__chip ${open ? 'is-open' : ''}`} aria-expanded={open} onClick={() => setOpen(true)}>{icon}{label}</button>
       {open ? <div className="head-pill__pop" data-align={align}>{popover}</div> : null}
     </div>
   );
