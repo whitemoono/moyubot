@@ -440,6 +440,10 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         if (conversationRef.current?.id === event.conversationId) setTodos(event.todos);
         return;
       }
+      if (event.type === 'goal') {
+        if (conversationRef.current?.id === event.conversationId) { setGoal(event.active); setResumableGoal(event.resumable); }
+        return;
+      }
       if (event.type === 'message_end') {
         patchMessage(event.message.id, () => event.message);
         return;

@@ -517,6 +517,7 @@ export interface CapabilityImportResult {
 export type AgentEvent =
   | { type: 'schedules'; schedules: Schedule[] }
   | { type: 'todos'; conversationId: string; todos?: TodoList }
+  | { type: 'goal'; conversationId: string; active?: Goal; resumable?: Goal }
   | { type: 'run_start'; runId: string; conversationId: string }
   | { type: 'message_start'; conversationId: string; message: Message }
   | { type: 'delta'; conversationId: string; messageId: string; text: string }

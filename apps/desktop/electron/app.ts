@@ -127,6 +127,7 @@ export class MoyuApp {
     ]);
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
     this.store.onTodosChanged((conversationId) => this.send('moyu:event', { type: 'todos', conversationId, todos: this.store.listTodos(conversationId) } satisfies AgentEvent));
+    this.store.onGoalsChanged((conversationId) => this.send('moyu:event', { type: 'goal', conversationId, ...this.store.goalState(conversationId) } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
     const localSettings = { ...this.store.getSettings().cloud, workspaceDir: this.store.getSettings().workspaces.find((item) => item.kind === 'local')?.directory ?? path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };

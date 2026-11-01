@@ -1102,6 +1102,20 @@ export class Store {
     this.goalList = next;
   }
 
+  private goalListeners = new Set<(conversationId: string) => void>();
+
+  private notifyGoals(conversationId: string): void {
+    for (const listener of this.goalListeners) {
+      try { listener(conversationId); } catch { /* 监听器异常不影响持久化 */ }
+    }
+  }
+
+  /** 目标状态变更（set_goal / update_goal / resume）时通知，参数为受影响的会话 id。 */
+  onGoalsChanged(listener: (conversationId: string) => void): () => void {
+    this.goalListeners.add(listener);
+    return () => { this.goalListeners.delete(listener); };
+  }
+
   listGoals(conversationId?: string): Goal[] {
     return this.goalList
       .filter((goal) => !conversationId || goal.conversationId === conversationId)
@@ -1153,6 +1167,7 @@ export class Store {
         : item,
     );
     this.persistGoals([...next, goal]);
+    this.notifyGoals(input.conversationId);
     return { ...goal };
   }
 
@@ -1164,6 +1179,7 @@ export class Store {
     const next = [...this.goalList];
     next[index] = { ...next[index], roundsUsed: used, updatedAt: Date.now() };
     this.persistGoals(next);
+    this.notifyGoals(conversationId);
     return used;
   }
 
@@ -1175,6 +1191,7 @@ export class Store {
     const index = next.indexOf(goal);
     next[index] = { ...goal, status: 'active', maxRounds: Math.min((goal.maxRounds ?? 8) + extraRounds, 200), note: `人工续跑 +${extraRounds} 轮`, updatedAt: Date.now() };
     this.persistGoals(next);
+    this.notifyGoals(conversationId);
     return { ...next[index] };
   }
 
@@ -1203,6 +1220,7 @@ export class Store {
     const next = [...this.goalList];
     next[index] = goal;
     this.persistGoals(next);
+    this.notifyGoals(conversationId);
     return { ...goal };
   }
 
