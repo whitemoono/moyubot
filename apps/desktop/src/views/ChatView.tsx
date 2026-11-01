@@ -213,10 +213,10 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
   useEffect(() => {
     const node = textarea.current;
     if (!node) return;
-    // 长文本：输入框长到能放下全文（上限为视口高度 55%），而不是固定 220px 只看到中间一段。
+    // 长文本：输入框长到能放下全文（上限为视口高度 80%，接近"完全展开"），而不是固定高度只看到中间一段。
     // 超过上限才滚动；刚粘贴、光标在末尾、未聚焦（恢复长草稿）时贴底显示最新内容；
     // 只有"聚焦且编辑中部"才按比例保持视口位置。
-    const cap = Math.max(220, Math.round(window.innerHeight * 0.55));
+    const cap = Math.max(220, Math.round(window.innerHeight * 0.8));
     const beforeFull = node.scrollHeight;
     const beforeTop = node.scrollTop;
     const caret = node.selectionStart ?? node.value.length;

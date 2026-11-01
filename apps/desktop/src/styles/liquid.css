@@ -1282,7 +1282,7 @@ select {
   font-size: 14px;
   line-height: 1.55;
   min-height: 30px;
-  max-height: 55vh;
+  max-height: 80vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   color: var(--text);
