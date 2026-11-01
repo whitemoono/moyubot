@@ -1,6 +1,6 @@
 {
   "name": "@moyu/desktop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "MoyuBot Windows desktop workspace (Electron + React)",
   "license": "MIT",
@@ -43,14 +43,28 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "../../THIRD_PARTY_NOTICES.md", "to": "THIRD_PARTY_NOTICES.md" },
-      { "from": "../../licenses", "to": "licenses" },
-      { "from": "build/icon.png", "to": "icon.png" },
-      { "from": "build/icon.ico", "to": "icon.ico" }
+      {
+        "from": "../../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "../../licenses",
+        "to": "licenses"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "include": "build/installer.nsh",
@@ -60,7 +74,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "MoyuBot",
-      "installerLanguages": ["zh_CN", "en_US"],
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
       "language": "2052"
     }
   }
