@@ -8,7 +8,7 @@ let version = 0;
 const listeners = new Set<() => void>();
 let starting = false;
 
-function bump() { version++; listeners.forEach((listener) => listener()); }
+function bump() { version++; for (const listener of listeners) listener(); }
 
 export function getClient(): SyncClient | undefined {
   return client;
@@ -60,12 +60,14 @@ export async function disconnect(): Promise<void> {
 
 export function useSyncVersion(): number {
   const [value, setValue] = useState(version);
-  useEffect(() => { listeners.add(listener); setValue(version); return () => { listeners.delete(listener); }; }, []);
+  useEffect(() => {
+    const listener = () => setValue(version);
+    listeners.add(listener);
+    setValue(version);
+    return () => { listeners.delete(listener); };
+  }, []);
   return value;
 }
-function listener() { /* placeholder replaced below */ }
-// useSyncExternalStore 风格：直接在 hook 里订阅 bump
-void listener;
 
 export function useCollection<T = Record<string, any>>(collection: string): T[] {
   useSyncVersion();
