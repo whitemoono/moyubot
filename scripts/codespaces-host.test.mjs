@@ -4,8 +4,8 @@ import http from 'node:http';
 import { CodespacesHost } from '../packages/core/dist/index.js';
 
 /** 模拟 Codespace 侧执行服务（协议契约：双重鉴权 + /exec /read /write）。 */
-function startMock(): Promise<{ server: http.Server; port: number; hits: string[] }> {
-  const hits: string[] = [];
+function startMock() {
+  const hits = [];
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => (raw += c));
@@ -16,7 +16,7 @@ function startMock(): Promise<{ server: http.Server; port: number; hits: string[
       if (!authed) return reply(401, { error: 'unauthorized' });
       if (req.url === '/exec') {
         const body = JSON.parse(raw);
-        if (body.cmd.includes('cd /workspaces/MoyuBot-Codespace/大肥鱼')) return reply(200, { ok: true, exitCode: 0, stdout: 'cwd-ok\n', stderr: '' });
+        if (body.cmd.includes('MoyuBot-Codespace/大肥鱼')) return reply(200, { ok: true, exitCode: 0, stdout: 'cwd-ok\n', stderr: '' });
         return reply(200, { ok: true, exitCode: 0, stdout: `${body.cmd}\n`, stderr: '' });
       }
       if (req.url === '/read') {
@@ -28,6 +28,7 @@ function startMock(): Promise<{ server: http.Server; port: number; hits: string[
       return reply(404, { error: 'not found' });
     });
   });
+  server.on('connection', (socket) => socket.unref?.());
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, hits })));
 }
 
