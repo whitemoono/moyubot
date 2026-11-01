@@ -1,6 +1,7 @@
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { clearSession, currentSession, normalizeServer, saveSession } from '../lib/server';
 import { disconnect, reconnect, useSyncStatus } from '../lib/data';
@@ -84,7 +85,7 @@ export default function Pair() {
   const connected = !!currentSession();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen options={{ title: '连接电脑' }} />
       {connected ? (
         <View style={styles.block}>
@@ -131,7 +132,7 @@ export default function Pair() {
           <Text style={styles.hint}>配对后内容不会自动上传：回首页打开「同步中」才开始双向同步。</Text>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

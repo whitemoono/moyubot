@@ -1,6 +1,7 @@
 import { Stack, router } from 'expo-router';
 import { useMemo } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BotAvatar } from '../components/BotAvatar';
 import { getClient, useCollection, useSyncStatus } from '../lib/data';
 
@@ -23,7 +24,7 @@ export default function Home() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Stack.Screen
         options={{
           title: '墨鱼',
@@ -70,7 +71,7 @@ export default function Home() {
           )}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -1,6 +1,7 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BotAvatar } from '../../components/BotAvatar';
 import { useCollection, useSyncVersion } from '../../lib/data';
 import { approve, sendChat, stopChat, useChatRuns, type BotConfig } from '../../lib/chat';
@@ -37,7 +38,8 @@ export default function Chat() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       <Stack.Screen options={{ title: bot?.name ?? conversation?.title ?? '对话' }} />
       {bot && bot.providerId === '' ? <Text style={styles.warn}>这个 Bot 没有授权到服务器的模型，先在电脑端连接手机 → 第 4 区授权。</Text> : null}
       <FlatList
@@ -79,7 +81,8 @@ export default function Chat() {
           ? <Pressable style={styles.stopButton} onPress={() => void stopChat(conversationId, runs)}><Text style={styles.stopText}>停止</Text></Pressable>
           : <Pressable style={[styles.sendButton, !text.trim() && { opacity: 0.4 }]} onPress={() => void send()}><Text style={styles.sendText}>↑</Text></Pressable>}
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
