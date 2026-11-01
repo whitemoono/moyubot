@@ -2,11 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, GitHubClient, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { execFileSync, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { initializeProviderNetworking } from './provider-network';
 import type {
   AgentEvent,
@@ -164,14 +163,6 @@ export class MoyuApp {
       store: this.store,
       cloud: this.cloud,
       computers: { workspace_cloud: this.cloud, workspace_local: this.local },
-      github: {
-        credentials: () => {
-          const codespaceName = this.store.settings.github?.codespaceName ?? '';
-          const execToken = this.store.secrets.get('github:exec-token') ?? '';
-          const githubToken = this.store.secrets.get('github:codespaces') ?? this.githubToken();
-          return codespaceName && execToken && githubToken ? { codespaceName, execToken, githubToken } : undefined;
-        },
-      },
       emit: (event) => this.send('moyu:event', event),
             requestApproval: (request, signal) => this.waitForApproval(request, signal),
       requestAnswer: (request, signal) => this.waitForAnswer(request, signal),
@@ -288,9 +279,6 @@ export class MoyuApp {
     });
   }
 
-  private githubClientFor(): GitHubClient {
-    return new GitHubClient(this.store.settings.github?.oauthClientId ?? '');
-  }
 
   private githubToken(): string {
     const stored = this.store.secrets.get('github:codespaces');
@@ -530,89 +518,6 @@ export class MoyuApp {
     handle('moyu:goal:resume', (_event, conversationId: string, extraRounds?: number) => this.store.resumeGoal(conversationId, extraRounds));
     handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch, { requireEvidence: false }));
     handle('moyu:todos:list', (_event, conversationId: string) => this.store.listTodos(conversationId));
-    // GitHub Codespaces（实验）：Device Flow 登录、额度查询。token 存加密密钥库，不进 settings。
-    const githubClient = () => this.githubClientFor();
-    handle('moyu:github:login:start', async () => {
-      const clientId = this.store.settings.github?.oauthClientId ?? '';
-      if (!clientId.trim()) throw new Error('先填写 GitHub OAuth App 的 Client ID（github.com/settings/developers 创建）');
-      return githubClient().startDeviceFlow();
-    });
-    handle('moyu:github:login:poll', (_event, clientId: string, deviceCode: string) => new GitHubClient(clientId).pollDeviceFlow(deviceCode));
-    handle('moyu:github:token:store', (_event, token: string) => { this.store.secrets.set('github:codespaces', String(token)); return { ok: true }; });
-    handle('moyu:github:status', async () => {
-      const token = this.store.secrets.get('github:codespaces');
-      if (!token) return { loggedIn: false as const };
-      try { return { loggedIn: true as const, user: await githubClient().getUser(token) }; }
-      catch (error) { return { loggedIn: true as const, user: undefined, error: (error as Error).message }; }
-    });
-    handle('moyu:github:quota', async () => {
-      const token = this.store.secrets.get('github:codespaces');
-      if (!token) throw new Error('未登录 GitHub');
-      return githubClient().getQuota(token);
-    });
-    handle('moyu:github:logout', () => { this.store.secrets.delete('github:codespaces'); return { ok: true }; });
-    handle('moyu:github:exec:install', async () => {
-      let execToken = this.store.secrets.get('github:exec-token');
-      if (!execToken) { execToken = `moyu_${randomBytes(18).toString('base64url')}`; this.store.secrets.set('github:exec-token', execToken); }
-      const name = this.store.settings.github?.codespaceName;
-      if (!name) throw new Error('先连接 GitHub 并确认 Codespace 列表（连接时会自动记录）');
-      const command = `curl -fsSL https://raw.githubusercontent.com/whitemoono/MoyuBot-Codespace/main/moyu-exec.py -o /tmp/moyu-exec.py && { grep -q moyu-exec.py ~/.bashrc 2>/dev/null || printf '\\npgrep -f moyu-exec.py >/dev/null || MOYU_TOKEN=%s nohup python3 /tmp/moyu-exec.py >/tmp/moyu-exec.log 2>&1 &\\n' '${execToken}' >> ~/.bashrc; }; MOYU_TOKEN='${execToken}' nohup python3 /tmp/moyu-exec.py >/tmp/moyu-exec.log 2>&1 & sleep 1 && curl -fs http://127.0.0.1:8788/ping >/dev/null && echo SERVER_UP || echo SERVER_NOT_UP`;
-      return { command };
-    });
-    handle('moyu:github:exec:ping', async () => {
-      const name = this.store.settings.github?.codespaceName;
-      const execToken = this.store.secrets.get('github:exec-token') ?? '';
-      const token = this.githubToken();
-      if (!name || !token) return { online: false };
-      try {
-        const res = await net.fetch(`https://${name}-8788.app.github.dev/ping`, { headers: { Authorization: `Bearer ${token}`, 'X-Moyu-Token': execToken }, signal: AbortSignal.timeout(15000) });
-        return { online: res.ok };
-      } catch { return { online: false }; }
-    });
-    // 零操作连接：优先用手动登录存的 token，否则复用本机 Git 已登录的 GitHub 凭据
-    const githubToken = (): string => {
-      const stored = this.store.secrets.get('github:codespaces');
-      if (stored) return stored;
-      try {
-        return execFileSync('git', ['credential', 'fill'], { input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8' })
-          .split('\n').find((line) => line.startsWith('password='))?.slice('password='.length).trim() ?? '';
-      } catch { return ''; }
-    };
-    handle('moyu:github:connect', async () => {
-      const token = githubToken();
-      if (!token) throw new Error('本机没有可用的 GitHub 登录（Git 凭据为空）');
-      const client = githubClient();
-      const user = await client.getUser(token);
-      const codespaces = await client.listCodespaces(token).catch(() => []);
-      return { user, codespaces };
-    });
-    handle('moyu:github:sshkey', async () => {
-      const priv = path.join(this.store.dataDir, 'github-ssh');
-      if (!fs.existsSync(priv)) execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', priv, '-N', '', '-C', 'moyubot'], { stdio: 'ignore' });
-      const publicKey = fs.readFileSync(priv + '.pub', 'utf8').trim();
-      const token = githubToken();
-      let registered = false, error: string | undefined;
-      if (token) {
-        const result = await githubClient().registerSshKey(token, 'MoyuBot', publicKey).catch((e: Error) => ({ registered: false, error: e.message }));
-        registered = result.registered;
-        error = result.error;
-      }
-      return { publicKey, registered, error, manualUrl: 'https://github.com/settings/keys' };
-    });
-    handle('moyu:github:create-codespace', async () => {
-      const token = githubToken();
-      if (!token) throw new Error('本机没有可用的 GitHub 登录');
-      const client = githubClient();
-      const repo = await client.ensureWorkspaceRepo(token);
-      try {
-        const created = await client.createCodespace(token, repo.id);
-        return { created: true, name: created.name, state: created.state };
-      } catch {
-        // Git 凭据通常没有创建 Codespace 的权限：打开网页创建页兜底
-        void shell.openExternal('https://github.com/codespaces/new?repository=' + repo.id).catch(() => {});
-        return { created: false, fallbackUrl: 'https://github.com/codespaces/new?repository=' + repo.id };
-      }
-    });
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });
