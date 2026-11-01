@@ -61,8 +61,10 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   // GitHub Codespaces（实验）：复用本机 Git 已登录的 GitHub 授权（无需设备码流程），连接 + 列出 + SSH 密钥
   const [ghConnect, setGhConnect] = useState<{ user: GitHubUser; codespaces: { name: string; state: string; repository: string }[] } | undefined>(undefined);
   const [ghConnecting, setGhConnecting] = useState(false);
-  const [sshKey, setSshKey] = useState<{ publicKey: string; registered: boolean; manual?: boolean; error?: string } | undefined>(undefined);
+  const [sshKey, setSshKey] = useState<{ publicKey: string; registered: boolean; manual?: boolean; manualUrl?: string; error?: string } | undefined>(undefined);
   const [ghError, setGhError] = useState('');
+  const [ghFallback, setGhFallback] = useState('');
+  const openUrl = (url: string) => { void moyu().openExternal(url).catch(() => toast('自动打开失败：请复制链接到浏览器 ' + url, 'error')); };
   const connectGh = async () => {
     setGhError(''); setGhConnecting(true);
     try { setGhConnect(await moyu().githubConnect()); }
@@ -74,7 +76,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       const result = await moyu().githubRegisterKey(sshKey.publicKey);
       if (result.registered) { setSshKey({ ...sshKey, registered: true }); toast('SSH 公钥已注册到 GitHub'); }
-      else { setSshKey({ ...sshKey, registered: false, manual: true, error: result.error }); toast('自动注册需要额外权限，请在 GitHub 设置页手动添加公钥', 'error'); }
+      else { setSshKey({ ...sshKey, registered: false, manual: true, manualUrl: result.manualUrl, error: result.error }); toast('自动注册需要额外权限——点击卡片里的 github.com/settings/keys 链接手动添加', 'error'); }
     } catch (error) { toast((error as Error).message, 'error'); }
   };
   const createCodespace = async () => {
@@ -82,7 +84,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       const result = await moyu().githubCreateCodespace();
       if (result.created) { toast(`Codespace 创建中：${result.name}`); void connectGh(); }
-      else { setGhError('当前授权没有创建 Codespace 的权限，已打开网页创建页——创建后回来点刷新'); void moyu().openExternal(result.fallbackUrl ?? 'https://github.com/codespaces/new').catch(() => {}); }
+      else { setGhError('当前授权没有创建 Codespace 的权限——点下方链接在网页创建'); setGhFallback(result.fallbackUrl ?? 'https://github.com/codespaces/new'); }
     } catch (error) { setGhError((error as Error).message); }
   };
   useEffect(() => { if (active) void connectGh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active]);
@@ -156,10 +158,11 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
               {ghConnect.codespaces.map((item) => (
                 <div className="computer-policy__row" key={item.name}><div><strong>{item.name}</strong><p>{item.repository} · {item.state}</p></div></div>
               ))}
-              <div className="computer-policy__row"><div><strong>SSH 公钥</strong><p>{sshKey ? (sshKey.registered ? '已注册到你的 GitHub 账号，Codespaces 将信任这个密钥' : sshKey.manual ? '自动注册需要额外权限：点「注册到 GitHub」旁的手动指引' : sshKey.error ?? '未注册') : '生成中…'}</p></div><Button size="sm" variant="ghost" disabled={!sshKey} onClick={() => void navigator.clipboard.writeText(sshKey?.publicKey ?? '')}>复制公钥</Button></div>
+              <div className="computer-policy__row"><div><strong>SSH 公钥</strong><p>{sshKey ? (sshKey.registered ? '已注册到你的 GitHub 账号，Codespaces 将信任这个密钥' : sshKey.manual ? <span>自动注册需要额外权限——<a className="computer-link" href={sshKey.manualUrl ?? 'https://github.com/settings/keys'} onClick={(event) => { event.preventDefault(); openUrl(sshKey.manualUrl ?? 'https://github.com/settings/keys'); }}>点此在网页添加公钥</a>（或复制上面公钥手动粘贴）</span> : sshKey.error ?? '未注册') : '生成中…'}</p></div><Button size="sm" variant="ghost" disabled={!sshKey} onClick={() => void navigator.clipboard.writeText(sshKey?.publicKey ?? '')}>复制公钥</Button></div>
               {sshKey?.publicKey ? <pre className="head-pill__objective" style={{ maxHeight: 96 }}>{sshKey.publicKey}</pre> : null}
               <div className="computer-policy__row"><div><strong>创建 Codespace</strong><p>2 核 8GB，用于桌面环境；创建后出现在上方列表</p></div><Button size="sm" icon="plus" onClick={() => void createCodespace()}>创建</Button></div>
               {ghError ? <p className="capability-error">{ghError}</p> : null}
+              {ghFallback ? <p><a className="computer-link" href={ghFallback} onClick={(event) => { event.preventDefault(); openUrl(ghFallback); }}>点此在网页创建 Codespace（github.com/codespaces/new）</a></p> : null}
             </div>
           ) : (
             <div className="computer-policy">
