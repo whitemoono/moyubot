@@ -46,29 +46,35 @@
 - 逃逸保护：本地子目录必须仍在工作区内；云端目录由 `remoteDirectory()` 规范化
 - 兼容：`subDirectory` 缺省时行为与旧版完全一致（共享根）；子代理临时 Bot 只推导不落盘
 
-## 4. MCP / Skills 按 Bot 隔离
+## 4. MCP / Skills 按 Bot 隔离（`.moyu` 命名空间）
 
-现状（✅ 盘点与部署已按 Bot 分流，见下"已实现"）：
+moyubot 的云端能力**不再写 `~/.claude`**（那是云机自带 Claude Code 的地盘，instabox 模板装的 MCP/技能只读展示）。自有命名空间是 `.moyu`：
 
 ```
-/data/home/moyubot/<dirName>/          ← Bot 家目录（云端）
-├── .claude.json                       ← 该 Bot 自己的 MCP 配置（Bot 对话里 install_mcp 写这里）
-├── .claude/skills/<skill>/            ← 该 Bot 安装的技能（install_skill 写这里）
-└── …（Bot 的工作文件）
-
-D:\dev\moyubot\workspace\<dirName>\    ← 本地家目录（文件工具已锚定，见第 3 节）
-└── .claude/skills/<skill>/            ← 本地技能目录约定（同云端）
+/data/home/moyubot/                     ← 云端根（remoteWorkspaceDir）
+├── .moyu/shared/                       ← 共享（moyubot 管理，设置页导入，全部 Bot 可用）
+│   ├── mcp.json
+│   └── skills/<name>/
+├── <dirName>/                          ← Bot 家目录（文件工具的 cwd 锚点，见第 3 节）
+│   ├── .moyu/
+│   │   ├── mcp.json                    ← 自有 MCP（Bot 对话里 install_mcp 写这里）
+│   │   └── skills/<name>/              ← 自有技能（install_skill 写这里）
+│   └── …（Bot 的工作文件）
+~/.claude.json + ~/.claude/skills       ← claude（外部，instabox 自带）：只读盘点展示为「claude」，moyubot 永不写入
 ```
+
+右侧栏三档徽标：**自有**（当前 Bot 的 .moyu）/ **共享**（.moyu/shared）/ **claude**（外部，只读）。
 
 已实现：
-- **盘点**：探针枚举共享 `~/.claude*` + 每个 Bot 家目录的 `.claude*`，条目带 `botId/botDirName`；右侧栏按当前 Bot 过滤，共享项标"共享"、Bot 项标"云端"
-- **部署分流**：Bot 在对话里 `install_mcp` / `install_skill` → 写该 Bot 家目录（自动建目录）；设置页的工作区级导入 → 仍写共享 `~/.claude*`（界面标"共享"）
+- **盘点**：探针一次读三处（claude 外部 / .moyu/shared / 各 Bot 的 .moyu），条目带 `botId/botDirName` 归属；右侧栏与设置页按当前 Bot 过滤并标徽标
+- **部署分流**：Bot 对话里 `install_mcp` / `install_skill` → `<botDir>/.moyu/`（自动建目录）；设置页工作区级导入 → `.moyu/shared/`
+- 回归测试断言部署脚本**不得包含 .claude**（防止回归回旧路径）
 
 待实现：
-1. `load_skill` 物化到 `<botDir>/.claude/skills/<name>/`（按需复制，Bot 之间互不可见）
-2. 执行时以 `HOME=<botDir>` 运行云端 Claude 类 agent（让 `.claude.json` 真正按 Bot 生效）
-3. 本地 stdio MCP 按 Bot 启动（per-bot 连接池：`(serverId, botDir)` 键控，cwd/HOME 指向 Bot 家目录）
-4. 共享项"提升为 Bot 专属"的 UI（把共享条目迁入某 Bot 家目录）
+1. 执行桥接：跑云端 Claude agent 时 `CLAUDE_CONFIG_DIR=<botDir>/.moyu/claude`，部署时把自有+共享合成一份 claude 格式写入那里（两条数据源互不污染）
+2. `load_skill` 物化到 `<botDir>/.moyu/skills/<name>/`
+3. 本地 stdio MCP 按 Bot 启动（per-bot 连接池：`(serverId, botDir)` 键控）
+4. 共享项"提升为 Bot 专属"的 UI（把 .moyu/shared 条目迁入某 Bot）
 
 ## 5. 冲突与语义（沿用现有引擎）
 

@@ -60,14 +60,15 @@ export class CapabilityManager {
       'node -e \'',
       'const fs=require("fs"),os=require("os"),path=require("path");',
       `const h=os.homedir(),root=${embed(root)},dirs=${embed(botDirs)};`,
-      'const out={shared:{mcpServers:[],claudeSkills:[],agentSkills:[]},bots:{}};',
+      'const out={moyu:{shared:{mcp:[],skills:[]},bots:{}},claude:{mcp:[],skills:[]}};',
       'const readMcp=(file)=>{try{const c=JSON.parse(fs.readFileSync(file,"utf8")||"{}");return Object.entries(c.mcpServers||{}).map(([n,g])=>({name:n,transport:g.type==="http"?"http":"stdio",command:g.command,args:g.args,url:g.url}))}catch(e){return[]}};',
       'const readSkills=(base)=>{const r=[];try{for(const f of fs.readdirSync(base)){const p=path.join(base,f);try{if(fs.statSync(p).isDirectory()&&fs.existsSync(path.join(p,"SKILL.md")))r.push({name:f,path:p})}catch(e){}}}catch(e){}return r};',
-      'out.shared.mcpServers=readMcp(path.join(h,".claude.json"));',
-      'out.shared.claudeSkills=readSkills(path.join(h,".claude/skills"));',
-      'out.shared.agentSkills=readSkills(path.join(h,".agents/skills"));',
-      'for(const d of dirs){const dir=path.join(root,d);let st;try{st=fs.statSync(dir)}catch(e){continue}if(!st.isDirectory())continue;',
-      'out.bots[d]={mcpServers:readMcp(path.join(dir,".claude.json")),claudeSkills:readSkills(path.join(dir,".claude/skills")),agentSkills:readSkills(path.join(dir,".agents/skills"))};}',
+      'out.claude.mcp=readMcp(path.join(h,".claude.json"));',
+      'out.claude.skills=readSkills(path.join(h,".claude/skills")).concat(readSkills(path.join(h,".agents/skills")));',
+      'const sharedBase=path.join(root,".moyu","shared");',
+      'out.moyu.shared={mcp:readMcp(path.join(sharedBase,"mcp.json")),skills:readSkills(path.join(sharedBase,"skills"))};',
+      'for(const d of dirs){const dir=path.join(root,d);let st;try{st=fs.statSync(dir)}catch(e){continue}if(!st.isDirectory())continue;const base=path.join(dir,".moyu");',
+      'out.moyu.bots[d]={mcp:readMcp(path.join(base,"mcp.json")),skills:readSkills(path.join(base,"skills"))};}',
       'console.log(JSON.stringify(out))',
       '\'',
     ].join('');
@@ -78,27 +79,30 @@ export class CapabilityManager {
       type McpRow = { name: string; transport: string; command?: string; url?: string };
       type SkillRow = { name: string; path: string };
       const data = JSON.parse(line) as {
-        shared?: { mcpServers?: McpRow[]; claudeSkills?: SkillRow[]; agentSkills?: SkillRow[] };
-        bots?: Record<string, { mcpServers?: McpRow[]; claudeSkills?: SkillRow[]; agentSkills?: SkillRow[] }>;
+        moyu?: { shared?: { mcp?: McpRow[]; skills?: SkillRow[] }; bots?: Record<string, { mcp?: McpRow[]; skills?: SkillRow[] }> };
+        claude?: { mcp?: McpRow[]; skills?: SkillRow[] };
         mcpServers?: McpRow[]; claudeSkills?: SkillRow[]; agentSkills?: SkillRow[];
       };
       const servers: NonNullable<CapabilityStatus['cloudServers']> = [];
       const skills: NonNullable<CapabilityStatus['cloudSkills']> = [];
-      if (data.shared || data.bots) {
-        for (const [index, item] of (data.shared?.mcpServers ?? []).entries()) servers.push({ id: `cloud-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '共享 · ~/.claude' });
-        for (const [index, item] of (data.shared?.claudeSkills ?? []).entries()) skills.push({ id: `cloud-skill-${index}`, name: item.name, path: item.path, source: '~/.claude/skills' });
-        for (const [index, item] of (data.shared?.agentSkills ?? []).entries()) skills.push({ id: `cloud-skill-a${index}`, name: item.name, path: item.path, source: '~/.agents/skills' });
-        for (const [dirName, botInv] of Object.entries(data.bots ?? {})) {
+      if (data.moyu || data.claude) {
+        // claude（外部）：云机自带 Claude Code 的配置，moyubot 只读展示，永不写入。
+        for (const [index, item] of (data.claude?.mcp ?? []).entries()) servers.push({ id: `claude-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: 'claude（外部）' });
+        for (const [index, item] of (data.claude?.skills ?? []).entries()) skills.push({ id: `claude-skill-${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
+        // 共享：moyubot 管理的 .moyu/shared，全部 Bot 可用。
+        for (const [index, item] of (data.moyu?.shared?.mcp ?? []).entries()) servers.push({ id: `moyu-shared-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '共享 · .moyu/shared' });
+        for (const [index, item] of (data.moyu?.shared?.skills ?? []).entries()) skills.push({ id: `moyu-shared-skill-${index}`, name: item.name, path: item.path, source: '共享 · .moyu/shared' });
+        // 自有：每个 Bot 家目录的 .moyu。
+        for (const [dirName, botInv] of Object.entries(data.moyu?.bots ?? {})) {
           const botId = this.store.settings.bots.find((bot) => (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' && this.store.botDirName(bot.id) === dirName)?.id;
-          for (const item of botInv.mcpServers ?? []) servers.push({ id: `cloud-mcp-${dirName}-${servers.length}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '该 Bot · 云端', botId, botDirName: dirName });
-          for (const item of botInv.claudeSkills ?? []) skills.push({ id: `cloud-skill-${dirName}-${skills.length}`, name: item.name, path: item.path, source: '该 Bot · .claude/skills', botId, botDirName: dirName });
-          for (const item of botInv.agentSkills ?? []) skills.push({ id: `cloud-skill-${dirName}-a${skills.length}`, name: item.name, path: item.path, source: '该 Bot · .agents/skills', botId, botDirName: dirName });
+          for (const item of botInv.mcp ?? []) servers.push({ id: `moyu-bot-mcp-${dirName}-${servers.length}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '自有 · .moyu', botId, botDirName: dirName });
+          for (const item of botInv.skills ?? []) skills.push({ id: `moyu-bot-skill-${dirName}-${skills.length}`, name: item.name, path: item.path, source: '自有 · .moyu/skills', botId, botDirName: dirName });
         }
       } else {
-        // 旧版探针输出（扁平共享清单）
-        for (const [index, item] of (data.mcpServers ?? []).entries()) servers.push({ id: `cloud-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: '云电脑' });
-        for (const [index, item] of (data.claudeSkills ?? []).entries()) skills.push({ id: `cloud-skill-${index}`, name: item.name, path: item.path, source: '~/.claude/skills' });
-        for (const [index, item] of (data.agentSkills ?? []).entries()) skills.push({ id: `cloud-skill-a${index}`, name: item.name, path: item.path, source: '~/.agents/skills' });
+        // 旧版探针输出（扁平清单）：全部视为 claude 外部项
+        for (const [index, item] of (data.mcpServers ?? []).entries()) servers.push({ id: `claude-mcp-${index}`, name: item.name, transport: item.transport, command: item.command, url: item.url, source: 'claude（外部）' });
+        for (const [index, item] of (data.claudeSkills ?? []).entries()) skills.push({ id: `claude-skill-${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
+        for (const [index, item] of (data.agentSkills ?? []).entries()) skills.push({ id: `claude-skill-a${index}`, name: item.name, path: item.path, source: 'claude（外部）' });
       }
       this.cloudInventory = { at: Date.now(), servers, skills };
       this.cloudInventoryStale = false;
@@ -150,7 +154,8 @@ export class CapabilityManager {
     return { target: 'local', names };
   }
 
-  /** 把 mcpServers 合并写入云电脑的 .claude.json（原子替换）：默认共享 ~/.claude.json；botDirName 时写该 Bot 家目录。 */
+  /** 把 mcpServers 合并写入云电脑的 .moyu/mcp.json（原子替换）：botDirName 时写该 Bot 家目录，否则写 .moyu/shared。
+   *  不写 ~/.claude.json——那是云机自带 Claude Code 的地盘，moyubot 对它只读盘点。 */
   private async deployCloudMcp(entries: ReadonlyArray<readonly [string, unknown]>, botDirName?: string): Promise<void> {
     const host = this.cloud();
     if (!host) return;
@@ -159,13 +164,14 @@ export class CapabilityManager {
     const payload = JSON.stringify(add).replace(/'/g, '\\u0027');
     const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
     const fileExpr = botDirName
-      ? `path.join(${JSON.stringify(root).replace(/'/g, '\\u0027')}, ${JSON.stringify(botDirName).replace(/'/g, '\\u0027')}, ".claude.json")`
-      : 'path.join(os.homedir(),".claude.json")';
+      ? `path.join(r, ${JSON.stringify(botDirName).replace(/'/g, '\\u0027')}, ".moyu", "mcp.json")`
+      : 'path.join(r, ".moyu", "shared", "mcp.json")';
     const script = [
       'node -e \'',
       'const fs=require("fs"),os=require("os"),path=require("path");',
+      `const r=${JSON.stringify(root).replace(/'/g, '\\u0027')};`,
       `const file=${fileExpr};`,
-      ...(botDirName ? ['fs.mkdirSync(path.dirname(file),{recursive:true});'] : []),
+      'fs.mkdirSync(path.dirname(file),{recursive:true});',
       'let conf={};try{conf=JSON.parse(fs.readFileSync(file,"utf8")||"{}")}catch(e){}',
       `const add=JSON.parse('${payload}');`,
       'conf.mcpServers={...(conf.mcpServers||{}),...add};',
@@ -179,7 +185,7 @@ export class CapabilityManager {
     const result = await host.exec(script, { timeoutSeconds: 60 }).catch(() => null);
     this.cloudInventory = undefined; // 立即重新盘点
     this.cloudInventoryStale = true;
-    if (!result || result.exitCode !== 0) throw new Error(`写入云电脑 .claude.json 失败：${result?.stderr || result?.stdout || '未知错误'}`);
+    if (!result || result.exitCode !== 0) throw new Error(`写入云电脑 .moyu/mcp.json 失败：${result?.stderr || result?.stdout || '未知错误'}`);
   }
 
   async importSkill(workspaceId: string, source: string, options?: { botDirName?: string }): Promise<{ target: 'cloud' | 'local'; id?: string; name?: string }> {
@@ -239,9 +245,10 @@ export class CapabilityManager {
     } catch (error) {
       throw new Error(`上传技能到云电脑失败：${(error as Error).message}`);
     }
+    const remoteRoot = (this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot').replace(/\/+$/, '');
     const skillsBase = botDirName
-      ? `${(this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot').replace(/\/+$/, '')}/${botDirName.replace(/^\/+|\/+$/g, '')}/.claude/skills`
-      : '~/.claude/skills';
+      ? `${remoteRoot}/${botDirName.replace(/^\/+|\/+$/g, '')}/.moyu/skills`
+      : `${remoteRoot}/.moyu/shared/skills`;
     const base = shellQuote(skillsBase);
     const target = `${base}/${shellQuote(name)}`;
     const command = [
