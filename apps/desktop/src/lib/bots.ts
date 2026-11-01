@@ -41,7 +41,7 @@ export function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
 - 需要生成图片时调用 generate_image，通过供应商图像 API 出图，无需唤醒云电脑。
 - 长任务先说明计划，再用工具一步步执行，每一步都给出可验证的结果。
 - 不确定的信息要说明不确定，不要编造命令输出。`,
-    approvalPolicy: 'never', tools: BOT_TOOLS.map((tool) => tool.id),
+    approvalPolicy: 'never', tools: [],
     image: { aspect: '1:1' },
     wakeOnTask: true, createdAt: now, updatedAt: now,
   };
