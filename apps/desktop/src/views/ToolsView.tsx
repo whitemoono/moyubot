@@ -19,7 +19,6 @@ export function ToolsView() {
   const mcp = (settings.mcpServers ?? []).filter((server) => server.workspaceId === workspaceId);
   const skills = (settings.skills ?? []).filter((skill) => skill.workspaceId === workspaceId);
   const bots = settings.bots.filter((bot) => (bot.workspaceId ?? 'workspace_cloud') === workspaceId);
-  const defaultTools = builtin.map((tool) => tool.name);
 
   return (
     <div className="tools-page">
@@ -47,7 +46,7 @@ export function ToolsView() {
       <div className="settings-card">
         <div className="settings-rows">
           {bots.map((bot) => {
-            const tools = bot.tools.length ? bot.tools.filter((tool) => builtin.some((item) => item.name === tool)) : defaultTools;
+            const tools = bot.tools.length ? bot.tools.filter((tool) => builtin.some((item) => item.name === tool)) : builtin.filter((item) => !HIDDEN_TOOLS.has(item.name)).map((item) => item.name);
             return (
               <div className="settings-row" key={bot.id}>
                 <div><strong>{bot.name}</strong><p>{tools.length} 个工具 · {bot.mcpServerIds?.length ?? 0} 个 MCP · {bot.skillIds?.length ?? 0} 个技能</p></div>

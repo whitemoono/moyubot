@@ -1,4 +1,4 @@
-import type { Bot, ProviderConfig } from '@moyu/core';
+import { TOOL_SCHEMAS, type Bot, type ProviderConfig } from '@moyu/core';
 
 export const BOT_TOOLS = [
   { id: 'cloud_exec', label: '执行电脑命令', hint: '在所属工作区的电脑上执行命令' },
@@ -19,6 +19,33 @@ export const BOT_TOOLS = [
   { id: 'install_mcp', label: '安装 MCP', hint: '对话里安装 MCP 服务并绑定（敏感操作，需确认）' },
   { id: 'install_skill', label: '安装 Skill', hint: '从工作区目录安装技能并绑定（需确认）' },
 ];
+
+const HIDDEN_TOOLS = new Set(['install_mcp', 'install_skill']);
+const TOOL_LABELS = new Map(BOT_TOOLS.map((tool) => [tool.id, tool]));
+/** 空清单 = 全量默认：除 install_* 外全部启用（toolNamesFor 的语义）。 */
+export const DEFAULT_ENABLED_TOOLS = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !HIDDEN_TOOLS.has(name));
+
+export function isToolEnabled(tools: string[], id: string): boolean {
+  return tools.length ? tools.includes(id) : DEFAULT_ENABLED_TOOLS.includes(id);
+}
+
+/** 翻转一个工具的启用态；翻回"全量默认"时存 []，未来新增工具自动带上。 */
+export function toggleTool(tools: string[], id: string): string[] {
+  const set = new Set(tools.length ? tools : DEFAULT_ENABLED_TOOLS);
+  if (set.has(id)) set.delete(id);
+  else set.add(id);
+  const list = [...set];
+  return list.length === DEFAULT_ENABLED_TOOLS.length && DEFAULT_ENABLED_TOOLS.every((name) => set.has(name)) ? [] : list;
+}
+
+/** 编辑器目录：动态取自 TOOL_SCHEMAS（新工具自动出现），文案用 BOT_TOOLS 的手工标注。 */
+export function editorToolCatalog() {
+  return TOOL_SCHEMAS.map((tool) => ({
+    id: tool.name,
+    label: TOOL_LABELS.get(tool.name)?.label ?? tool.name,
+    hint: TOOL_LABELS.get(tool.name)?.hint ?? (tool.description ?? '').slice(0, 50),
+  }));
+}
 
 export function deepSeekProvider(providers: ProviderConfig[]): ProviderConfig {
   const existing = providers.find((provider) => {

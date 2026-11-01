@@ -5,7 +5,7 @@ import { useMoyu } from '../state';
 import { Button, Field, Segmented, Sheet } from './Glass';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
-import { BOT_TOOLS as TOOLS } from '../lib/bots';
+import { editorToolCatalog, isToolEnabled, toggleTool } from '../lib/bots';
 import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
 import { BotGenerationEditor } from './BotGenerationEditor';
@@ -186,15 +186,15 @@ export function BotEditor({
         <section className="editor-block editor-block--wide">
           <h3>可用工具</h3>
           <div className="tool-toggles">
-            {TOOLS.map((tool) => {
-              const enabled = draft.tools.includes(tool.id);
+            {editorToolCatalog().map((tool) => {
+              const enabled = isToolEnabled(draft.tools, tool.id);
               return (
                 <button
                   key={tool.id}
                   type="button"
                   className={`tool-toggle ${enabled ? 'is-on' : ''}`}
                   onClick={() =>
-                    patch('tools', enabled ? draft.tools.filter((id) => id !== tool.id) : [...draft.tools, tool.id])
+                    patch('tools', toggleTool(draft.tools, tool.id))
                   }
                 >
                   <span className="tool-toggle__check">
