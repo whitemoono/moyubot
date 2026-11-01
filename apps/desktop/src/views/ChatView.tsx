@@ -570,7 +570,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
     <section className={`chat ${messages.length === 0 ? 'chat--home' : ''}`} data-context-summarized={!!conversation.context}>
       <header className="chat__head">
         <h2 className="chat__title">
-          {todos?.items.length ? (
+          {todos?.items.some((item) => !item.done) ? (
             <HeaderPill
               icon={<Icon name="check" size={13} />}
               label={<span className="head-pill__count">{todos.items.filter((item) => item.done).length}/{todos.items.length}</span>}
