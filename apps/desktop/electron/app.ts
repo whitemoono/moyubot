@@ -5,7 +5,7 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net
 import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, GitHubClient, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { initializeProviderNetworking } from './provider-network';
 import type {
   AgentEvent,
@@ -529,6 +529,50 @@ export class MoyuApp {
       return githubClient().getQuota(token);
     });
     handle('moyu:github:logout', () => { this.store.secrets.delete('github:codespaces'); return { ok: true }; });
+    // 零操作连接：优先用手动登录存的 token，否则复用本机 Git 已登录的 GitHub 凭据
+    const githubToken = (): string => {
+      const stored = this.store.secrets.get('github:codespaces');
+      if (stored) return stored;
+      try {
+        return execFileSync('git', ['credential', 'fill'], { input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8' })
+          .split('\n').find((line) => line.startsWith('password='))?.slice('password='.length).trim() ?? '';
+      } catch { return ''; }
+    };
+    handle('moyu:github:connect', async () => {
+      const token = githubToken();
+      if (!token) throw new Error('本机没有可用的 GitHub 登录（Git 凭据为空）');
+      const client = githubClient();
+      const user = await client.getUser(token);
+      const codespaces = await client.listCodespaces(token).catch(() => []);
+      return { user, codespaces };
+    });
+    handle('moyu:github:sshkey', async () => {
+      const priv = path.join(this.store.dataDir, 'github-ssh');
+      if (!fs.existsSync(priv)) execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', priv, '-N', '', '-C', 'moyubot'], { stdio: 'ignore' });
+      const publicKey = fs.readFileSync(priv + '.pub', 'utf8').trim();
+      const token = githubToken();
+      let registered = false, error: string | undefined;
+      if (token) {
+        const result = await githubClient().registerSshKey(token, 'MoyuBot', publicKey).catch((e: Error) => ({ registered: false, error: e.message }));
+        registered = result.registered;
+        error = result.error;
+      }
+      return { publicKey, registered, error, manualUrl: 'https://github.com/settings/keys' };
+    });
+    handle('moyu:github:create-codespace', async () => {
+      const token = githubToken();
+      if (!token) throw new Error('本机没有可用的 GitHub 登录');
+      const client = githubClient();
+      const repo = await client.ensureWorkspaceRepo(token);
+      try {
+        const created = await client.createCodespace(token, repo.id);
+        return { created: true, name: created.name, state: created.state };
+      } catch {
+        // Git 凭据通常没有创建 Codespace 的权限：打开网页创建页兜底
+        void shell.openExternal('https://github.com/codespaces/new?repository=' + repo.id).catch(() => {});
+        return { created: false, fallbackUrl: 'https://github.com/codespaces/new?repository=' + repo.id };
+      }
+    });
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });

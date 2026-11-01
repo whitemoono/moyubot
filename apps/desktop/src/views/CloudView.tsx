@@ -58,69 +58,34 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const meta = CLOUD_META[cloud.state];
   const patch = (value: Partial<typeof draft>) => setDraft((previous) => ({ ...previous, ...value }));
 
-  // GitHub Codespaces（实验）：Device Flow 登录 + 额度
-  const [ghClientId, setGhClientId] = useState(() => settings.github?.oauthClientId ?? '');
-  const [ghFlow, setGhFlow] = useState<{ userCode: string; deviceCode: string; verifyUrl: string; expiresAt: number } | null>(null);
-  const [ghBusy, setGhBusy] = useState(false);
-  const [ghUser, setGhUser] = useState<GitHubUser | undefined>(undefined);
-  const [quota, setQuota] = useState<CodespacesQuota | undefined>(undefined);
+  // GitHub Codespaces（实验）：复用本机 Git 已登录的 GitHub 授权（无需设备码流程），连接 + 列出 + SSH 密钥
+  const [ghConnect, setGhConnect] = useState<{ user: GitHubUser; codespaces: { name: string; state: string; repository: string }[] } | undefined>(undefined);
+  const [ghConnecting, setGhConnecting] = useState(false);
+  const [sshKey, setSshKey] = useState<{ publicKey: string; registered: boolean; manual?: boolean; error?: string } | undefined>(undefined);
   const [ghError, setGhError] = useState('');
-  const [ghCopied, setGhCopied] = useState(false);
-  const [ghNow, setGhNow] = useState(Date.now());
-  useEffect(() => {
-    if (!ghFlow) return;
-    const timer = window.setInterval(() => setGhNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [ghFlow?.deviceCode]);
-  const ghRemaining = ghFlow ? Math.max(0, ghFlow.expiresAt - ghNow) : 0;
-  const ghClientIdSaved = settings.github?.oauthClientId ?? '';
-  const copyUserCode = async () => {
-    if (!ghFlow) return;
-    try { await navigator.clipboard.writeText(ghFlow.userCode); setGhCopied(true); window.setTimeout(() => setGhCopied(false), 1600); }
-    catch { toast('复制失败，请手动选中复制', 'error'); }
+  const connectGh = async () => {
+    setGhError(''); setGhConnecting(true);
+    try { setGhConnect(await moyu().githubConnect()); }
+    catch (error) { setGhError((error as Error).message); }
+    finally { setGhConnecting(false); }
   };
-  const refreshGh = async () => {
+  const registerSshKey = async () => {
+    if (!sshKey) return;
     try {
-      const status = await moyu().githubStatus();
-      setGhUser(status.loggedIn ? status.user : undefined);
-      setGhError(status.error ?? '');
-      if (status.loggedIn && !status.error) setQuota(await moyu().githubQuota());
+      const result = await moyu().githubRegisterKey(sshKey.publicKey);
+      if (result.registered) { setSshKey({ ...sshKey, registered: true }); toast('SSH 公钥已注册到 GitHub'); }
+      else { setSshKey({ ...sshKey, registered: false, manual: true, error: result.error }); toast('自动注册需要额外权限，请在 GitHub 设置页手动添加公钥', 'error'); }
+    } catch (error) { toast((error as Error).message, 'error'); }
+  };
+  const createCodespace = async () => {
+    setGhError('');
+    try {
+      const result = await moyu().githubCreateCodespace();
+      if (result.created) { toast(`Codespace 创建中：${result.name}`); void connectGh(); }
+      else { setGhError('当前授权没有创建 Codespace 的权限，已打开网页创建页——创建后回来点刷新'); void moyu().openExternal(result.fallbackUrl ?? 'https://github.com/codespaces/new').catch(() => {}); }
     } catch (error) { setGhError((error as Error).message); }
   };
-  useEffect(() => { if (active) void refreshGh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active, ghClientIdSaved]);
-  const startGhLogin = async () => {
-    setGhError(''); setGhBusy(true);
-    try {
-      const clientId = ghClientId.trim();
-      await saveSettings({ github: { oauthClientId: clientId } });
-      if (ghPollTimer.current) { window.clearInterval(ghPollTimer.current); ghPollTimer.current = undefined; }
-      const flow: DeviceFlowStart = await moyu().githubLoginStart();
-      const ghExpiresAt = Date.now() + flow.expiresInSeconds * 1000;
-      setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri, expiresAt: ghExpiresAt });
-      void moyu().openExternal(flow.verificationUri).catch(() => toast('未能自动打开浏览器，请点击下方链接手动打开', 'error'));
-      const interval = Math.max(3, flow.intervalSeconds) * 1000;
-      const deadline = ghExpiresAt;
-      const pollTimer = window.setInterval(async () => {
-        if (Date.now() > deadline) { window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试'); return; }
-        try {
-          const poll: DeviceFlowPoll = await moyu().githubLoginPoll(clientId, flow.deviceCode);
-          if (poll.status === 'done' && poll.accessToken) {
-            window.clearInterval(pollTimer);
-            await moyu().githubTokenStore(poll.accessToken);
-            setGhFlow(null); setGhBusy(false);
-            toast('GitHub 已登录');
-            await refreshGh();
-          } else if (poll.status === 'expired') {
-            window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试');
-          }
-        } catch {
-          // 网络波动不杀流程：GitHub 直连时好时坏，重试到授权码过期为止
-          setGhError('网络波动，正在重试…（授权码有效期内会自动继续）');
-        }
-      }, interval);
-    } catch (error) { setGhError((error as Error).message); setGhBusy(false); }
-  };
-  const logoutGh = async () => { await moyu().githubLogout(); setGhUser(undefined); setQuota(undefined); toast('已退出 GitHub'); };
+  useEffect(() => { if (active) void connectGh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active]);
   useEffect(() => {
     if (!active || !awake) return;
     setNow(Date.now());
@@ -184,36 +149,23 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
           <div className="computer-policy__row"><div><strong>服务端空闲休眠</strong><p>由云主机自动保存运行现场</p></div></div><Select label="空闲休眠" disabled={saving || acting || executing || transitioning} value={String(draft.autoSuspendAfterSeconds)} options={IDLE_OPTIONS} onChange={(value) => patch({ autoSuspendAfterSeconds: Number(value) })} />
           <p className="computer-policy__note"><Icon name="folder" size={13} />休眠保留工作文件，唤醒后继续使用。</p>
         </div></section>
-        <section className="computer-card"><header><Icon name="key" size={16} /><h4>GitHub Codespaces</h4><span>{ghUser ? `已登录 · ${ghUser.login}` : '实验功能'}</span></header>
-          {ghUser ? (
+        <section className="computer-card"><header><Icon name="key" size={16} /><h4>GitHub Codespaces</h4><span>{ghConnect ? `已连接 · ${ghConnect.user.login}` : ghConnecting ? '连接中…' : '未连接'}</span></header>
+          {ghConnect ? (
             <div className="computer-policy">
-              <div className="computer-policy__row"><div><strong>{ghUser.name ?? ghUser.login}</strong><p>免费个人账号每月 120 core-小时（2 核 60 小时）+ 15GB 存储</p></div></div>
-              <div className="computer-policy__row"><div><strong>本月额度</strong><p>Codespaces 已用与剩余（官方接口实时返回）</p></div><span>{quota ? (quota.minutesUsed !== undefined ? `已用 ${Math.round(quota.minutesUsed / 60)} 小时` : '—') : '加载中…'}</span></div>
-              {quota ? <details><summary>额度原始数据</summary><pre className="head-pill__objective">{JSON.stringify(quota.raw, null, 1)}</pre></details> : null}
-              <Button size="sm" variant="ghost" onClick={() => void logoutGh()}>退出登录</Button>
+              <div className="computer-policy__row"><div><strong>Codespaces（{ghConnect.codespaces.length}）</strong><p>来自你的 GitHub 账号；没有的话点「创建 Codespace」</p></div><Button size="sm" variant="ghost" onClick={() => void connectGh()}>刷新</Button></div>
+              {ghConnect.codespaces.map((item) => (
+                <div className="computer-policy__row" key={item.name}><div><strong>{item.name}</strong><p>{item.repository} · {item.state}</p></div></div>
+              ))}
+              <div className="computer-policy__row"><div><strong>SSH 公钥</strong><p>{sshKey ? (sshKey.registered ? '已注册到你的 GitHub 账号，Codespaces 将信任这个密钥' : sshKey.manual ? '自动注册需要额外权限：点「注册到 GitHub」旁的手动指引' : sshKey.error ?? '未注册') : '生成中…'}</p></div><Button size="sm" variant="ghost" disabled={!sshKey} onClick={() => void navigator.clipboard.writeText(sshKey?.publicKey ?? '')}>复制公钥</Button></div>
+              {sshKey?.publicKey ? <pre className="head-pill__objective" style={{ maxHeight: 96 }}>{sshKey.publicKey}</pre> : null}
+              <div className="computer-policy__row"><div><strong>创建 Codespace</strong><p>2 核 8GB，用于桌面环境；创建后出现在上方列表</p></div><Button size="sm" icon="plus" onClick={() => void createCodespace()}>创建</Button></div>
+              {ghError ? <p className="capability-error">{ghError}</p> : null}
             </div>
           ) : (
-            <div className="computer-fields">
-              <Field label="GitHub OAuth App Client ID" hint="在 github.com/settings/developers 创建一个 OAuth App（设备码流程无需回调地址），把 Client ID 粘贴到这里并登录。">
-                <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
-              </Field>
-              {ghFlow ? (
-                <div className="computer-policy__row">
-                  <div>
-                    <strong>
-                      授权码：{ghFlow.userCode}
-                      <button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button>
-                      <span className="computer-countdown">{ghRemaining > 0 ? `${Math.floor(ghRemaining / 60000)}:${String(Math.floor((ghRemaining % 60000) / 1000)).padStart(2, '0')} 后过期` : '已过期'}</span>
-                    </strong>
-                    <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); void moyu().openExternal(ghFlow.verifyUrl).catch(() => toast('打开失败，请手动复制链接到浏览器', 'error')); }}>github.com/login/device</a> 输入上方授权码并批准授权。过期了点「重新获取」。</p>
-                  </div>
-                  <Button size="sm" variant="ghost" disabled={ghBusy} loading={ghBusy} onClick={() => void startGhLogin()}>重新获取</Button>
-                </div>
-              ) : (
-                <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
-              )}
+            <div className="computer-policy">
+              <p className="computer-policy__note"><Icon name="key" size={13} />自动使用你电脑上已登录的 GitHub（Git 凭据），无需手动登录或粘贴密钥。</p>
+              <Button variant="primary" size="sm" disabled={ghConnecting} loading={ghConnecting} onClick={() => void connectGh()}>连接 GitHub</Button>
               {ghError ? <p className="capability-error">{ghError}</p> : null}
-              <p className="computer-policy__note"><Icon name="folder" size={13} />登录后自动注册 SSH 密钥并准备 Codespaces 桌面环境（后续版本接入）。</p>
             </div>
           )}
         </section>

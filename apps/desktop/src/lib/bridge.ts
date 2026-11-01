@@ -101,6 +101,9 @@ export interface MoyuBridge {
   githubStatus(): Promise<{ loggedIn: boolean; user?: GitHubUser; error?: string }>;
   githubQuota(): Promise<CodespacesQuota>;
   githubLogout(): Promise<void>;
+  githubConnect(): Promise<{ user: GitHubUser; codespaces: { name: string; state: string; repository: string }[] }>;
+  githubRegisterKey(publicKey: string): Promise<{ registered: boolean; error?: string }>;
+  githubCreateCodespace(): Promise<{ created: boolean; name?: string; state?: string; fallbackUrl?: string }>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
   contextUsage(conversationId: string): Promise<ContextUsageSnapshot | undefined>;
   continueSubagent(id: string, message: string): Promise<{ ok: boolean; text: string; error?: string }>;
