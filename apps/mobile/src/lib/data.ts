@@ -29,6 +29,8 @@ export async function initData(): Promise<void> {
       changed: () => bump(),
       status: () => bump(),
     });
+    // 进入 2 秒轮询循环。没有 start() 只剩配对瞬间的一次同步——错过对端上传就得等重启。
+    client.start();
     client.start();
   } finally {
     starting = false;
