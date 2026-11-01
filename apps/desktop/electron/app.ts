@@ -5,6 +5,8 @@ import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net
 import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
+import { PtyManager } from './pty';
+import { dataDirSource, ensureWritableDirectory, installBaseDir, portableDataDir, userDataDir, writeBootstrapDataDir } from './data-dir';
 import { execFileSync, spawn } from 'node:child_process';
 import { initializeProviderNetworking } from './provider-network';
 import type {
@@ -109,6 +111,7 @@ export class MoyuApp {
   private version: string;
   private offSchedules: () => void;
   private terminalRuns = new Map<string, AbortController>();
+  readonly pty: PtyManager;
   readonly updater: AppUpdater;
 
   constructor(dataDir: string, version: string, options?: { localDirectory?: string }) {
@@ -119,7 +122,7 @@ export class MoyuApp {
     this.mobileSync = new MobileSync(this.store, () => this.send('moyu:sync-data', {}), () => this.cloud);
     this.capabilities = new CapabilityManager(this.store, () => this.cloud);
     this.diagnostics = new DiagnosticJournal(dataDir, () => [
-      secrets.get('cloud:instabox') ?? '', secrets.get('telegram:token') ?? '',
+      secrets.get('cloud:instabox') ?? '', secrets.get('cloud:e2b') ?? '', secrets.get('telegram:token') ?? '',
       ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
     ]);
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
@@ -135,7 +138,7 @@ export class MoyuApp {
 
     this.cloud = new CloudHost({
       settings: this.store.getSettings().cloud,
-      apiKey: () => this.store.secrets.get('cloud:instabox') ?? '',
+      apiKey: () => this.cloudKeyFor(this.store.getSettings().cloud.driver),
       onStatus: (status) => {
         this.send('moyu:cloud', status);
         this.send('moyu:event', { type: 'cloud', status } satisfies AgentEvent);
@@ -144,6 +147,12 @@ export class MoyuApp {
         this.send('moyu:event', { type: 'log', level, text } satisfies AgentEvent);
       },
     });
+
+    this.pty = new PtyManager(
+      () => this.cloud,
+      (id, data) => this.send('moyu:pty:data', { id, data }),
+      (id, exitCode) => this.send('moyu:pty:exit', { id, exitCode }),
+    );
 
     const recoveryFile = path.join(dataDir, 'desktop-control.json');
     let recoveryMachine: string | undefined;
@@ -289,6 +298,15 @@ export class MoyuApp {
     } catch { return ''; }
   }
 
+  /** Secret slot for the active cloud driver. E2B and InstaBox keep separate keys. */
+  private cloudSecretSlot(driver: AppSettings['cloud']['driver'] | undefined): string {
+    return driver === 'e2b' ? 'cloud:e2b' : 'cloud:instabox';
+  }
+
+  private cloudKeyFor(driver: AppSettings['cloud']['driver'] | undefined): string {
+    return this.store.secrets.get(this.cloudSecretSlot(driver)) ?? '';
+  }
+
   private registerIpc(): void {
     const handle = (channel: string, listener: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any) => {
       ipcMain.handle(channel, async (event, ...args) => {
@@ -322,6 +340,24 @@ export class MoyuApp {
       this.local.updateSettings({ ...this.local.getSettings(), workspaceDir: target });
       return next;
     });
+    // ---- 数据目录（用户数据 / 记忆 / 密钥的落盘位置）-------------------------
+    handle('moyu:data-dir:info', () => ({
+      current: this.store.dataDir,
+      source: dataDirSource(),
+      portable: portableDataDir(),
+      userData: userDataDir(),
+      installBase: installBaseDir(),
+    }));
+    handle('moyu:data-dir:set', (_event, directory: string) => {
+      if (this.store.getSettings().onboarding?.completedAt) throw new Error('请通过通用设置更换数据目录');
+      if (typeof directory !== 'string' || !path.isAbsolute(directory) || /[\x00-\x1f]/.test(directory)) throw new Error('请选择有效的绝对路径');
+      const target = path.resolve(directory);
+      if (!ensureWritableDirectory(target)) throw new Error('这个目录无法写入，请选择其他位置');
+      // 数据目录在进程启动时确定，切换后需要重启才能生效。
+      writeBootstrapDataDir(target);
+      return { restartRequired: target !== this.store.dataDir, dataDir: target };
+    });
+
     handle('moyu:setup:finish', (event, skipCloud: boolean) => {
       desktopCaller(event);
       const settings = this.store.getSettings();
@@ -330,7 +366,7 @@ export class MoyuApp {
       const folder = settings.workspaces.find((workspace) => workspace.kind === 'local')?.directory;
       if (!folder) throw new Error('请先选择本地工作目录');
       try { fs.accessSync(folder, fs.constants.W_OK); } catch { throw new Error('本地工作目录不可写，请重新选择'); }
-      if (!skipCloud && !this.store.secrets.get('cloud:instabox')) throw new Error('请配置云电脑或选择跳过');
+      if (!skipCloud && !this.cloudKeyFor(settings.cloud.driver)) throw new Error('请配置云电脑或选择跳过');
       const activeWorkspaceId = skipCloud ? 'workspace_local' : 'workspace_cloud';
       if (skipCloud && !settings.bots.some((bot) => bot.workspaceId === 'workspace_local')) {
         const source = settings.bots[0]!;
@@ -355,6 +391,10 @@ export class MoyuApp {
       desktopCaller(event);
       if (typeof text !== 'string' || text.length > 200_000) throw new Error('文本过长');
       clipboard.writeText(text);
+    });
+    handle('moyu:dialog:directory', async (_event, title?: string, defaultPath?: string) => {
+      const result = await dialog.showOpenDialog({ title: title || '选择目录', defaultPath, properties: ['openDirectory', 'createDirectory'] });
+      return result.canceled ? undefined : result.filePaths[0];
     });
     handle('moyu:local:directory', async () => {
       const running = () => this.local.status().state === 'busy' || this.store.listConversations().some((item) => item.workspaceId === 'workspace_local' && this.runtime.isRunning(item.id));
@@ -383,7 +423,7 @@ export class MoyuApp {
         memories: this.store.listMemories(),
         secrets: {
           providerKeys,
-          cloudKey: Boolean(this.store.secrets.get('cloud:instabox')),
+          cloudKey: Boolean(this.cloudKeyFor(this.store.getSettings().cloud.driver)),
           telegramToken: Boolean(this.store.secrets.get('telegram:token')),
           encrypted: this.store.secrets.isEncrypted(),
         },
@@ -542,13 +582,36 @@ export class MoyuApp {
     handle('moyu:local:exec', async (_event, cmd: string, requestId?: string): Promise<ExecResult> => this.runTerminalCommand('local', cmd, requestId));
     handle('moyu:terminal:stop', (_event, requestId: string) => { this.terminalRuns.get(requestId)?.abort(); });
 
+    // ---- Interactive PTY (real shell) -------------------------------------
+    handle('moyu:pty:open', async (_event, id: string, kind: 'local' | 'cloud', cols: number, rows: number): Promise<{ pid: number }> => this.pty.open(id, kind, cols, rows));
+    handle('moyu:pty:input', async (_event, id: string, data: string): Promise<void> => this.pty.input(id, data));
+    handle('moyu:pty:resize', (_event, id: string, cols: number, rows: number): void => this.pty.resize(id, cols, rows));
+    handle('moyu:pty:close', async (_event, id: string): Promise<void> => this.pty.close(id));
+
     handle('moyu:cloud:save', async (_event, input: { patch: Partial<AppSettings['cloud']>; apiKey?: string }): Promise<CloudStatus> => {
       await this.desktop.close();
       this.checkCloudDirectoryChange(input.patch);
+      // Keep the remote working directory consistent with the backend. E2B runs as
+      // an unprivileged user and cannot write /data, so an InstaBox-style /data path
+      // would break exec/file/PTY. Normalize on save.
+      const finalDriver = input.patch.driver ?? this.store.getSettings().cloud.driver;
+      const currentRemote = input.patch.remoteWorkspaceDir ?? this.store.getSettings().cloud.remoteWorkspaceDir ?? '';
+      if (finalDriver === 'e2b') {
+        if (!currentRemote || currentRemote.startsWith('/data')) {
+          input.patch = { ...input.patch, remoteWorkspaceDir: '/home/user/moyubot' };
+        }
+      } else if (finalDriver === 'instabox') {
+        if (!currentRemote || currentRemote.startsWith('/home/user')) {
+          input.patch = { ...input.patch, remoteWorkspaceDir: '/data/home/moyubot' };
+        }
+      }
       if (typeof input.apiKey === 'string') {
         const key = input.apiKey.trim();
-        if (key) this.store.secrets.set('cloud:instabox', key);
-        else this.store.secrets.delete('cloud:instabox');
+        // Store the key in the slot for the driver being saved (patch.driver wins).
+        const driver = input.patch.driver ?? this.store.getSettings().cloud.driver;
+        const slot = this.cloudSecretSlot(driver);
+        if (key) this.store.secrets.set(slot, key);
+        else this.store.secrets.delete(slot);
         // A new key may belong to another account: forget the old machine.
         this.store.updateSettings({ cloud: { ...this.store.getSettings().cloud, ...input.patch, machineId: undefined } });
         this.cloud.updateSettings(this.store.getSettings().cloud);
@@ -682,6 +745,7 @@ export class MoyuApp {
     this.offSchedules();
     this.scheduler.stop();
     this.cloud.dispose();
+    this.pty.dispose();
     this.local.dispose();
     for (const pending of this.approvals.values()) {
       clearTimeout(pending.timer);

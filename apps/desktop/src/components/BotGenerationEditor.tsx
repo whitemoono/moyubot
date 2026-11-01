@@ -1,5 +1,5 @@
 import type { Bot, BotGenerationSettings, ProviderConfig } from '@moyu/core';
-import { modelProfile } from '@moyu/core/dist/generation';
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, modelProfile } from '@moyu/core/dist/generation';
 import { Field } from './Glass';
 import { Select } from './Select';
 import { LimitChips, formatTokens } from './LimitChips';
@@ -8,7 +8,7 @@ export function BotGenerationEditor({ bot, provider, onChange }: { bot: Bot; pro
   const value = bot.generation ?? {};
   const control = provider?.modelSettings?.[bot.model]?.reasoningControl ?? 'default';
   const patch = (next: Partial<BotGenerationSettings>) => onChange({ ...value, ...next });
-  const window = provider?.modelSettings?.[bot.model]?.contextWindowTokens ?? provider?.contextWindowTokens ?? provider?.modelCatalog?.[bot.model]?.contextWindowTokens ?? modelProfile(provider, bot.model)?.contextWindowTokens ?? 32768;
+  const window = provider?.modelSettings?.[bot.model]?.contextWindowTokens ?? provider?.contextWindowTokens ?? provider?.modelCatalog?.[bot.model]?.contextWindowTokens ?? modelProfile(provider, bot.model)?.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
   const modelThreshold = provider?.modelSettings?.[bot.model]?.compactionThresholdTokens;
   const effectiveThreshold = value.compactionThresholdTokens ?? modelThreshold ?? Math.floor(window * 0.9);
   const thresholdSource = value.compactionThresholdTokens ? 'Bot 设置' : modelThreshold ? '模型设置' : '窗口 90%';

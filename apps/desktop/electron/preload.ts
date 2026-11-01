@@ -46,6 +46,9 @@ const api = {
   importSkill: (workspaceId: string) => invoke<CapabilityImportResult>('moyu:skill:import', workspaceId),
   removeCapability: (kind: 'mcp' | 'skill', id: string) => invoke<void>('moyu:capabilities:remove', kind, id),
   setupDirectory: (directory: string) => invoke<AppSettings>('moyu:setup:directory', directory),
+  dataDirInfo: () => invoke<{ current: string; source: 'env' | 'chosen' | 'legacy' | 'portable' | 'userData'; portable: string; userData: string; installBase: string }>('moyu:data-dir:info'),
+  setDataDir: (directory: string) => invoke<{ restartRequired: boolean; dataDir: string }>('moyu:data-dir:set', directory),
+  pickDirectory: (title?: string, defaultPath?: string) => invoke<string | undefined>('moyu:dialog:directory', title, defaultPath),
   finishSetup: (skipCloud: boolean) => invoke<AppSettings>('moyu:setup:finish', skipCloud),
   readClipboardText: () => invoke<string>('moyu:clipboard:read'),
   writeClipboardText: (text: string) => invoke<void>('moyu:clipboard:write', text),
@@ -104,6 +107,10 @@ const api = {
   cloudExec: (cmd: string, requestId?: string) => invoke<ExecResult>('moyu:cloud:exec', cmd, requestId),
   localExec: (cmd: string, requestId?: string) => invoke<ExecResult>('moyu:local:exec', cmd, requestId),
   stopTerminal: (requestId: string) => invoke<void>('moyu:terminal:stop', requestId),
+  ptyOpen: (id: string, kind: 'local' | 'cloud', cols: number, rows: number) => invoke<{ pid: number }>('moyu:pty:open', id, kind, cols, rows),
+  ptyInput: (id: string, data: string) => invoke<void>('moyu:pty:input', id, data),
+  ptyResize: (id: string, cols: number, rows: number) => invoke<void>('moyu:pty:resize', id, cols, rows),
+  ptyClose: (id: string) => invoke<void>('moyu:pty:close', id),
   saveCloud: (patch: Partial<AppSettings['cloud']>, apiKey?: string) =>
     invoke<CloudStatus>('moyu:cloud:save', { patch, apiKey }),
 
@@ -147,6 +154,16 @@ const api = {
     const handler = (_event: unknown, payload: CloudStatus) => listener(payload);
     ipcRenderer.on('moyu:local', handler);
     return () => ipcRenderer.removeListener('moyu:local', handler);
+  },
+  onPtyData: (listener: (payload: { id: string; data: string }) => void) => {
+    const handler = (_event: unknown, payload: { id: string; data: string }) => listener(payload);
+    ipcRenderer.on('moyu:pty:data', handler);
+    return () => ipcRenderer.removeListener('moyu:pty:data', handler);
+  },
+  onPtyExit: (listener: (payload: { id: string; exitCode: number }) => void) => {
+    const handler = (_event: unknown, payload: { id: string; exitCode: number }) => listener(payload);
+    ipcRenderer.on('moyu:pty:exit', handler);
+    return () => ipcRenderer.removeListener('moyu:pty:exit', handler);
   },
   platform: process.platform,
   isElectron: true,

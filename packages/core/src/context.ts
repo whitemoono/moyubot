@@ -4,7 +4,7 @@ import { ProviderError, OutputLimitError } from './providers';
 import type { AgentEvent, Bot, Conversation, ConversationContext, Message } from './types';
 import { pruneOutput } from './util';
 import { trackedChat } from './usage';
-import { modelProfile, modelSettings, type TaskOutputBudget } from './generation';
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, modelProfile, modelSettings, type TaskOutputBudget } from './generation';
 
 /** Conservative estimate; provider overflow responses trigger a smaller retry budget. */
 export function estimateTokens(text: string): number {
@@ -16,7 +16,7 @@ export function estimateTokens(text: string): number {
 
 export function contextWindow(store: Store, bot: Bot): number {
   const configured = modelSettings(store.getProvider(bot.providerId), bot.model).contextWindowTokens;
-  return Number.isFinite(configured) && configured! >= 4096 ? Math.floor(configured!) : 32768;
+  return Number.isFinite(configured) && configured! >= 4096 ? Math.floor(configured!) : DEFAULT_CONTEXT_WINDOW_TOKENS;
 }
 
 export function outputBudget(store: Store, bot: Bot, retry = false): number {
@@ -33,6 +33,35 @@ export function outputBudget(store: Store, bot: Bot, retry = false): number {
 export function isContextOverflow(error: unknown): boolean {
   return error instanceof ProviderError && [400, 413, 422].includes(error.status) &&
     /context.{0,30}(length|window|limit|exceed)|maximum.{0,20}(token|context)|too many tokens|prompt.{0,20}(long|large)|input.{0,20}(long|token.*exceed)|上下文.{0,12}(超|限)|输入.{0,12}过长/i.test(error.message);
+}
+
+/**
+ * 从上下文溢出报错里解析模型真实窗口大小，用于自动纠正配置。
+ * 兼容常见供应商措辞：
+ *  - "maximum context length is 128000 tokens"
+ *  - "prompt is too long: 210000 tokens > 200000 maximum"
+ *  - "Range of input length should be [1, 131072]"
+ *  - "This model's maximum context length is 65536 tokens"
+ */
+export function parseContextLimit(error: unknown): number | undefined {
+  if (!(error instanceof ProviderError)) return undefined;
+  const text = error.message;
+  const patterns = [
+    /maximum context length (?:is )?([\d,]{4,})/i,
+    /maximum.{0,20}(?:context|token).{0,20}?([\d,]{4,})/i,
+    /context (?:length|window).{0,15}?([\d,]{4,})/i,
+    /tokens?\s*>\s*([\d,]{4,})\s*(?:maximum|max)/i,
+    /\[\s*1\s*,\s*([\d,]{4,})\s*\]/,
+    /limit.{0,15}?([\d,]{4,})\s*tokens?/i,
+  ];
+  for (const pattern of patterns) {
+    const hit = text.match(pattern);
+    if (!hit) continue;
+    const value = Number(hit[1].replace(/,/g, ''));
+    // 合理区间：4K ~ 10M，避免把随机数字当成窗口。
+    if (Number.isFinite(value) && value >= 4096 && value <= 10_000_000) return Math.floor(value);
+  }
+  return undefined;
 }
 
 export function messagesFor(messages: Message[], viewerBotId?: string): AgentMessage[] {

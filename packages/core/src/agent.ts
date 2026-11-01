@@ -23,7 +23,7 @@ import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
 import { newId, formatDuration, pruneOutput, summarize, truncate } from './util';
 import { runWorkflow } from './workflow';
-import { contextWindow, outputBudget, isContextOverflow, messagesFor, prepareContext, type TaskContext } from './context';
+import { contextWindow, outputBudget, isContextOverflow, parseContextLimit, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
 import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generation';
 
@@ -477,6 +477,20 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             }
             // A rejected request is retried only before any visible output or side effect.
             if (!isContextOverflow(error) || recovery === 2 || message.content.length !== contentBefore || (message.reasoning?.length ?? 0) !== reasoningBefore || pendingCalls.length) throw error;
+            // 供应商报错里通常带真实窗口（"maximum context length is N"）。趁这次撞墙把它学下来，
+            // 避免同一个模型每次都因为配置过小而重复失败。
+            const learned = parseContextLimit(error);
+            if (learned && learned !== contextWindow(this.store, bot)) {
+              try {
+                this.store.updateSettings({
+                  providers: this.store.getSettings().providers.map((item) => item.id !== bot.providerId ? item : {
+                    ...item,
+                    modelSettings: { ...(item.modelSettings ?? {}), [bot.model]: { ...(item.modelSettings?.[bot.model] ?? {}), contextWindowTokens: learned } },
+                  }),
+                });
+                this.emit({ type: 'log', level: 'info', text: `已根据接口返回自动修正「${bot.model}」的上下文窗口为 ${learned.toLocaleString('zh-CN')} tokens` });
+              } catch { /* 学习失败不影响本次重试 */ }
+            }
             pendingCalls = [];
           } finally {
             message.modelMs = (message.modelMs ?? 0) + (Date.now() - callStart);

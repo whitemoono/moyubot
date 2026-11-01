@@ -76,7 +76,6 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
 const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
   const { botActivities, setView, settings, toast } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
-  const [expanded, setExpanded] = useState(false);
 
   // 选中消息文字后右键 → 弹出「复制」菜单（无选区时保持默认行为）。
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
@@ -149,7 +148,6 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
   const content = message.error && message.content === `（没有回复：${message.error}）` ? '' : message.content;
   const turns = useMemo(() => replyTurns({ ...message, content }), [message.content, message.modelTurns, content]);
   const turnHtml = useMemo(() => turns.map((turn) => (turn.content ? renderMarkdown(turn.content) : '')), [turns]);
-  const long = content.length > 1600;
 
   return (
     <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1} onContextMenu={handleContextMenu}>
@@ -159,14 +157,13 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           <BotAvatar bot={bot} activity="idle" animated={!!message.streaming || kind === 'stopped' || kind === 'done'} />
           <strong>{message.botName ?? bot.name}</strong>
         </div>
-        <div className={`reply-turns ${long && !expanded ? 'is-clamped' : ''}`}>
+        <div className="reply-turns">
         {turns.map((turn, index) => <div className="reply-turn" key={index}>
           {turn.reasoning ? <details className="reasoning reply-reasoning"><summary><Icon name="spark" size={14} /><span>思考过程</span><Icon name="chevron" size={13} /></summary><p>{turn.reasoning}</p></details> : null}
           {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: turnHtml[index] ?? '' }} /> : null}
           {turn.toolCalls?.map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
         </div>)}
         </div>
-        {long ? <button type="button" className="reply-expand" onClick={() => setExpanded((value) => !value)}>{expanded ? '收起' : '展开全文'}</button> : null}
 
         {message.attachments?.filter((attachment) => attachment.kind === 'image').length ? (
           <div className="artifact-grid">

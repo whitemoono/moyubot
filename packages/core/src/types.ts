@@ -149,8 +149,12 @@ export type InstaBoxMachineState =
   | 'error';
 
 export interface CloudHostSettings {
-  driver: 'instabox' | 'mock';
+  driver: 'instabox' | 'mock' | 'e2b';
   baseUrl: string;
+  /** E2B only: sandbox ingress domain for self-hosted. Empty → official cloud. */
+  e2bDomain?: string;
+  /** E2B only: template name/ID to spawn (e.g. 'base', 'code-interpreter-v1'). */
+  e2bTemplate?: string;
   machineId?: string;
   machineName: string;
   templateId: string;
@@ -178,6 +182,8 @@ export interface CloudStatus {
     state: InstaBoxMachineState;
     autoSuspendAfterSeconds: number | null;
     updatedAt?: string;
+    /** Actual resources reported by the cloud backend (e.g. E2B sandbox 8 vCPU / 8192 MiB). */
+    spec?: { vcpus?: number; memMiB?: number };
   };
   lastError?: string;
   lastTransitionAt: number;

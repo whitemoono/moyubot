@@ -28,6 +28,7 @@ import { embedTexts } from './embedding';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
 import { modelSettings, validateGeneration, validateModelSettings } from './generation';
+import { remoteModelCatalog } from './model-catalog';
 import { syncValue, type SyncRecord } from './sync';
 
 export interface SecretBox {
@@ -204,6 +205,8 @@ export class Store {
     this.embedder = options?.embedder;
     fs.mkdirSync(dataDir, { recursive: true });
     fs.mkdirSync(this.dir('conversations'), { recursive: true });
+    // 读本地 models.dev 缓存并后台刷新，用于补全未识别模型的上下文窗口。
+    remoteModelCatalog.init(dataDir);
 
     const settingsFile = path.join(dataDir, 'settings.json');
     if (fs.existsSync(settingsFile)) {

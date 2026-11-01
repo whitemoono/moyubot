@@ -1,5 +1,7 @@
 import { InstaBoxClient, InstaBoxError } from './instabox';
 import type { ExecRequest, ExecResult, MachineSummary, OperationSummary } from './instabox';
+import { E2BClient, E2BError } from './e2b';
+import type { PtySession } from './e2b';
 import type { CloudHostSettings, CloudState, CloudStatus, InstaBoxMachineState } from './types';
 import { newId, normalizeRemoteDirectory, shellQuote, sleep } from './util';
 import { spawn } from 'node:child_process';
@@ -9,7 +11,7 @@ import { ComputerControl } from './computer-control';
 import type { DesktopStatus, DesktopStream } from './instabox';
 
 export interface CloudDriver {
-  readonly kind: 'instabox' | 'mock';
+  readonly kind: 'instabox' | 'mock' | 'e2b';
   hasCredential(): boolean;
   listMachines(): Promise<MachineSummary[]>;
   getMachine(id: string): Promise<MachineSummary>;
@@ -32,6 +34,8 @@ export interface CloudDriver {
   desktopStart?(id: string): Promise<DesktopStatus>;
   desktopStream?(id: string, viewOnly: boolean): Promise<DesktopStream>;
   desktopRevoke?(id: string): Promise<void>;
+  /** Open an interactive PTY shell in the sandbox (optional per backend). */
+  openPty?(id: string, cols: number, rows: number, onData: (data: string) => void, opts?: { cwd?: string }): Promise<PtySession>;
 }
 
 export class InstaBoxDriver implements CloudDriver {
@@ -92,6 +96,126 @@ export class InstaBoxDriver implements CloudDriver {
   desktopStart(id: string) { return this.client.desktopStart(id); }
   desktopStream(id: string, viewOnly: boolean) { return this.client.desktopStream(id, viewOnly); }
   desktopRevoke(id: string) { return this.client.desktopRevoke(id); }
+}
+
+/**
+ * E2B cloud sandbox driver. Works for the official cloud AND a self-hosted
+ * deployment — the only difference is the `apiUrl` / `domain` in settings.
+ *
+ * E2B has no GUI desktop stream in its default self-hosted offering, so the
+ * desktop* methods are intentionally omitted; a workspace that picks `e2b`
+ * uses the self-hosted Webtop (or any noVNC endpoint) for the live desktop.
+ */
+export class E2BDriver implements CloudDriver {
+  readonly kind = 'e2b' as const;
+  private readonly client: E2BClient;
+
+  constructor(apiKey: string, baseUrl?: string, domain?: string) {
+    this.client = new E2BClient({ apiKey, apiUrl: baseUrl, domain });
+  }
+
+  hasCredential(): boolean {
+    return this.client.hasKey();
+  }
+
+  listMachines() {
+    return this.client.listMachines();
+  }
+
+  getMachine(id: string) {
+    return this.client.getMachine(id);
+  }
+
+  async updateMachine(_id: string, _patch: Record<string, unknown>): Promise<MachineSummary> {
+    // E2B has no per-machine auto-suspend knob via this API; CloudHost's own
+    // idle timer still applies locally. Return current state unchanged.
+    return this.getMachine(_id);
+  }
+
+  async createMachine(body: Record<string, unknown>): Promise<{ machine?: MachineSummary; operationId?: string }> {
+    const created = await this.client.createMachine({
+      templateId: typeof body.templateId === 'string' ? body.templateId : undefined,
+      timeoutMs: typeof body.maxRunMinutes === 'number' ? body.maxRunMinutes * 60_000 : undefined,
+      metadata: body.name ? { name: String(body.name) } : undefined,
+    });
+    return { machine: created.machine };
+  }
+
+  /**
+   * E2B lifecycle:
+   * - start/wake/resume → if paused, `connect` resumes it; if stopped/deleted we
+   *   cannot revive it, so report a clear error via getMachine (CloudHost re-creates).
+   * - suspend → pause()
+   * - stop/delete → kill()
+   */
+  async act(id: string, action: 'start' | 'stop' | 'suspend' | 'resume' | 'wake' | 'delete'): Promise<OperationSummary> {
+    try {
+      if (action === 'suspend') {
+        await this.client.pause(id);
+      } else if (action === 'stop' || action === 'delete') {
+        await this.client.kill(id);
+      } else {
+        // start/resume/wake: attach (resumes a paused sandbox).
+        await this.client.connect(id);
+      }
+      return { id: `e2b_${action}_${id}`, state: 'succeeded', machineId: id };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { id: `e2b_${action}_${id}`, state: 'failed', machineId: id, error: { code: 'e2b_act_failed', message } };
+    }
+  }
+
+  async waitOperation(_id: string, _options?: { timeoutMs?: number; onPhase?: (phase: string) => void }): Promise<OperationSummary> {
+    // E2B actions (pause/kill/connect) resolve synchronously above; nothing to poll.
+    return { id: _id, state: 'succeeded' };
+  }
+
+  async waitForState(
+    id: string,
+    accept: InstaBoxMachineState[],
+    options?: { timeoutMs?: number; onState?: (machine: MachineSummary) => void },
+  ): Promise<MachineSummary> {
+    const deadline = Date.now() + (options?.timeoutMs ?? 120_000);
+    for (;;) {
+      const machine = await this.getMachine(id);
+      options?.onState?.(machine);
+      if (accept.includes(machine.state)) return machine;
+      if (Date.now() > deadline) throw new E2BError({ code: 'timeout', message: `E2B 状态等待超时（${machine.state}）` });
+      await sleep(800);
+    }
+  }
+
+  exec(id: string, req: ExecRequest, handlers?: Parameters<CloudDriver['exec']>[2]) {
+    return this.client.exec(id, req, { onStdout: handlers?.onStdout, onStderr: handlers?.onStderr });
+  }
+
+  writeFile(id: string, path: string, content: string | Uint8Array) {
+    return this.client.writeFile(id, path, content);
+  }
+
+  readFile(id: string, path: string) {
+    return this.client.readFile(id, path);
+  }
+
+  // Desktop (computer-use). Requires the workspace to use an E2B desktop template.
+  desktopStart(id: string): Promise<DesktopStatus> {
+    return this.client.desktopStatus(id);
+  }
+  desktopStream(id: string, viewOnly: boolean): Promise<DesktopStream> {
+    return this.client.desktopStream(id, viewOnly);
+  }
+  desktopRevoke(id: string): Promise<void> {
+    return this.client.desktopRevoke(id);
+  }
+
+  /** Native desktop control (screenshot / click / type / …) for E2B desktop templates. */
+  desktopAction(id: string, args: Record<string, unknown>): Promise<{ text: string; screenshot?: Uint8Array }> {
+    return this.client.desktopAction(id, args);
+  }
+
+  openPty(id: string, cols: number, rows: number, onData: (data: string) => void, opts?: { cwd?: string }): Promise<PtySession> {
+    return this.client.openPty(id, cols, rows, onData, opts);
+  }
 }
 
 /**
@@ -349,6 +473,7 @@ export class CloudHost {
   readonly control = new ComputerControl();
   private preparedDirectories = new Set<string>();
   private instabox: InstaBoxDriver | undefined;
+  private e2b: E2BDriver | undefined;
   private readonly mock = new MockDriver();
   private readonly keyProvider: () => string | undefined;
   private settings: CloudHostSettings;
@@ -381,11 +506,16 @@ export class CloudHost {
   }
 
   isConfigured(): boolean {
-    return this.settings.driver === 'mock' || Boolean(this.keyProvider()?.trim());
+    if (this.settings.driver === 'mock') return true;
+    return Boolean(this.keyProvider()?.trim());
   }
 
   get driver(): CloudDriver {
     if (this.settings.driver === 'mock' || !this.isConfigured()) return this.mock;
+    if (this.settings.driver === 'e2b') {
+      if (!this.e2b) this.e2b = new E2BDriver(this.keyProvider() ?? '', this.settings.baseUrl, this.settings.e2bDomain);
+      return this.e2b;
+    }
     if (!this.instabox) {
       this.instabox = new InstaBoxDriver(this.keyProvider() ?? '', this.settings.baseUrl);
     }
@@ -427,6 +557,7 @@ export class CloudHost {
   invalidateDriver(): void {
     this.preparedDirectories.clear();
     this.instabox = undefined;
+    this.e2b = undefined;
     this.machine = undefined;
     void this.refresh();
   }
@@ -447,9 +578,22 @@ export class CloudHost {
           this.settings = { ...this.settings, machineId: match.id };
         }
       } else {
-        this.machine = await this.driver.getMachine(this.settings.machineId);
+        try {
+          this.machine = await this.driver.getMachine(this.settings.machineId);
+        } catch (error) {
+          // E2B sandbox may have been killed/paused away — drop the stale id so
+          // the next wake recreates it instead of surfacing a hard error.
+          if (this.settings.driver === 'e2b') {
+            this.settings = { ...this.settings, machineId: undefined };
+            this.machine = undefined;
+          } else {
+            throw error;
+          }
+        }
       }
-      const state = resolveCloudState(this.machine, this.activeRuns > 0);
+      // Configured but no sandbox yet (e.g. E2B before first wake): show as "off"
+      // so the wake button is enabled, instead of "unconfigured".
+      const state = this.machine ? resolveCloudState(this.machine, this.activeRuns > 0) : 'off';
       this.setStatus({
         state,
         machine: this.machine
@@ -459,6 +603,7 @@ export class CloudHost {
               state: this.machine.state,
               autoSuspendAfterSeconds: this.machine.autoSuspendAfterSeconds,
               updatedAt: this.machine.updatedAt,
+              spec: this.machine.spec,
             }
           : undefined,
       });
@@ -526,11 +671,27 @@ export class CloudHost {
     const startedAt = Date.now();
     try {
       let id = this.settings.machineId;
+      // E2B: a stored machineId may point to a killed sandbox. Validate by
+      // fetching it — if gone, forget it and recreate below. We deliberately
+      // do NOT compare template names here: `settings.templateId` is a template
+      // alias (e.g. "desktop") while the sandbox reports its template id, so a
+      // strict comparison would wrongly discard a perfectly good sandbox every
+      // wake (causing endless recreate). Template changes are handled by the
+      // user clearing the machine; a live sandbox is always reused.
+      if (id && this.settings.driver === 'e2b') {
+        try {
+          await this.driver.getMachine(id);
+        } catch {
+          id = undefined;
+        }
+        this.settings = { ...this.settings, machineId: id };
+      }
       // Startup discovery and server-side autosuspend can race a user action.
       // Always discover/refresh before deciding to create, resume or start.
       if (!id) {
         const machines = await this.driver.listMachines();
-        const match = machines.find((m) => m.name === this.settings.machineName) ?? machines[0];
+        const match = machines.find((m) => m.name === this.settings.machineName)
+          ?? (this.settings.driver === 'e2b' ? undefined : machines[0]);
         if (match) {
           id = match.id;
           this.settings = { ...this.settings, machineId: id };
@@ -597,6 +758,7 @@ export class CloudHost {
             state: machine.state,
             autoSuspendAfterSeconds: machine.autoSuspendAfterSeconds,
             updatedAt: machine.updatedAt,
+            spec: machine.spec,
           },
           lastError: undefined,
           pendingReason: undefined,
@@ -662,6 +824,7 @@ export class CloudHost {
             state: machine.state,
             autoSuspendAfterSeconds: machine.autoSuspendAfterSeconds,
             updatedAt: machine.updatedAt,
+            spec: machine.spec,
           },
           awakeMs: 0,
         });
@@ -697,23 +860,52 @@ export class CloudHost {
     }
   }
 
-  /** 云端每 Bot 一个子目录：<remoteWorkspaceDir>/<botDirName>。subDirectory 为空时退回共享根。 */
+  /**
+   * Open an interactive PTY shell on the cloud machine. Only supported by drivers
+   * that implement openPty (E2B). The machine is woken first.
+   */
+  async openCloudPty(cols: number, rows: number, onData: (data: string) => void, subDirectory?: string): Promise<PtySession> {
+    const machine = await this.ensureAwake('打开云终端');
+    const driver = this.driver;
+    if (!driver.openPty) throw new Error('当前云电脑不支持交互终端');
+    this.touch();
+    // Try the configured remote workspace dir, but only use it as the shell cwd if
+    // we can actually create it — otherwise fall back to the sandbox default home
+    // (an invalid cwd makes the PTY fail with "does not exist").
+    const wanted = this.remoteDirectory(subDirectory);
+    let cwd: string | undefined;
+    try {
+      const r = await driver.exec(machine.id, { cmd: `mkdir -p -- ${shellQuote(wanted)} && test -d ${shellQuote(wanted)} && echo OK`, timeoutSeconds: 20 });
+      if (r.exitCode === 0 && r.stdout.includes('OK')) cwd = wanted;
+    } catch { /* ignore */ }
+    return driver.openPty(machine.id, cols, rows, onData, { cwd });
+  }
   private remoteDirectory(subDirectory?: string): string {
-    const root = this.settings.remoteWorkspaceDir ?? '/data/moyubot';
+    // E2B sandboxes run as an unprivileged `user` and cannot create /data; their
+    // writable home is /home/user. InstaBox uses /data/moyubot.
+    const fallbackRoot = this.settings.driver === 'e2b' ? '/home/user/moyubot' : '/data/moyubot';
+    const root = this.settings.remoteWorkspaceDir ?? fallbackRoot;
     if (!subDirectory) return normalizeRemoteDirectory(root);
     return normalizeRemoteDirectory(`${root.replace(/\/+$/, '')}/${subDirectory.replace(/^\/+|\/+$/g, '')}`);
   }
 
   async readText(remotePath: string, subDirectory?: string): Promise<string> {
-    remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
+    const resolved = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
     const machine = await this.ensureAwake('读取云主机文件');
-    const bytes = await this.driver.readFile(machine.id, remotePath);
+    const bytes = await this.driver.readFile(machine.id, resolved);
     return new TextDecoder().decode(bytes);
   }
 
   async desktopAction(args: Record<string, unknown>, signal?: AbortSignal): Promise<{ text: string; screenshot?: Uint8Array }> {
     const machine = await this.ensureAwake('Bot 操作桌面');
-    const driver = this.driver;
+    const driver = this.driver as CloudDriver & { desktopAction?: (id: string, a: Record<string, unknown>) => Promise<{ text: string; screenshot?: Uint8Array }> };
+    // E2B desktop templates expose native screenshot/input; use it directly.
+    if (typeof driver.desktopAction === 'function' && this.settings.driver === 'e2b') {
+      signal?.throwIfAborted();
+      const result = await driver.desktopAction(machine.id, args);
+      this.touch();
+      return result;
+    }
     if (!driver.desktopStart) throw new Error('当前工作区不提供真实远程桌面');
     signal?.throwIfAborted();
     const status = await driver.desktopStart(machine.id);

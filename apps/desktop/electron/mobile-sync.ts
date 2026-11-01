@@ -107,11 +107,14 @@ export class MobileSync {
   }
   private executionLocal() {
     const cloud = this.cloudSettings();
-    const hasCredential = !!this.store.secrets.get('cloud:instabox');
+    const isInsta = cloud.driver === 'instabox';
+    const slot = cloud.driver === 'e2b' ? 'cloud:e2b' : 'cloud:instabox';
+    const hasCredential = !!this.store.secrets.get(slot);
+    const driverName = cloud.driver === 'e2b' ? 'E2B' : 'InstaBox';
     return {providers:this.store.getSettings().providers.map(p=>({id:p.id,name:p.name,models:p.models,remote:this.reachableFromServer(p)})),
-      cloudConfigured:cloud.driver==='instabox' && hasCredential,
+      cloudConfigured:(isInsta || cloud.driver === 'e2b') && hasCredential,
       cloudMachineName:cloud.machineName, cloudMachineId:cloud.machineId,
-      cloudHint:cloud.driver!=='instabox'?'当前使用演示云电脑，请配置 InstaBox':!hasCredential?'请先在云电脑设置中保存 InstaBox 凭据':!cloud.machineId?'凭据已保存，授权时将识别当前云电脑':`已识别：${cloud.machineName}（${cloud.machineId}）`};
+      cloudHint:!isInsta && cloud.driver !== 'e2b'?'当前使用演示云电脑，请配置云电脑':!hasCredential?`请先在云电脑设置中保存 ${driverName} 凭据`:!cloud.machineId?'凭据已保存，授权时将识别当前云电脑':`已识别：${cloud.machineName}（${cloud.machineId}）`};
   }
   private async authorizeExecution(payload: {authorized?: boolean; providerIds?: string[]; cloud?: boolean}) {
     if (!this.server || !this.session()) throw new Error('请先保存服务器并生成连接二维码');
@@ -125,9 +128,10 @@ export class MobileSync {
     });
     let cloud;
     if (payload.cloud) {
-      const credential = this.store.secrets.get('cloud:instabox');
+      const activeDriver = this.cloudSettings().driver;
+      const credential = this.store.secrets.get(activeDriver === 'e2b' ? 'cloud:e2b' : 'cloud:instabox');
       let current = this.cloudSettings();
-      if (current.driver !== 'instabox' || !credential) throw new Error('请先在云电脑设置中保存 InstaBox 凭据');
+      if ((current.driver !== 'instabox' && current.driver !== 'e2b') || !credential) throw new Error('请先在云电脑设置中保存云电脑凭据');
       if (!current.machineId) {
         const host = this.currentCloud?.();
         const status = await host?.refresh();

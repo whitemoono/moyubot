@@ -50,10 +50,12 @@ export class DesktopSessions {
 
   private async stream(machineId: string, mode: DesktopSession['mode']): Promise<DesktopSession> {
     const driver = this.host.driver;
-    if (!driver.desktopStream) throw new Error('演示模式不提供真实远程桌面，请先配置 InstaBox');
+    if (!driver.desktopStream) throw new Error('当前云电脑不提供远程桌面，请先配置云电脑');
     const stream = await driver.desktopStream(machineId, mode !== 'manual');
     const viewer = new URL(stream.url);
-    if (viewer.origin !== 'https://dashboard.instabox.sh' || !viewer.pathname.startsWith(`/desktop/${machineId}`)) throw new Error('桌面服务返回了无效的连接');
+    // Only InstaBox uses its dashboard host + /desktop/<id> path; other drivers
+    // (e.g. E2B → https://6080-<id>.e2b.app/vnc.html) return their own valid URLs.
+    if (driver.kind === 'instabox' && (viewer.origin !== 'https://dashboard.instabox.sh' || !viewer.pathname.startsWith(`/desktop/${machineId}`))) throw new Error('桌面服务返回了无效的连接');
     this.session = { ...stream, machineId, mode };
     return this.session;
   }
@@ -65,9 +67,9 @@ export class DesktopSessions {
       if (!['ready', 'busy'].includes(status.state) || !status.machine) throw new Error('请先唤醒云电脑');
       if (this.session?.machineId === status.machine.id && Date.parse(this.session.expiresAt) > Date.now() + 30_000) return this.session;
       const driver = this.host.driver;
-      if (!driver.desktopStart) throw new Error('演示模式不提供真实远程桌面，请先配置 InstaBox');
+      if (!driver.desktopStart) throw new Error('当前云电脑不提供远程桌面，请先配置云电脑');
       const desktop = await driver.desktopStart(status.machine.id);
-      if (!desktop.installed || !desktop.running) throw new Error('此模板尚未启动桌面，请在 InstaBox 使用 agent-browser 模板');
+      if (!desktop.installed || !desktop.running) throw new Error(driver.kind === 'instabox' ? '此模板尚未启动桌面，请在 InstaBox 使用 agent-browser 模板' : '桌面尚未启动，请确认模板支持桌面（如 E2B 的 desktop 模板）');
       return this.stream(status.machine.id, 'view');
     });
   }

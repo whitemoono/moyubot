@@ -15,3 +15,15 @@ data/
 .moyu-userdata/
 /workspace/
 .tmp-*
+# 本地开发/调试产物
+.tmp/
+.moyu-devdata/
+.moyu-dev-chromium/
+.zcode/
+_*.err
+_*.out
+_*.png
+_*.py
+etest_*/
+_moyu-data-bak-*/
+_moyu_data_test/

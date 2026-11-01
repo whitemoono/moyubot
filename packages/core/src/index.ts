@@ -1,5 +1,6 @@
 export * from './types';
-export { modelSettings, modelProfile, validateModelSettings, validateGeneration, DEFAULT_TASK_LIMITS, TaskOutputBudget } from './generation';
+export { modelSettings, modelProfile, validateModelSettings, validateGeneration, DEFAULT_TASK_LIMITS, DEFAULT_CONTEXT_WINDOW_TOKENS, TaskOutputBudget } from './generation';
+export { remoteModelCatalog, RemoteModelCatalog } from './model-catalog';
 export { CapabilityManager } from './capabilities';
 export { DiagnosticJournal, redactDiagnostic } from './diagnostics';
 export type { DiagnosticEntry } from './diagnostics';
@@ -7,9 +8,11 @@ export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage
 export * from './util';
 export { Store, PlainSecretBox, defaultSettings } from './store';
 export type { SecretBox, ConversationSummary, SettingsPatch } from './store';
-export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, resolveCloudState } from './cloud';
+export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, E2BDriver, resolveCloudState } from './cloud';
 export type { CloudDriver, CloudHostDeps } from './cloud';
 export { InstaBoxClient, InstaBoxError } from './instabox';
+export { E2BClient, E2BError } from './e2b';
+export type { E2BConnectOptions, PtySession } from './e2b';
 export { ComputerControl } from './computer-control';
 export { DesktopSessions } from './desktop-session';
 export type { DesktopSession } from './desktop-session';

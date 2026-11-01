@@ -51,6 +51,14 @@
 .setup-directory { display: flex; gap: 8px; }
 .setup-directory > .input { min-width: 0; flex: 1; font-size: 10px; }
 .setup-directory > .btn { flex-shrink: 0; font-size: 10px; }
+.setup-driver { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }
+.setup-driver legend { font-size: 10px; margin-bottom: 10px; color: var(--text-faint); }
+.setup-driver__options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.setup-driver__options > button { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text-dim); cursor: pointer; text-align: left; transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out); }
+.setup-driver__options > button strong { font-size: 12px; font-weight: 500; color: var(--text); }
+.setup-driver__options > button small { font-size: 9px; color: var(--text-faint); }
+.setup-driver__options > button.is-active { border-color: var(--accent, #5b8cff); }
+.setup-driver__options > button:disabled { opacity: .6; cursor: default; }
 .setup-summary { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 32px; display: grid; gap: 16px; }
 .setup-summary > div { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; }
 .setup-summary span { color: var(--text-faint); }
@@ -328,6 +336,9 @@
 .computer-terminal__lights { display: flex; gap: 4px; }
 .computer-terminal__lights i { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
 .computer-terminal__output { min-height: 210px; height: min(30vh, 260px); padding: 16px; overflow: auto; background: var(--bg); user-select: text; }
+.computer-terminal__xterm { height: min(36vh, 340px); min-height: 240px; padding: 8px 6px; background: #0b0d12; overflow: hidden; }
+.computer-terminal__xterm .xterm-host { height: 100%; }
+.computer-terminal__xterm .xterm { padding: 4px 6px; }
 .computer-terminal__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 170px; color: var(--text-faint); text-align: center; }
 .computer-terminal__empty strong { font-size: 12px; font-weight: 450; margin-top: 13px; color: var(--text-dim); }
 .computer-terminal__empty p { font-size: 10px; margin: 7px 0 0; line-height: 1.7; }

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { BrowserWindow, Menu, app, net, protocol, shell } from 'electron';
+import { BrowserWindow, Menu, app, dialog, net, protocol, shell } from 'electron';
 import { resolveArtifact } from '@moyu/core';
 import { MoyuApp } from './app';
 import { startRendererServer } from './renderer-server';
+import { resolveDataDir } from './data-dir';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5273';
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -63,7 +64,16 @@ function createWindow(): BrowserWindow {
   });
 
   win.setMenu(null);
+  // 兜底：若首个绘制迟迟不来（渲染慢/JS 报错），也把窗口显示出来，避免"进程在但没窗口"。
+  const showFallback = setTimeout(() => {
+    if (!win.isDestroyed() && !win.isVisible()) {
+      console.warn('[moyu] ready-to-show timed out, forcing window show');
+      win.show();
+      if (isDev) win.webContents.openDevTools({ mode: 'detach' });
+    }
+  }, 6000);
   win.once('ready-to-show', async () => {
+    clearTimeout(showFallback);
     win.show();
     const capturePath = process.env.MOYU_CAPTURE;
     if (capturePath) {
@@ -90,6 +100,13 @@ function createWindow(): BrowserWindow {
   win.on('closed', () => {
     mainWindow = undefined;
   });
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[moyu] page failed to load: ${code} ${desc} ${url}`);
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  });
+  win.webContents.on('did-finish-load', () => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  });
 
   if (isDev) {
     void win.loadURL(DEV_URL);
@@ -108,7 +125,7 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
-  const dataDir = process.env.MOYU_DATA_DIR ?? path.join(app.getPath('userData'), 'moyu');
+  const dataDir = resolveDataDir();
   moyuApp = new MoyuApp(dataDir, app.getVersion(), { localDirectory: path.join(app.isPackaged ? path.dirname(app.getPath('exe')) : path.resolve(app.getAppPath(), '../..'), 'workspace') });
   moyuApp.start();
 
@@ -131,6 +148,10 @@ app.whenReady().then(async () => {
       moyuApp?.setWindow(mainWindow);
     }
   });
+}).catch((error) => {
+  console.error('[moyu] startup failed:', error);
+  dialog.showErrorBox('MoyuBot 启动失败', String((error && error.stack) || error));
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
@@ -141,11 +162,29 @@ let desktopCleaned = false;
 app.on('before-quit', (event) => {
   if (desktopCleaned || !moyuApp) return;
   event.preventDefault();
-  moyuApp.dispose();
-  void moyuApp.desktop.dispose().catch(() => {
-    // Recovery record blocks automation on next launch until revocation succeeds.
-    console.error('[moyu] desktop control cleanup deferred until next launch');
-  }).finally(() => { rendererServer?.close(); desktopCleaned = true; app.quit(); });
+  // Suspend the cloud sandbox before the host is disposed, so turning the app off
+  // doesn't leave an E2B/InstaBox machine running (and billing). Best-effort with a
+  // short timeout — never block quitting for long.
+  const suspend = (async () => {
+    try {
+      const status = moyuApp!.cloud?.status();
+      if (status && (status.state === 'ready' || status.state === 'busy')) {
+        await Promise.race([
+          moyuApp!.cloud.suspend('应用退出'),
+          new Promise((resolve) => setTimeout(resolve, 8000)),
+        ]);
+      }
+    } catch (error) {
+      console.error('[moyu] suspend on quit failed:', (error as Error).message);
+    }
+  })();
+  void suspend.catch(() => {}).finally(() => {
+    moyuApp!.dispose();
+    void moyuApp!.desktop.dispose().catch(() => {
+      // Recovery record blocks automation on next launch until revocation succeeds.
+      console.error('[moyu] desktop control cleanup deferred until next launch');
+    }).finally(() => { rendererServer?.close(); desktopCleaned = true; app.quit(); });
+  });
 });
 
 process.on('uncaughtException', (error) => {

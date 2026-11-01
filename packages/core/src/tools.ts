@@ -133,7 +133,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'install_mcp',
-    description: '安装 MCP 服务并自动绑定到当前 Bot。json 为标准 mcpServers 配置（与设置页导入格式一致）；stdio 服务的 command 必须是本机存在的绝对路径。这是敏感操作，会请求用户确认。',
+    description: '安装 MCP 服务并自动绑定到当前 Bot。json 为标准 mcpServers 配置（与设置页导入格式一致）；stdio 服务的 command 必须是本机存在的绝对路径。这是敏感操作，会请求用户确认。云工作区下会自动写入该 Bot 自己的 .moyu/mcp.json（与其它 Bot 隔离），不要手动改 ~/.claude.json。',
     parameters: {
       type: 'object',
       properties: { json: { type: 'string', description: 'mcpServers 配置 JSON 字符串' } },
@@ -142,7 +142,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'install_skill',
-    description: '从当前工作区内的目录安装 Skill（目录需包含带 name/description 的 SKILL.md 头部），并自动绑定到当前 Bot。会请求用户确认。',
+    description: '从当前工作区内的目录安装 Skill（目录需包含带 name/description 的 SKILL.md 头部），并自动绑定到当前 Bot。会请求用户确认。注意：请勿自行把技能克隆到 ~/.agents/skills 或 ~/.claude/skills——那些位置平台扫描不到、也不按 Bot 隔离。云工作区若要从云机内已有的技能目录安装，优先把技能放到该 Bot 的 .moyu/skills/<技能名> 下。',
     parameters: {
       type: 'object',
       properties: { directory: { type: 'string', description: '技能目录：工作区相对路径，或工作区内的绝对路径' } },

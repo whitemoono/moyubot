@@ -16,8 +16,10 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@e2b/desktop": "^2.5.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "e2b": "2.62.0",
     "yaml": "^2.9.1",
     "zod": "4.4.1"
   }

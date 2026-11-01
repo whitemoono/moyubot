@@ -52,6 +52,9 @@ export interface MoyuBridge {
   importSkill(workspaceId: string): Promise<CapabilityImportResult>;
   removeCapability(kind: 'mcp' | 'skill', id: string): Promise<void>;
   setupDirectory(directory: string): Promise<AppSettings>;
+  dataDirInfo(): Promise<{ current: string; source: 'env' | 'chosen' | 'legacy' | 'portable' | 'userData'; portable: string; userData: string; installBase: string }>;
+  setDataDir(directory: string): Promise<{ restartRequired: boolean; dataDir: string }>;
+  pickDirectory(title?: string, defaultPath?: string): Promise<string | undefined>;
   finishSetup(skipCloud: boolean): Promise<AppSettings>;
   readClipboardText(): Promise<string>;
   writeClipboardText(text: string): Promise<void>;
@@ -110,6 +113,12 @@ export interface MoyuBridge {
   cloudExec(cmd: string, requestId?: string): Promise<ExecResult>;
   localExec(cmd: string, requestId?: string): Promise<ExecResult>;
   stopTerminal(requestId: string): Promise<void>;
+  ptyOpen(id: string, kind: 'local' | 'cloud', cols: number, rows: number): Promise<{ pid: number }>;
+  ptyInput(id: string, data: string): Promise<void>;
+  ptyResize(id: string, cols: number, rows: number): Promise<void>;
+  ptyClose(id: string): Promise<void>;
+  onPtyData(listener: (payload: { id: string; data: string }) => void): () => void;
+  onPtyExit(listener: (payload: { id: string; exitCode: number }) => void): () => void;
   saveCloud(patch: Partial<AppSettings['cloud']>, apiKey?: string): Promise<CloudStatus>;
   schedules(): Promise<Schedule[]>;
   updateSchedule(botId: string, id: string, patch: ScheduleUpdate): Promise<Schedule>;

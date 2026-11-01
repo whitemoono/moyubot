@@ -7,6 +7,7 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  node-pty: false
   protobufjs: false
 
 minimumReleaseAgeExclude:

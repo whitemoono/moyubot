@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Bot, Conversation } from '@moyu/core';
 import { useMoyu } from '../state';
-import { contextWindowFor } from '../lib/model-window';
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, contextWindowFor } from '../lib/model-window';
 import { Icon } from './Icon';
 
 type PanelKind = 'stats' | 'tokens' | 'context';
@@ -90,11 +90,14 @@ export function ContextMeter({ bot, conversation }: { bot: Bot; conversation: Co
   if (!conversation.messages.length && !snapshot) return null;
 
   const provider = settings.providers.find((item) => item.id === bot.providerId);
-  const windowTokens = snapshot?.windowTokens
-    ?? provider?.modelSettings?.[bot.model]?.contextWindowTokens
-    ?? provider?.contextWindowTokens
-    ?? contextWindowFor(provider, bot.model)
-    ?? 32768;
+  // 优先级：用户显式设置 > 后端快照（含 models.dev 远程目录解析结果）> 供应商模型目录 > 内置表 > 默认值。
+  // 快照只在用户没显式设置时使用，这样改了配置会立刻生效，同时不丢后端的远程识别结果。
+  const explicitWindow = provider?.modelSettings?.[bot.model]?.contextWindowTokens ?? provider?.contextWindowTokens;
+  const catalogWindow = provider?.modelCatalog?.[bot.model]?.contextWindowTokens;
+  const profileWindow = contextWindowFor(provider, bot.model);
+  const windowTokens = explicitWindow ?? snapshot?.windowTokens ?? catalogWindow ?? profileWindow ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
+  // 既没有显式设置、后端也还没算过时才标「估算」，避免用户误以为这是真实窗口。
+  const windowEstimated = explicitWindow === undefined && snapshot?.windowTokens === undefined;
 
   const systemTokens = snapshot?.systemTokens ?? 0;
   const toolTokens = snapshot?.toolTokens ?? 0;
@@ -158,7 +161,7 @@ export function ContextMeter({ bot, conversation }: { bot: Bot; conversation: Co
             <div className="ctx-pop__head">
               <span>上下文已用</span>
               <strong>{percent}%</strong>
-              <span className="ctx-pop__window">~{fmtTokens(usedTokens)} / {fmtTokens(windowTokens)}</span>
+              <span className="ctx-pop__window">~{fmtTokens(usedTokens)} / {fmtTokens(windowTokens)}{windowEstimated ? '（估算）' : ''}</span>
             </div>
             <div className="ctx-bar" aria-hidden="true">
               {hasSplit ? <>
@@ -173,6 +176,7 @@ export function ContextMeter({ bot, conversation }: { bot: Bot; conversation: Co
               <li><i className="ctx-dot ctx-dot--messages" />对话消息<b>{hasSplit ? `~${fmtTokens(historyTokens)}` : '—'}</b></li>
             </ul>
             {!hasSplit ? <p className="ctx-empty">发送一条消息后即可看到三段拆分。</p> : null}
+            {windowEstimated ? <p className="ctx-empty">未识别「{bot.model}」的上下文窗口，按 {fmtTokens(DEFAULT_CONTEXT_WINDOW_TOKENS)} 估算。请在 设置 → 供应商 → 该模型 填写准确值，或点「获取模型」自动探测。</p> : null}
           </div>
         ) : null}
       </div>

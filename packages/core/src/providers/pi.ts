@@ -2,7 +2,7 @@ import type { AssistantMessage, Context, Model, Api, Usage, TextContent, Thinkin
 import type { ProviderConfig, ProviderReplay, TokenUsage } from '../types';
 import type { ChatArgs, ChatOutcome, StreamHandlers } from './types';
 import { ProviderError, OutputLimitError, splitDataUrl } from './types';
-import { modelSettings } from '../generation';
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, modelSettings } from '../generation';
 import { providerFetch } from './transport';
 import { googleTransport } from './pi-transport';
 
@@ -72,7 +72,7 @@ export async function piChat(config: ProviderConfig, apiKey: string, args: ChatA
   args.signal?.throwIfAborted();
   const reasoningReplay = !!(args.tools.length && (args.reasoning?.reasoningReplay ?? modelSettings(config, args.model).reasoningReplay));
   const model: Model<Api> = { id: args.model, name: args.model, api: apiFor(config.kind), provider: config.id, baseUrl: baseUrl(config), reasoning: true, input: ['text', 'image'],
-    contextWindow: modelSettings(config, args.model).contextWindowTokens ?? 32768, maxTokens: args.maxTokens ?? 8192,
+    contextWindow: modelSettings(config, args.model).contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS, maxTokens: args.maxTokens ?? 8192,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     compat: config.kind === 'openai' ? { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: args.reasoning?.reasoningControl === 'openai-effort', supportsUsageInStreaming: true, supportsFinishReason: true,
       maxTokensField: args.reasoning?.outputTokenParameter ?? 'max_tokens', requiresReasoningContentOnAssistantMessages: reasoningReplay, supportsStrictMode: false }

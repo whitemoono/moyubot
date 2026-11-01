@@ -1,22 +1,37 @@
 import type { Bot, BotGenerationSettings, ModelSettings, ProviderConfig } from './types';
+import { remoteModelCatalog } from './model-catalog';
 
 export const DEFAULT_TASK_LIMITS = { maxSteps: 32, maxTaskOutputTokens: 131072, maxDurationSeconds: 1200 };
 
 /**
  * Known context windows / output ceilings, matched on the model id with any
  * relay prefix (e.g. "workbuddy/glm-5.3-flash") stripped. Values verified against
- * the bundled provider catalog (2026-10-30). Unknown models still fall back to a
- * conservative 32K window so we never overrun a real limit.
+ * models.dev (2026-11). Unknown models fall back to model-catalog.ts (runtime
+ * models.dev data) and finally to DEFAULT_CONTEXT_WINDOW_TOKENS.
  */
+/**
+ * 未识别模型的兜底上下文窗口。2026 年主流模型普遍 ≥128K，用 32K 会导致过早压缩、
+ * 浪费真实窗口；若某模型确实更小，运行时撞到 overflow 会按接口返回自动修正。
+ * keep in sync: apps/desktop/src/lib/model-window.ts
+ */
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 131072;
+
 const MODEL_PROFILES: { pattern: RegExp; contextWindowTokens: number; maxOutputTokens: number; defaultOutputTokens: number; reasoningReplay?: boolean }[] = [
   { pattern: /^deepseek-v4(\.1)?(?!.*pro)\b|^deepseek-(flash|v4-flash)/, contextWindowTokens: 1000000, maxOutputTokens: 384000, defaultOutputTokens: 65536, reasoningReplay: true },
   { pattern: /^deepseek-v4-pro/, contextWindowTokens: 1000000, maxOutputTokens: 393216, defaultOutputTokens: 65536, reasoningReplay: true },
   { pattern: /^deepseek-chat/, contextWindowTokens: 131072, maxOutputTokens: 8192, defaultOutputTokens: 8192, reasoningReplay: true },
   { pattern: /^glm-5\.3/, contextWindowTokens: 1000000, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
-  { pattern: /^glm-5\.2/, contextWindowTokens: 262144, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
+  { pattern: /^glm-5\.2/, contextWindowTokens: 1000000, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
   { pattern: /^glm-5(\.1)?$/, contextWindowTokens: 202752, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
   { pattern: /^kimi-k3/, contextWindowTokens: 1000000, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
   { pattern: /^kimi-k2/, contextWindowTokens: 262144, maxOutputTokens: 262144, defaultOutputTokens: 32768 },
+  // 阿里云百炼：3.8/3.7/3.6/3.5 的 flash/plus/max 均为 1M；开源尺寸型号（如 397b-a17b）为 256K。
+  { pattern: /^qwen3\.8/, contextWindowTokens: 1000000, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
+  { pattern: /^qwen3\.[5-7]-(flash|plus|max)/, contextWindowTokens: 1000000, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
+  { pattern: /^qwen3\.[5-7]-\d+b/, contextWindowTokens: 262144, maxOutputTokens: 65536, defaultOutputTokens: 32768 },
+  { pattern: /^qwen-(plus|turbo)/, contextWindowTokens: 1000000, maxOutputTokens: 32768, defaultOutputTokens: 16384 },
+  { pattern: /^qwen-max/, contextWindowTokens: 131072, maxOutputTokens: 8192, defaultOutputTokens: 8192 },
+  { pattern: /^qwen-long/, contextWindowTokens: 10000000, maxOutputTokens: 32768, defaultOutputTokens: 16384 },
   { pattern: /^gemini-(2\.5|3)/, contextWindowTokens: 1048576, maxOutputTokens: 65536, defaultOutputTokens: 32768 },
   { pattern: /^minimax-m3/, contextWindowTokens: 524288, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
   { pattern: /^minimax-m2/, contextWindowTokens: 204800, maxOutputTokens: 131072, defaultOutputTokens: 32768 },
@@ -33,7 +48,11 @@ export function modelProfile(_provider: ProviderConfig | undefined, model: strin
 export function modelSettings(provider: ProviderConfig | undefined, model: string): ModelSettings {
   const profile = modelProfile(provider, model);
   return { reasoningReplay: profile?.reasoningReplay,
-    contextWindowTokens: provider?.contextWindowTokens ?? provider?.modelCatalog?.[model]?.contextWindowTokens ?? profile?.contextWindowTokens,
+    // 优先级：用户显式设置（供应商默认 / 模型单独）> 供应商 /v1/models 探测 > models.dev > 内置表。
+    contextWindowTokens: provider?.contextWindowTokens
+      ?? provider?.modelCatalog?.[model]?.contextWindowTokens
+      ?? remoteModelCatalog.lookup(provider, model)
+      ?? profile?.contextWindowTokens,
     maxOutputTokens: provider?.maxOutputTokens,
     ...Object.fromEntries(Object.entries(provider?.modelSettings?.[model] ?? {}).filter(([, value]) => value !== undefined)) };
 }

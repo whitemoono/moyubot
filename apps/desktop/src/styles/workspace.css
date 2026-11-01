@@ -69,6 +69,8 @@ svg { flex-shrink: 0; }
 .workspace-terminal > header i.is-online { background: #47b886; }
 .workspace-terminal > header .icon-btn { width: 25px; height: 25px; }
 .workspace-terminal__output { flex: 1; min-height: 0; overflow: auto; padding: 8px 16px; color: var(--text-dim); font-size: 11px; }
+.workspace-terminal__xterm { flex: 1; min-height: 0; overflow: hidden; padding: 4px 6px; background: #0b0d12; }
+.workspace-terminal__xterm .xterm-host { height: 100%; }
 .workspace-terminal__output pre { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 Consolas, monospace; }
 .workspace-terminal__output .is-cmd { color: var(--text); }
 .workspace-terminal__output .is-err { color: #df7583; }

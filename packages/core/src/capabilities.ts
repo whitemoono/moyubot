@@ -34,6 +34,13 @@ export class CapabilityManager {
   private claudeMigrationAttempts = 0;
   constructor(private store: Store, private cloud: () => Pick<ComputerHost, 'status' | 'exec' | 'ensureAwake' | 'writeText'> | undefined = () => undefined) {}
 
+  /** Writable root on the cloud machine. E2B runs as an unprivileged user (no /data). */
+  private cloudRoot(): string {
+    const cfg = this.store.settings.cloud;
+    if (cfg?.remoteWorkspaceDir) return cfg.remoteWorkspaceDir;
+    return cfg?.driver === 'e2b' ? '/home/user/moyubot' : '/data/moyubot';
+  }
+
   /**
    * 盘点云电脑上 moyubot 管理的能力：共享 .moyu/shared + 每个 Bot 家目录的 .moyu（按 botId/botDirName 标记）。
    * 不读云机自带 claude 的 ~/.claude（那是一次性迁移的来源，迁移后彻底不碰）。
@@ -64,25 +71,44 @@ export class CapabilityManager {
       this.claudeMigrationAttempts++;
       if (await this.migrateClaudeCapabilities().catch(() => false)) this.claudeMigrationAttempts = 5;
     }
-    const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
+    const root = this.cloudRoot();
     const botDirs = this.store.settings.bots
       .filter((bot) => (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud')
       .map((bot) => this.store.botDirName(bot.id));
-    const embed = (value: unknown) => JSON.stringify(value).replace(/'/g, '\\u0027');
-    const probe = [
-      'node -e \'',
-      'const fs=require("fs"),os=require("os"),path=require("path");',
-      `const root=${embed(root)},dirs=${embed(botDirs)};`,
-      'const out={shared:{mcp:[],skills:[]},bots:{}};',
-      'const readMcp=(file)=>{try{const c=JSON.parse(fs.readFileSync(file,"utf8")||"{}");return Object.entries(c.mcpServers||{}).map(([n,g])=>({name:n,transport:g.type==="http"?"http":"stdio",command:g.command,args:g.args,url:g.url}))}catch(e){return[]}};',
-      'const readSkills=(base)=>{const r=[];try{for(const f of fs.readdirSync(base)){const p=path.join(base,f);try{if(fs.statSync(p).isDirectory()&&fs.existsSync(path.join(p,"SKILL.md")))r.push({name:f,path:p})}catch(e){}}}catch(e){}return r};',
-      'const sharedBase=path.join(root,".moyu","shared");',
-      'out.shared={mcp:readMcp(path.join(sharedBase,"mcp.json")),skills:readSkills(path.join(sharedBase,"skills"))};',
-      'for(const d of dirs){const dir=path.join(root,d);let st;try{st=fs.statSync(dir)}catch(e){continue}if(!st.isDirectory())continue;const base=path.join(dir,".moyu");',
-      'out.bots[d]={mcp:readMcp(path.join(base,"mcp.json")),skills:readSkills(path.join(base,"skills"))};}',
-      'console.log(JSON.stringify(out))',
-      '\'',
-    ].join('');
+    // Probe with python3 (present on both InstaBox and E2B images; E2B has no node).
+    // Emits one JSON line: { shared:{mcp,skills}, bots:{dir:{mcp,skills}} }.
+    const py = [
+      'import json,os',
+      `root=${JSON.stringify(root)}`,
+      `dirs=${JSON.stringify(botDirs)}`,
+      'def read_mcp(f):',
+      '    try:',
+      '        c=json.load(open(f,"r",encoding="utf-8")) or {}',
+      '    except Exception:',
+      '        return []',
+      '    out=[]',
+      '    for n,g in (c.get("mcpServers") or {}).items():',
+      '        out.append({"name":n,"transport":("http" if g.get("type")=="http" else "stdio"),"command":g.get("command"),"url":g.get("url")})',
+      '    return out',
+      'def read_skills(base):',
+      '    r=[]',
+      '    try:',
+      '        for f in os.listdir(base):',
+      '            p=os.path.join(base,f)',
+      '            if os.path.isdir(p) and os.path.isfile(os.path.join(p,"SKILL.md")):',
+      '                r.append({"name":f,"path":p})',
+      '    except Exception:',
+      '        pass',
+      '    return r',
+      'res={"shared":{"mcp":[],"skills":[]},"bots":{}}',
+      'sb=os.path.join(root,".moyu","shared")',
+      'res["shared"]={"mcp":read_mcp(os.path.join(sb,"mcp.json")),"skills":read_skills(os.path.join(sb,"skills"))}',
+      'for d in dirs:',
+      '    base=os.path.join(root,d,".moyu")',
+      '    res["bots"][d]={"mcp":read_mcp(os.path.join(base,"mcp.json")),"skills":read_skills(os.path.join(base,"skills"))}',
+      'print(json.dumps(res))',
+    ].join('\n');
+    const probe = `python3 -c ${shellQuote(py)}`;
     const result = await host.exec(probe, { timeoutSeconds: 30 }).catch(() => null);
     if (!result || result.exitCode !== 0) return cached ?? empty; // 探测失败：保留上次清单，不清空、不落盘
     try {
@@ -117,7 +143,7 @@ export class CapabilityManager {
   private async migrateClaudeCapabilities(): Promise<boolean> {
     const host = this.cloud();
     if (!host) return false;
-    const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
+    const root = this.cloudRoot();
     const script = [
       'node -e \'',
       'const fs=require("fs"),os=require("os"),path=require("path");',
@@ -191,26 +217,29 @@ export class CapabilityManager {
     if (!host) return;
     const add: Record<string, unknown> = {};
     for (const [name, raw] of entries) add[name] = raw;
-    const payload = JSON.stringify(add).replace(/'/g, '\\u0027');
-    const root = this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot';
-    const fileExpr = botDirName
-      ? `path.join(r, ${JSON.stringify(botDirName).replace(/'/g, '\\u0027')}, ".moyu", "mcp.json")`
-      : 'path.join(r, ".moyu", "shared", "mcp.json")';
-    const script = [
-      'node -e \'',
-      'const fs=require("fs"),os=require("os"),path=require("path");',
-      `const r=${JSON.stringify(root).replace(/'/g, '\\u0027')};`,
-      `const file=${fileExpr};`,
-      'fs.mkdirSync(path.dirname(file),{recursive:true});',
-      'let conf={};try{conf=JSON.parse(fs.readFileSync(file,"utf8")||"{}")}catch(e){}',
-      `const add=JSON.parse('${payload}');`,
-      'conf.mcpServers={...(conf.mcpServers||{}),...add};',
-      'const tmp=file+".tmp"+Date.now();',
-      'fs.writeFileSync(tmp,JSON.stringify(conf,null,2));',
-      'fs.renameSync(tmp,file);',
-      'console.log("deployed:"+Object.keys(add).join(","))',
-      '\'',
-    ].join('');
+    const root = this.cloudRoot();
+    const dir = botDirName
+      ? `${root.replace(/\/+$/, '')}/${String(botDirName).replace(/^\/+|\/+$/g, '')}/.moyu`
+      : `${root.replace(/\/+$/, '')}/.moyu/shared`;
+    // python3 merge (E2B has no node). Read existing mcp.json, merge new servers, atomic write.
+    const py = [
+      'import json,os,sys',
+      `file=${JSON.stringify(`${dir}/mcp.json`)}`,
+      'add=json.loads(' + JSON.stringify(JSON.stringify(add)) + ')',
+      'os.makedirs(os.path.dirname(file),exist_ok=True)',
+      'conf={}',
+      'try:',
+      '    conf=json.load(open(file,"r",encoding="utf-8")) or {}',
+      'except Exception:',
+      '    conf={}',
+      'conf.setdefault("mcpServers",{})',
+      'conf["mcpServers"].update(add)',
+      'tmp=file+".tmp"+str(os.getpid())',
+      'open(tmp,"w",encoding="utf-8").write(json.dumps(conf,indent=2,ensure_ascii=False))',
+      'os.replace(tmp,file)',
+      'print("deployed")',
+    ].join('\n');
+    const script = `python3 -c ${shellQuote(py)}`;
     await host.ensureAwake('上传 MCP 配置到云电脑').catch(() => {});
     const result = await host.exec(script, { timeoutSeconds: 60 }).catch(() => null);
     this.cloudInventory = undefined; // 立即重新盘点
@@ -275,7 +304,7 @@ export class CapabilityManager {
     } catch (error) {
       throw new Error(`上传技能到云电脑失败：${(error as Error).message}`);
     }
-    const remoteRoot = (this.store.settings.cloud?.remoteWorkspaceDir ?? '/data/moyubot').replace(/\/+$/, '');
+    const remoteRoot = this.cloudRoot().replace(/\/+$/, '');
     const skillsBase = botDirName
       ? `${remoteRoot}/${botDirName.replace(/^\/+|\/+$/g, '')}/.moyu/skills`
       : `${remoteRoot}/.moyu/shared/skills`;
@@ -363,7 +392,23 @@ export class CapabilityManager {
   private skills(bot: Bot) { return (this.store.settings.skills ?? []).filter(s => s.workspaceId === scope(bot) && bot.skillIds?.includes(s.id)); }
   catalog(bot: Bot): string {
     const skills = this.skills(bot);
-    return skills.length ? `\n\n可用技能（先通过 load_skill 按 ID 读取 SKILL.md，再按需读取相对路径资源；技能不能扩大工具权限）：\n${skills.map(s => `${s.id}: ${s.name} — ${s.description}`).join('\n')}\n技能文件保存在本机。云端执行脚本前，使用已授权文件工具将所需文件传到云电脑，不能把本机目录当成云端路径。` : '';
+    // Always注入「能力安装落点规范」：让 Bot 装 skill/MCP 时落到平台能识别的 .moyu 目录，
+    // 而不是自作主张 clone 到 .agents/~/.claude（那样面板扫不到、也不按 Bot 隔离）。
+    const scopeId = bot.workspaceId ?? 'workspace_cloud';
+    let installGuide = '';
+    if (scopeId === 'workspace_cloud') {
+      const root = this.cloudRoot();
+      const dir = this.store.botDirName(bot.id);
+      const own = `${root.replace(/\/+$/, '')}/${dir}/.moyu`;
+      installGuide = `\n\n【安装技能 / MCP 的规范（云电脑）】`
+        + `\n- 装技能：直接把技能克隆/复制到你自己的目录 ${own}/skills/<技能名>/（内含 SKILL.md）。不要装到 ~/.agents/skills、~/.claude/skills 或其它 Bot 的目录——那样平台扫描不到、也不隔离。`
+        + `\n- 装 MCP：优先用 install_mcp 工具（会自动写到你自己的 .moyu/mcp.json）。若手动写，配置文件是 ${own}/mcp.json 的 mcpServers 段。不要写 ~/.claude.json。`
+        + `\n- 共享给全部 Bot 的技能放 ${root}/.moyu/shared/skills/，MCP 放 ${root}/.moyu/shared/mcp.json。`;
+    } else {
+      installGuide = `\n\n【安装技能 / MCP 的规范（本地）】优先使用 install_skill / install_mcp 工具，会自动绑定到当前 Bot；不要手动散落到系统目录。`;
+    }
+    const list = skills.length ? `\n\n可用技能（先通过 load_skill 按 ID 读取 SKILL.md，再按需读取相对路径资源；技能不能扩大工具权限）：\n${skills.map(s => `${s.id}: ${s.name} — ${s.description}`).join('\n')}\n技能文件保存在本机。云端执行脚本前，使用已授权文件工具将所需文件传到云电脑，不能把本机目录当成云端路径。` : '';
+    return installGuide + list;
   }
   async schemas(bot: Bot): Promise<ToolSchema[]> {
     const results = await Promise.allSettled(this.servers(bot).map(s => this.connect(s.id)));

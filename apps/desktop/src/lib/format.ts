@@ -26,7 +26,7 @@ export function formatClock(timestamp?: number): string {
 }
 
 export const CLOUD_META: Record<CloudState, { label: string; tone: string; hint: string }> = {
-  unconfigured: { label: '未配置', tone: 'muted', hint: '填入 InstaBox API Key 后可用' },
+  unconfigured: { label: '未配置', tone: 'muted', hint: '填入云电脑 API Key 后可用' },
   off: { label: '离线', tone: 'muted', hint: '云主机当前不可达' },
   stopped: { label: '已关机', tone: 'muted', hint: '文件保留，启动需要更久' },
   suspended: { label: '休眠中', tone: 'sleep', hint: '按需唤醒，不烧钱' },
