@@ -92,6 +92,44 @@ export class GitHubClient {
     };
   }
 
+  /** ② 流程第一步：确保存在专用的私有工作区仓库（moyubot-workspace），已存在则复用。 */
+  async ensureWorkspaceRepo(token: string, name = 'moyubot-workspace'): Promise<{ fullName: string; id: number; created: boolean }> {
+    const user = await this.getUser(token);
+    const existing = await fetch(`${API}/repos/${user.login}/${name}`, { headers: this.headers(token) });
+    if (existing.ok) {
+      const repo = await existing.json();
+      return { fullName: String(repo.full_name), id: Number(repo.id), created: false };
+    }
+    const res = await fetch(`${API}/user/repos`, {
+      method: 'POST',
+      headers: { ...this.headers(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, private: true, auto_init: true, description: 'MoyuBot 云电脑工作区（自动创建）' }),
+    });
+    const repo = await res.json();
+    if (!res.ok) throw new Error(repo.message ?? `创建仓库 ${name} 失败（${res.status}）`);
+    return { fullName: String(repo.full_name), id: Number(repo.id), created: true };
+  }
+
+  /** ② 流程第二步：从工作区仓库创建 Codespace（2 核 8GB）。 */
+  async createCodespace(token: string, repositoryId: number, machine = 'basicLinux32gb'): Promise<{ name: string; state: string }> {
+    const res = await fetch(`${API}/user/codespaces`, {
+      method: 'POST',
+      headers: { ...this.headers(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repository_id: repositoryId, machine }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message ?? `创建 Codespace 失败（${res.status}）`);
+    return { name: String(data.name), state: String(data.state ?? 'Creating') };
+  }
+
+  /** 列出账号下所有 Codespace（驱动选择用）。 */
+  async listCodespaces(token: string): Promise<{ name: string; state: string; repository: string }[]> {
+    const res = await fetch(`${API}/user/codespaces?per_page=100`, { headers: this.headers(token) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message ?? `获取 Codespace 列表失败（${res.status}）`);
+    return (data.codespaces ?? []).map((item: any) => ({ name: String(item.name), state: String(item.state), repository: String(item.repository?.full_name ?? '') }));
+  }
+
   private headers(token: string): Record<string, string> {
     return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'MoyuBot' };
   }
