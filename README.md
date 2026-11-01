@@ -34,6 +34,7 @@ MoyuBot 是一个开源的桌面 Agent 客户端，形态参考 Grok Bot：本�
 │                                                            │
 │  Agent 循环 ── 工具调用 ── 审批 ── 记忆 ── 定时器           │
 │      │                                                     │
+│      ├── 子代理编排  spawn_agent / run_script / fork       │
 │      ├── 供应商适配器  OpenAI 兼容 · Anthropic · Gemini      │
 │      └── CloudHost ── InstaBoxDriver / MockDriver          │
 └────────────────────────────┬───────────────────────────────┘
@@ -88,7 +89,7 @@ xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里�
 设置以独立弹窗打开，左侧切换分类，保留背后的聊天与输入草稿。供应商采用列表与详情布局，支持搜索、重复添加独立实例，以及第三方中转站的自定义地址和 OpenAI / Anthropic / Gemini 协议选择。模型可以获取、筛选或手动添加；测试连接与获取模型使用当前草稿及临时密钥，不会自动覆盖已保存配置。保存后清空密钥输入，留空保留原密钥；关闭时提醒未保存的更改。通用、个人资料、关于以及 Bot、云电脑、任务页面共用紧凑的输入与下拉控件，支持明暗主题、键盘选择和减少动效。
 
 **共享云电脑 + 按需唤醒**
-所有云端 Bot 共用一台云主机。纯聊天和 API 绘图不会唤醒它；当 Agent 调用 `cloud_exec` / `cloud_read` / `cloud_write` 或桌面操作时按需唤醒。工作区 `/data/moyubot` 持久保留，休眠不丢文件。本地空闲计时器（默认 3 分钟）和服务端 `autoSuspendAfterSeconds` 双重兜底，避免忘关烧配额。
+所有云端 Bot 共用一台云主机。纯聊天和 API 绘图不会唤醒它；当 Agent 调用 `cloud_exec` / `cloud_read` / `cloud_write` 或桌面操作时按需唤醒。工作区按 Bot 隔离子目录（默认 `/data/home/moyubot/<bot>/`）持久保留，休眠不丢文件。本地空闲计时器（默认 3 分钟）和服务端 `autoSuspendAfterSeconds` 双重兜底，避免忘关烧配额。
 
 「Bot 管理」与「共享云电脑」均整合进设置弹窗，头像菜单、搜索和顶部状态入口会打开对应分类。编辑 Bot 后留在管理页，点击开始对话则返回聊天。云电脑页用状态卡展示环境、运行时长和唤醒次数，下方并排管理连接与休眠策略；终端独立成页签，保存按钮固定在底部。配置草稿会在分类切换时保留，关闭前提示未保存更改；API Key 留空保留原密钥。唤醒、休眠、状态刷新和命令执行仍使用原有云电脑接口。
 
@@ -97,7 +98,19 @@ xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里�
 用量由每次模型请求独立记账到本地 `usage.jsonl`，包含工具链中各次请求、群聊实际发言成员及自动上下文压缩，不包含图片生成或供应商连接测试。不保存消息正文或密钥。仅显示供应商实际报告的 Token；缺少完整用量的请求会注明，缓存未报告时显示「—」，部分缓存数据的命中率仅基于已报告请求。历史消息只回填已保存的用量，旧版多步调用可能不完整，重启不会重复计数。同名模型按供应商实例区分。通过 `pnpm test:usage` 验证记录、协议适配、时间边界、历史去重和运行时归属。
 
 **真正的 Agent 循环**
-最多 14 步的工具链：执行命令、读文件、写文件、生成图片、写入记忆、召回记忆、创建定时任务、抓网页。可配置「自动执行 / 每步审批」，审批请求以玻璃弹层形式阻塞在界面上。
+23 个内置工具的循环：执行命令、读写文件、桌面操作、生成图片、长期记忆读写、定时任务三件套、网页抓取与搜索、子代理编排、跨轮目标、任务清单、向用户提问。可配置「自动执行 / 每步审批」，审批请求以玻璃弹层形式阻塞在界面上；「计划模式」只保留只读工具并收走全部写能力，直到 Bot 提交计划、你逐条批准后才切回执行。上下文接近上限时工具描述会按阶梯自动瘦身，小窗口供应商也不会被工具列表本身挤爆。
+
+**子代理与工作流编排**
+`spawn_agent` 把自包含的只读调研任务并行派给子代理（≤4 个，不能执行命令或写文件，不继承主对话历史）；`run_script` 用一段 JS 脚本编排多个子代理（`agent()` / `parallel()` / `pipeline()` 原语，沙箱内运行，`write: true` 才授予写权限）；`subagent_fork` 带着当前对话上下文开只读分身继续深挖；`subagent_list_agents` / `subagent_control` 随时列出、续聊或单独中止子代理；`job_list` / `job_kill` 覆盖所有正在运行的任务（会话、群聊、子代理）。头部胶囊实时显示子代理进度，悬浮可按批次展开子任务明细。
+
+**目标续航 + 任务清单 + 向用户提问**
+`set_goal` 把跨多轮的事记成会话目标，支持可验收条件与「续航模式」（`until_done`）：每轮结束自动评估，完成需逐条附证据，受阻或触顶进入「续航暂停」，头部胶囊一键续跑。`todo_write` 维护会话任务清单，头部胶囊显示完成进度，全部完成后自动收起。`ask_user` 在信息不足或需要拍板时向用户提问——以贴在输入框上方的浮卡出现（非全屏遮罩），支持文字回答或跳过。
+
+**文件与图片附件**
+把图片或任意文件（doc、xls、pdf…）拖到窗口任意位置，全屏拖入层接住多选；图片以缩略图随消息发送（≤8MB），其他文件落盘到该 Bot 工作目录的 `uploads/` 并以文件 chip 展示（≤20MB），云电脑工作区的 Bot 会同步上传到云端家目录，Bot 通过路径用工具读取内容。
+
+**每 Bot 一个工作目录**
+云电脑与本地工作区都按 Bot 隔离子目录（云机 `/data/home/moyubot/<bot>/`、本地 `<工作区>/<bot>/`）：文件工具的相对路径与命令工作目录都锚定在这里，Bot 之间的文件互不可见；MCP 与技能部署在 `.moyu` 命名空间（`moyu/shared` 共享、各 Bot 自有），云机自带 Claude 的 `~/.claude` 只读不写。
 
 **长期记忆 + 定时任务**
 
@@ -173,17 +186,19 @@ apps/desktop             Electron 主进程 + React 渲染层
   src/                   views、components、state、基础样式 liquid.css 与桌面样式 workspace.css
 packages/core            与 UI 无关的纯逻辑，编译成 CJS 供主进程引用
   src/providers/         OpenAI 兼容 / Anthropic / Gemini 适配器
-  src/agent.ts           Agent 循环（工具编排、审批、事件流）
+  src/agent.ts           Agent 循环（工具编排、审批、子代理、事件流）
+  src/tools.ts           工具 schema 与实现
+  src/workflow.ts        run_script 的 VM 沙箱编排（agent / parallel / pipeline）
+  src/capabilities.ts    MCP 与技能的安装、连接与调用
   src/cloud.ts           CloudHost 编排 + InstaBoxDriver + MockDriver
   src/instabox.ts        InstaBox HTTP 客户端（生命周期、SSE exec、文件读写）
-  src/tools.ts           工具 schema 与实现
-  src/store.ts           settings / 会话 / 记忆 / 定时任务持久化
+  src/store.ts           settings / 会话 / 记忆 / 定时任务 / 目标 / 清单持久化
   src/scheduler.ts       cron 解析与调度器
-  src/telegram.ts        Telegram 长轮询网关
+  src/sync.ts            多端数据同步引擎（revision / outbox / 冲突裁决）
 scripts/                 smoke 测试与演示数据脚本
 ```
 
-更细的模块划分见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，后续计划见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+更细的模块划分见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，后续计划见 [docs/ROADMAP.md](docs/ROADMAP.md)。自托管多端方案（自建服务器 + 远程电脑 agent + 手机端）的设计见 [docs/self-hosted-design.md](docs/self-hosted-design.md)，三端同步的数据边界见 [docs/sync-data.md](docs/sync-data.md)。
 
 模型额度互助市场的设计方案见 [MoyuChain 开发文档](docs/MOYUCHAIN-DEVELOPMENT.md)：匿名钱包身份、模型价格同步、积分结算、Key 安全与兼容 API，以及分阶段实施与验收。该市场只共享模型调用额度，不依赖任务云电脑；提供者可选择在本地或自有云主机运行自管代理，MoyuBot、普通聊天客户端与 SDK 均可接入。自管代理的用量仍需独立核验。该方案为待实现规划。
 
@@ -195,8 +210,13 @@ scripts/                 smoke 测试与演示数据脚本
 settings.json          设置（不含密钥）
 secrets.bin.json       safeStorage 加密后的密钥
 conversations/*.json   会话与消息
-memories.json          长期记忆
+memories.db            长期记忆：单库承载所有 Bot / 群聊，关键词 + 语义混合检索，向量模型在设置里配置
+memories-md-archive/   旧版 Markdown 记忆库归档（memories-export/ 为导出目录）
 schedules.json         定时任务
+todos.json             各会话的任务清单（todo_write）
+goals.json             各会话的跨轮目标与续航状态
+cloud-inventory.json   云电脑 MCP / 技能盘点的最近缓存（重启秒开）
+uploads/<bot>/         拖入的文件附件按 Bot 落盘
 artifacts/             生成图片等产物（moyu-asset:// 协议读取）
 ```
 
