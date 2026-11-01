@@ -263,6 +263,11 @@ MoyuBot 用到的接口：`POST /v1/machines/{id}/wake`（唤醒，直接返回�
    | `pnpm test:conversations` | 会话、上下文压缩与记忆 |
    | `pnpm test:usage` | Token 用量记录与统计 |
    | `pnpm test:schedules` | 定时任务与调度 |
+   | `pnpm test:subagents` | 子代理派发、只读约束与续聊 |
+   | `pnpm test:workflow` | run_script 脚本编排沙箱 |
+   | `pnpm test:plan-mode` | 计划模式与审批强制 |
+   | `pnpm test:pruning` | 上下文内工具结果剪裁 |
+   | `pnpm test:memories` | 记忆存储与检索 |
    | `pnpm test:avatars` | Bot 头像活动状态 |
    | `pnpm smoke` | Agent 工具链集成流程 |
    | `pnpm smoke:desktop` | 桌面交互冒烟检查 |
