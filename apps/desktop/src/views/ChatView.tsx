@@ -507,8 +507,28 @@ function EmptyState({ bot }: { bot: Bot }) {
   );
 }
 
+/** 头部小胶囊：hover/点击展开浮层查看完整内容，Esc 或点外部关闭。 */
+function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: React.ReactNode; label: React.ReactNode; popover: React.ReactNode; align?: 'left' | 'right'; tone?: 'resume' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: globalThis.MouseEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [open]);
+  return (
+    <div className={`head-pill ${tone === 'resume' ? 'head-pill--resume' : ''}`} ref={ref} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" className={`head-pill__chip ${open ? 'is-open' : ''}`} aria-expanded={open} onClick={() => setOpen((v) => !v)}>{icon}{label}</button>
+      {open ? <div className="head-pill__pop" data-align={align}>{popover}</div> : null}
+    </div>
+  );
+}
+
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -543,25 +563,60 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
     <section className={`chat ${messages.length === 0 ? 'chat--home' : ''}`} data-context-summarized={!!conversation.context}>
       <header className="chat__head">
         <h2 className="chat__title">
+          {todos?.items.length ? (
+            <HeaderPill
+              icon={<Icon name="check" size={13} />}
+              label={<span className="head-pill__count">{todos.items.filter((item) => item.done).length}/{todos.items.length}</span>}
+              popover={
+                <div className="head-pill__todos">
+                  <p className="head-pill__caption">任务清单</p>
+                  {todos.items.map((item, index) => (
+                    <div className="head-pill__row" key={index}>
+                      <span className={`head-pill__tick ${item.done ? 'is-done' : ''}`}>{item.done ? '✓' : ''}</span>
+                      <span className={item.done ? 'is-done' : ''}>{item.content}</span>
+                    </div>
+                  ))}
+                </div>
+              }
+            />
+          ) : null}
           <button type="button" className={`chat__who ${inspectorOpen ? 'is-active' : ''}`} aria-label={conversation.group ? '群聊成员与详情' : '对话详情与记忆'} aria-expanded={inspectorOpen} title={conversation.group ? conversation.title : `${bot.name} · 对话详情与记忆`} onClick={onToggleInspector}>
             {conversation.group ? <span className="group-chat-icon"><Icon name="users" size={21} /></span> : <BotAvatar bot={bot} size="lg" activity="idle" />}
             <span className="chat__name">{conversation.group ? conversation.title : bot.name}</span>
           </button>
+          {goal || resumableGoal ? (
+            <HeaderPill
+              align="right"
+              tone={resumableGoal ? 'resume' : undefined}
+              icon={<Icon name="spark" size={13} />}
+              label={
+                <span className="head-pill__count">
+                  {goal ? <>目标{goal.criteria?.length ? ` ✓ ${goal.criteria.filter((item) => item.done).length}/${goal.criteria.length}` : ''}{goal.autonomy === 'until_done' ? ` ⟳ ${goal.roundsUsed ?? 0}/${goal.maxRounds ?? 8}` : ''}</> : '续航暂停'}
+                </span>
+              }
+              popover={
+                <div className="head-pill__goal">
+                  <p className="head-pill__caption">当前目标</p>
+                  <p className="head-pill__objective">{(goal ?? resumableGoal)?.objective}</p>
+                  {goal?.criteria?.length ? (
+                    <div className="head-pill__criteria">
+                      {goal.criteria.map((item, index) => (
+                        <div className="head-pill__row" key={index}>
+                          <span className={`head-pill__tick ${item.done ? 'is-done' : ''}`}>{item.done ? '✓' : ''}</span>
+                          <span className={item.done ? 'is-done' : ''}>{item.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {goal?.autonomy === 'until_done' ? <p className="head-pill__rounds">续航模式 ⟳ {goal.roundsUsed ?? 0}/{goal.maxRounds ?? 8} 轮</p> : null}
+                  {resumableGoal
+                    ? <Button size="sm" icon="send" onClick={async () => { if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined); }}>续跑 5 轮</Button>
+                    : <Button size="sm" icon="check" onClick={() => void completeGoal()}>标记目标完成</Button>}
+                </div>
+              }
+            />
+          ) : null}
         </h2>
-        {goal ? <div className="chat-goal" role="status" title={`当前目标：${goal.objective}`}>
-          <Icon name="spark" size={13} />
-          <span className="chat-goal__text">{goal.objective}</span>
-          {goal.autonomy === 'until_done' ? <span className="chat-goal__criteria" title="续航轮数">⟳ {goal.roundsUsed ?? 0}/{goal.maxRounds ?? 8}</span> : null}
-          {goal.criteria?.length ? <span className="chat-goal__criteria" title="验收条件">✓ {goal.criteria.filter((item) => item.done).length}/{goal.criteria.length}</span> : null}
-          <button type="button" className="chat-goal__done" aria-label="标记目标完成" title={goal.criteria?.some((item) => !item.done) ? '还有验收条件未满足，点击将由你人工确认完成' : '标记目标完成'} onClick={() => void completeGoal()}><Icon name="check" size={13} /></button>
-        </div> : null}
-        {resumableGoal ? <div className="chat-goal chat-goal--resume" role="status" title={resumableGoal.note}>
-          <Icon name="clock" size={13} />
-          <span className="chat-goal__text">续航暂停：{resumableGoal.objective}</span>
-          <button type="button" className="chat-goal__done" aria-label="续跑" title="再续 5 轮并继续推进" onClick={async () => {
-            if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined);
-          }}><Icon name="send" size={13} /><span>续跑</span></button>
-        </div> : null}
       </header>
 
       <div className="chat__stage">

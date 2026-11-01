@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { spawn } from 'node:child_process';
@@ -23,6 +23,7 @@ import type {
   MemoryFact,
   MemoryScopeSummary,
   ProviderTestResult,
+  EmbeddingTestResult,
   Schedule,
   SecretBox,
   SendMessageInput,
@@ -122,6 +123,7 @@ export class MoyuApp {
       ...this.store.getSettings().providers.flatMap((provider) => [secrets.get(this.store.providerSecretKey(provider.id)) ?? '', ...Object.values(provider.extraHeaders ?? {})]),
     ]);
     this.offSchedules = this.store.onSchedulesChanged((schedules) => this.send('moyu:event', { type: 'schedules', schedules } satisfies AgentEvent));
+    this.store.onTodosChanged((conversationId) => this.send('moyu:event', { type: 'todos', conversationId, todos: this.store.listTodos(conversationId) } satisfies AgentEvent));
     const workspaceDir = this.store.getSettings().cloud.workspaceDir;
     fs.mkdirSync(workspaceDir, { recursive: true });
     const localSettings = { ...this.store.getSettings().cloud, workspaceDir: this.store.getSettings().workspaces.find((item) => item.kind === 'local')?.directory ?? path.join(dataDir, 'local-workspace'), machineName: '本机 Windows', driver: 'mock' as const };
@@ -505,6 +507,7 @@ export class MoyuApp {
     handle('moyu:goal:state', (_event, conversationId: string) => this.store.goalState(conversationId));
     handle('moyu:goal:resume', (_event, conversationId: string, extraRounds?: number) => this.store.resumeGoal(conversationId, extraRounds));
     handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch, { requireEvidence: false }));
+    handle('moyu:todos:list', (_event, conversationId: string) => this.store.listTodos(conversationId));
 
     handle('moyu:cloud', (): CloudStatus => this.cloud.status());
     handle('moyu:desktop:open', (event) => { desktopCaller(event); return this.desktop.open(); });
@@ -573,8 +576,26 @@ export class MoyuApp {
     });
     handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
     handle('moyu:memory:scopes', (): MemoryScopeSummary[] => this.store.memoryScopeSummaries());
-    handle('moyu:memory:open-folder', async (_event, scopeId?: string) => {
-      const folder = this.store.memoryLibraryPath(typeof scopeId === 'string' && scopeId ? scopeId : undefined);
+    handle('moyu:memory:path', (): string => this.store.memoryLibraryPath());
+    handle('moyu:memory:export', (): string => this.store.exportMemoriesMarkdown());
+    handle('moyu:embedding:key', (_event, key: string) => {
+      this.store.secrets.set('embedding:key', typeof key === 'string' ? key.trim() : '');
+      this.store.beginEmbeddingBackfill();
+    });
+    handle('moyu:embedding:test', async (_event, draft?: AppSettings['embedding'], draftKey?: string): Promise<EmbeddingTestResult> => {
+      const config = draft ?? this.store.getSettings().embedding;
+      const key = draftKey?.trim() || this.store.secrets.get('embedding:key') || '';
+      const startedAt = Date.now();
+      try {
+        const vectors = await embedTexts(config, key, ['记忆检索连通性测试']);
+        const dimensions = vectors[0]?.length ?? 0;
+        return { ok: true, dimensions, latencyMs: Date.now() - startedAt, message: `连通正常，向量维度 ${dimensions}` };
+      } catch (error) {
+        return { ok: false, dimensions: 0, latencyMs: Date.now() - startedAt, message: (error as Error).message };
+      }
+    });
+    handle('moyu:memory:open-folder', async (_event, _scopeId?: string) => {
+      const folder = path.dirname(this.store.memoryLibraryPath());
       fs.mkdirSync(folder, { recursive: true });
       // shell.openPath 走 ShellExecute，在目录关联被改或安全软件拦截的机器上会弹
       // “Windows 无法访问指定设备、路径或文件”；直接调资源管理器最稳。

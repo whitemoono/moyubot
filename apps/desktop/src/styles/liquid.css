@@ -2688,3 +2688,41 @@ select {
 .question__input:focus-visible, .question__input:focus { outline: none; }
 .question__input:focus { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .composer-wrap:has(.composer__input:focus) .composer { border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong)); }
+
+/* 头部小胶囊：任务清单（左）/ 目标（右），hover 展开浮层 */
+.chat__head, .chat__title { overflow: visible; }
+.chat__title { display: inline-flex; align-items: center; gap: 8px; }
+.head-pill { position: relative; display: inline-flex; }
+.head-pill__chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text); font-size: 11px; cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.head-pill__chip:hover, .head-pill__chip.is-open { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+.head-pill__count { font-variant-numeric: tabular-nums; }
+.head-pill--resume .head-pill__chip { border-color: color-mix(in srgb, #d97706 42%, var(--line-strong)); color: #d97706; }
+.head-pill__pop {
+  position: absolute; top: calc(100% + 8px);
+  min-width: 250px; max-width: 360px; max-height: 340px; overflow-y: auto;
+  padding: 12px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 14px 44px #00000024;
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  z-index: 60;
+}
+.head-pill__pop[data-align="right"] { left: auto; right: 0; }
+.head-pill__pop[data-align="left"] { left: 0; }
+.head-pill__caption { font-size: 10px; color: var(--text-faint); margin-bottom: 6px; }
+.head-pill__objective { font-size: 12px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 8px; color: var(--text); }
+.head-pill__criteria { margin-bottom: 8px; }
+.head-pill__row { display: flex; gap: 7px; align-items: baseline; font-size: 12px; line-height: 1.5; padding: 3px 0; }
+.head-pill__row .is-done { color: var(--text-dim); text-decoration: line-through; }
+.head-pill__tick {
+  flex: none; width: 15px; height: 15px; display: inline-grid; place-items: center;
+  border-radius: 5px; border: 1px solid var(--line-strong); font-size: 10px; color: var(--accent);
+}
+.head-pill__tick.is-done { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.head-pill__rounds { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }

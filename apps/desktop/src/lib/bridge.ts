@@ -18,10 +18,13 @@ import type {
   ExecResult,
   Goal,
   AskRequest,
+  TodoList,
   ConversationContext,
   ContextUsageSnapshot,
   MemoryFact,
   MemoryScopeSummary,
+  EmbeddingSettings,
+  EmbeddingTestResult,
   ProviderTestResult,
   ProviderConfig,
   Schedule,
@@ -87,6 +90,7 @@ export interface MoyuBridge {
   goalState(conversationId: string): Promise<{ active?: Goal; resumable?: Goal }>;
   resumeGoal(conversationId: string, extraRounds?: number): Promise<Goal>;
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
+  listTodos(conversationId: string): Promise<TodoList | undefined>;
   answerQuestion(decision: { requestId: string; answer: string }): Promise<void>;
   contextUsage(conversationId: string): Promise<ContextUsageSnapshot | undefined>;
   continueSubagent(id: string, message: string): Promise<{ ok: boolean; text: string; error?: string }>;
@@ -117,7 +121,11 @@ export interface MoyuBridge {
   updateMemory(id: string, patch: { text?: string; pinned?: boolean }): Promise<MemoryFact>;
   deleteMemory(id: string): Promise<void>;
   memoryScopes(): Promise<MemoryScopeSummary[]>;
+  memoryPath(): Promise<string>;
   openMemoryFolder(scopeId?: string): Promise<void>;
+  exportMemories(): Promise<string>;
+  saveEmbeddingKey(key: string): Promise<void>;
+  testEmbedding(draft?: EmbeddingSettings, draftKey?: string): Promise<EmbeddingTestResult>;
   openArtifact(relPath: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   win(action: 'minimize' | 'maximize' | 'close'): Promise<void>;

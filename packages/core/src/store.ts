@@ -326,6 +326,10 @@ export class Store {
   }
 
   upsertBot(bot: AppSettings['bots'][number]) {
+    // [moyu-debug] 临时探针：谁在写回"15 个工具的旧清单"（无 set_goal）就打调用栈，定位后移除
+    if (Array.isArray(bot.tools) && bot.tools.length === 15 && !bot.tools.includes('set_goal')) {
+      console.error(`[moyu-debug] upsertBot 写入旧工具清单 name=${bot.name} tools=${JSON.stringify(bot.tools).slice(0, 120)} stack=${new Error().stack?.split('\n').slice(2, 7).join(' <= ')}`);
+    }
     validateGeneration(bot.generation);
     const existing = this.getBot(bot.id);
     bot = { ...bot, image: { aspect: bot.image?.aspect ?? '1:1' }, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
@@ -1042,11 +1046,27 @@ export class Store {
     });
     if (!cleaned.length) {
       this.persistTodos(this.todoLists.filter((item) => item.conversationId !== conversationId));
+      this.notifyTodos(conversationId);
       return { conversationId, botId, items: [], updatedAt: Date.now() };
     }
     const record: TodoList = { conversationId, botId, items: cleaned, updatedAt: Date.now() };
     this.persistTodos([...this.todoLists.filter((item) => item.conversationId !== conversationId), record]);
+    this.notifyTodos(conversationId);
     return { ...record, items: record.items.map((item) => ({ ...item })) };
+  }
+
+  private todoListeners = new Set<(conversationId: string) => void>();
+
+  private notifyTodos(conversationId: string): void {
+    for (const listener of this.todoListeners) {
+      try { listener(conversationId); } catch { /* 监听器异常不影响持久化 */ }
+    }
+  }
+
+  /** 任务清单变更（模型 todo_write）时通知，参数为受影响的会话 id。 */
+  onTodosChanged(listener: (conversationId: string) => void): () => void {
+    this.todoListeners.add(listener);
+    return () => { this.todoListeners.delete(listener); };
   }
 
   private persistTodos(next: TodoList[]): void {
