@@ -64,7 +64,13 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const [ghUser, setGhUser] = useState<GitHubUser | undefined>(undefined);
   const [quota, setQuota] = useState<CodespacesQuota | undefined>(undefined);
   const [ghError, setGhError] = useState('');
+  const [ghCopied, setGhCopied] = useState(false);
   const ghClientIdSaved = settings.github?.oauthClientId ?? '';
+  const copyUserCode = async () => {
+    if (!ghFlow) return;
+    try { await navigator.clipboard.writeText(ghFlow.userCode); setGhCopied(true); window.setTimeout(() => setGhCopied(false), 1600); }
+    catch { toast('复制失败，请手动选中复制', 'error'); }
+  };
   const refreshGh = async () => {
     try {
       const status = await moyu().githubStatus();
@@ -179,7 +185,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
                 <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
               </Field>
               {ghFlow ? (
-                <div className="computer-policy__row"><div><strong>授权码：{ghFlow.userCode}</strong><p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。</p></div><span>等待授权…</span></div>
+                <div className="computer-policy__row"><div><strong>授权码：{ghFlow.userCode}<button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button></strong><p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。</p></div><span>等待授权…</span></div>
               ) : (
                 <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
               )}

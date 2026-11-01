@@ -2748,3 +2748,6 @@ select {
 .head-pill__batch-body { padding: 2px 4px 4px 22px; }
 
 .computer-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+.computer-copy { padding: 2px 9px; margin-left: 9px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font-size: 10px; cursor: pointer; vertical-align: 1px; }
+.computer-copy:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
