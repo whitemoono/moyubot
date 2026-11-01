@@ -43,7 +43,7 @@ export default function Chat() {
   return (
     <View style={styles.screen}>
       <LinearGradient colors={['#e9eaf2', '#f3f3f6', '#ece9e2']} style={StyleSheet.absoluteFill} pointerEvents="none" />
-      <Stack.Screen options={{ title: bot?.name ?? conversation?.title ?? '对话' }} />
+      <Stack.Screen options={{ title: bot?.name ?? conversation?.title ?? '对话', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' }, headerTintColor: colors.ink }} />
       {bot && !bot.providerId ? <Text style={styles.warn}>这个 Bot 没有授权到服务器的模型：先在电脑端「连接手机」第 4 区授权，再回来聊天。</Text> : null}
       <FlatList
         ref={listRef}

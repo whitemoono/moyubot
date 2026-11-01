@@ -44,18 +44,16 @@ export default function Home() {
         <LinearGradient colors={['rgba(52, 199, 89, 0.10)', 'rgba(52, 199, 89, 0)']} style={[styles.blob, { top: '45%', right: -90, width: 240, height: 240 }]} />
       </View>
 
-      <Stack.Screen
-        options={{
-          title: '',
-          headerTransparent: true,
-          headerRight: () => (
-            <GlassPill onPress={() => router.push('/pair')}>
-              <View style={[styles.dot, { backgroundColor: status.connected ? (status.enabled ? colors.green : colors.gray2) : '#c60' }]} />
-              <Text style={styles.statusText}>{status.connected ? (status.enabled ? '同步中' : '已连接') : '连接电脑'}</Text>
-            </GlassPill>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* 原型 .home-top：我的头像 + 状态胶囊，浮在滚动内容上 */}
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.topBar}>
+        <View style={styles.meAva}><Text style={styles.meAvaText}>鱼</Text></View>
+        <GlassPill onPress={() => router.push('/pair')}>
+          <View style={[styles.dot, { backgroundColor: status.connected ? (status.enabled ? colors.green : colors.gray2) : '#c60' }]} />
+          <Text style={styles.statusText}>{status.connected ? (status.enabled ? '同步中' : '已连接') : '连接电脑'}</Text>
+        </GlassPill>
+      </SafeAreaView>
 
       {!status.connected ? (
         <View style={styles.empty}>
@@ -70,7 +68,7 @@ export default function Home() {
         <FlatList
           data={rows}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 64, paddingBottom: 140 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 78, paddingBottom: 140 }}
           refreshControl={<RefreshControl refreshing={false} onRefresh={() => void getClient()?.sync(true)} tintColor={colors.gray} />}
           ListHeaderComponent={(
             <View>
@@ -116,6 +114,9 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 8, zIndex: 20 },
+  meAva: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.84)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
+  meAvaText: { fontSize: 17, fontWeight: '600', color: colors.ink },
   blob: { position: 'absolute', borderRadius: 999 },
   hero: { alignItems: 'center', marginVertical: 10 },
   heroAvatar: { width: 100, height: 100, borderRadius: 50, overflow: 'hidden' },
