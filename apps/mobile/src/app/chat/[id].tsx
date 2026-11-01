@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -43,7 +43,19 @@ export default function Chat() {
   return (
     <View style={styles.screen}>
       <LinearGradient colors={['#e9eaf2', '#f3f3f6', '#ece9e2']} style={StyleSheet.absoluteFill} pointerEvents="none" />
-      <Stack.Screen options={{ title: bot?.name ?? conversation?.title ?? '对话', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' }, headerTintColor: colors.ink }} />
+      <Stack.Screen
+        options={{
+          title: bot?.name ?? conversation?.title ?? '对话',
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerTintColor: colors.ink,
+          headerRight: () => bot ? (
+            <Pressable hitSlop={8} onPress={() => router.push(`/bot/${bot.id}`)}>
+              <Text style={{ fontSize: 18, color: colors.ink }}>⋯</Text>
+            </Pressable>
+          ) : null,
+        }}
+      />
       {bot && !bot.providerId ? <Text style={styles.warn}>这个 Bot 没有授权到服务器的模型：先在电脑端「连接手机」第 4 区授权，再回来聊天。</Text> : null}
       <FlatList
         ref={listRef}

@@ -73,10 +73,10 @@ export default function Home() {
           ListHeaderComponent={(
             <View>
               {hero ? (
-                <View style={styles.hero}>
+                <Pressable style={styles.hero} onPress={() => router.push(`/bot/${hero.bot.id}`)}>
                   <View style={styles.heroAvatar}><BotAvatar bot={hero.bot} size={100} /></View>
                   <Text style={styles.heroName}>{hero.bot.name}</Text>
-                </View>
+                </Pressable>
               ) : null}
               <Pressable style={styles.groupHead} onPress={() => router.push('/pair')}>
                 <Text style={styles.groupHeadText}>对话</Text>
