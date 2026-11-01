@@ -245,7 +245,7 @@ function QuestionCard() {
   );
 }
 
-function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
+function Composer({ bot, home, replyTo, onClearReply, topSlot }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void; topSlot?: React.ReactNode }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
   const recipient = group ? conversation.title : bot.name;
@@ -383,6 +383,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
         document.body,
       ) : null}
       {replyTo ? <div className="composer-reply" role="region" aria-label="正在引用的消息"><ReplyPreview reply={replyTo} onClick={() => jumpToMessage(replyTo.messageId, settings.ui.reduceMotion)} /><button type="button" className="composer-reply__dismiss" aria-label="取消引用" title="取消引用" onClick={() => { onClearReply(); textarea.current?.focus(); }}><Icon name="close" size={14} /></button></div> : null}
+      {topSlot}
       <div className={`composer glass composer--compact ${attachments.length ? 'has-attachments' : ''}`.trim()}>
         {attachments.length ? (
           <div className="attachment-row">
@@ -570,8 +571,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
         </div>
       </div>
 
-      {question?.conversationId === conversation.id ? <QuestionCard /> : null}
-      <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} />
+      <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} topSlot={question?.conversationId === conversation.id ? <QuestionCard /> : null} />
       </div>
       {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}
 

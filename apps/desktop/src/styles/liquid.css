@@ -2665,7 +2665,8 @@ select {
 
 /* Codex 式提问卡：贴在输入框上方的浮动卡片，非全屏遮罩 */
 .question-card {
-  margin: 0 14px 10px;
+  margin: 0 0 10px;
+  pointer-events: auto;
   padding: 14px 16px 12px;
   border-radius: 18px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
