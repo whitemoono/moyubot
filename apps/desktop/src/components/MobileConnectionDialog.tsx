@@ -9,7 +9,7 @@ interface SyncStatus { server: string; configured: boolean; hasSetupKey: boolean
 interface PairInfo { id: string; expires: number; url: string }
 interface PendingPair { id: string; expires: number; status: string; name?: string; deviceId?: string }
 interface DeviceRow { id: string; name: string; kind: string; created: number; seen: number }
-interface LocalExecution { providers: { id: string; name: string; models: unknown[] }[]; cloudConfigured: boolean; cloudMachineName: string; cloudMachineId: string; cloudHint: string }
+interface LocalExecution { providers: { id: string; name: string; models: unknown[]; remote?: boolean }[]; cloudConfigured: boolean; cloudMachineName: string; cloudMachineId: string; cloudHint: string }
 
 /** 连接手机 / 自建同步服务器：服务器配置 → 配对二维码 → 实时同步 → 执行授权 → 设备管理。
  *  全部驱动主进程 MobileSync 的现成 action，本组件不做任何协议逻辑。 */
@@ -174,7 +174,7 @@ export function MobileConnectionDialog({ onClose }: { onClose: () => void }) {
         <h3 className={sectionTitle}>4 · 手机聊天与云电脑（执行授权）</h3>
         <p className="inspector-note">勾选后，所选服务商凭据{localExecution?.cloudConfigured ? '和云电脑配置' : ''}会加密保存到服务器，手机才能替你发消息、操作云电脑。可随时撤销。</p>
         {!localExecution ? <p className="inspector-note">读取本机配置中…</p> : <div style={{ display: 'grid', gap: 6 }}>
-          {localExecution.providers.map((provider) => <Toggle key={provider.id} label={provider.name} hint={savedProviderIds.includes(provider.id) ? '已授权 · 手机可用' : '未授权'} checked={chosenProviders.includes(provider.id)} onChange={(value) => setChosenProviders((current) => value ? [...new Set([...current, provider.id])] : current.filter((id) => id !== provider.id))} />)}
+          {localExecution.providers.map((provider) => <Toggle key={provider.id} label={provider.name} hint={provider.remote === false ? '本机网络 · 服务器与手机连不上，不可授权' : savedProviderIds.includes(provider.id) ? '已授权 · 手机可用' : '未授权'} checked={provider.remote !== false && chosenProviders.includes(provider.id)} disabled={provider.remote === false} onChange={(value) => setChosenProviders((current) => value ? [...new Set([...current, provider.id])] : current.filter((id) => id !== provider.id))} />)}
           {localExecution.cloudConfigured ? <Toggle label={`云电脑 · ${localExecution.cloudMachineName || '未识别'}`} hint={savedCloud ? '已授权 · 手机可执行命令与读写文件' : '未授权'} checked={chooseCloud} onChange={setChooseCloud} /> : <p className="inspector-note">{localExecution.cloudHint}</p>}
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />

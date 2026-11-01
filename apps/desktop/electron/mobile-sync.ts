@@ -95,10 +95,20 @@ export class MobileSync {
   }
   async enable(enabled: boolean) { if (enabled && (!this.server || !this.session())) throw new Error('请先配置自己的服务器并生成连接二维码'); this.capture(); this.client.setEnabled(enabled); if (enabled) await this.client.sync(true); return this.status(); }
   private cloudSettings() { return this.currentCloud?.()?.getSettings() || this.store.getSettings().cloud; }
+  /** 本机网络的服务商（localhost/内网地址）服务器与手机都连不上，授权时应排除。 */
+  private reachableFromServer(p: { baseUrl?: string }): boolean {
+    try {
+      const host = new URL(p.baseUrl ?? '').hostname.toLowerCase();
+      if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) return false;
+      if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return false;
+      if (host.endsWith('.local') || host.endsWith('.lan')) return false;
+      return true;
+    } catch { return false; }
+  }
   private executionLocal() {
     const cloud = this.cloudSettings();
     const hasCredential = !!this.store.secrets.get('cloud:instabox');
-    return {providers:this.store.getSettings().providers.map(p=>({id:p.id,name:p.name,models:p.models})),
+    return {providers:this.store.getSettings().providers.map(p=>({id:p.id,name:p.name,models:p.models,remote:this.reachableFromServer(p)})),
       cloudConfigured:cloud.driver==='instabox' && hasCredential,
       cloudMachineName:cloud.machineName, cloudMachineId:cloud.machineId,
       cloudHint:cloud.driver!=='instabox'?'当前使用演示云电脑，请配置 InstaBox':!hasCredential?'请先在云电脑设置中保存 InstaBox 凭据':!cloud.machineId?'凭据已保存，授权时将识别当前云电脑':`已识别：${cloud.machineName}（${cloud.machineId}）`};
@@ -107,6 +117,8 @@ export class MobileSync {
     if (!this.server || !this.session()) throw new Error('请先保存服务器并生成连接二维码');
     if (payload.authorized !== true || !Array.isArray(payload.providerIds)) throw new Error('请选择并明确授权上传到当前服务器');
     const settings = this.store.getSettings();
+    const local = settings.providers.filter(p => payload.providerIds!.includes(p.id) && !this.reachableFromServer(p));
+    if (local.length) throw new Error(`服务器无法连接本机网络的服务商（${local.map(p => p.name).join('、')}），请改用公网 API 的服务商`);
     const providers = settings.providers.filter(p => payload.providerIds!.includes(p.id)).map(p => {
       const { networkMode: _localNetwork, ...config } = p;
       return {...config,credential:this.store.secrets.get(this.store.providerSecretKey(p.id)) || ''};
