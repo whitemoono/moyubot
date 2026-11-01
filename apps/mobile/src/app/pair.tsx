@@ -1,6 +1,7 @@
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { clearSession, currentSession, normalizeServer, saveSession } from '../lib/server';
 import { disconnect, reconnect, useSyncStatus } from '../lib/data';
 
@@ -14,6 +15,17 @@ export default function Pair() {
   const [stage, setStage] = useState<'idle' | 'claiming' | 'waiting' | 'done'>('idle');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const openScanner = async () => {
+    setError('');
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) { setError('相机权限未开启；仍可粘贴连接链接配对。'); return; }
+    }
+    setScanning(true);
+  };
 
   const claim = async () => {
     setError(''); setNote('');
@@ -88,7 +100,27 @@ export default function Pair() {
         <View style={styles.block}>
           <Text style={styles.title}>1 · 电脑端生成二维码</Text>
           <Text style={styles.note}>电脑「连接手机」→ 生成连接二维码；把二维码下的链接复制发到手机（隔空投送/微信均可）。</Text>
-          <Text style={styles.title}>2 · 粘贴连接链接</Text>
+          <Text style={styles.title}>2 · 扫码或粘贴连接链接</Text>
+          {scanning ? (
+            <View style={styles.cameraWrap}>
+              <CameraView
+                style={styles.camera}
+                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                onBarcodeScanned={({ data }: { data: string }) => {
+                  if (stage !== 'idle') return;
+                  setScanning(false);
+                  setLink(data);
+                  void claim(data);
+                }}
+              />
+              <Pressable style={styles.cameraClose} onPress={() => setScanning(false)}><Text style={styles.cameraCloseText}>收起相机</Text></Pressable>
+            </View>
+          ) : (
+            <Pressable style={styles.scanButton} onPress={() => void openScanner()} disabled={stage !== 'idle'}>
+              <Text style={styles.scanText}>📷 打开相机扫码</Text>
+            </Pressable>
+          )}
+          <Text style={styles.hint}>也可以粘贴链接：</Text>
           <TextInput style={[styles.input, styles.mono]} value={server} onChangeText={setServer} placeholder="https://pwa.moyubot.net" autoCapitalize="none" autoCorrect={false} />
           <TextInput style={[styles.input, styles.mono, styles.area]} value={link} onChangeText={setLink} placeholder="粘贴 https://…/#pair=… 完整链接" autoCapitalize="none" autoCorrect={false} multiline />
           <Pressable style={[styles.primaryButton, stage !== 'idle' && { opacity: 0.5 }]} disabled={stage !== 'idle'} onPress={() => void claim()}>
@@ -117,4 +149,10 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   secondaryButton: { borderRadius: 12, alignItems: 'center', paddingVertical: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: '#d1d5db', marginTop: 10 },
   secondaryText: { color: '#111', fontSize: 14 },
+  cameraWrap: { borderRadius: 12, overflow: 'hidden', height: 280 },
+  camera: { flex: 1 },
+  cameraClose: { position: 'absolute', bottom: 10, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 7 },
+  cameraCloseText: { color: '#fff', fontSize: 13 },
+  scanButton: { backgroundColor: '#fff', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: '#d1d5db', alignItems: 'center', paddingVertical: 12 },
+  scanText: { fontSize: 15, fontWeight: '600', color: '#111' },
 });
