@@ -1283,6 +1283,8 @@ select {
   line-height: 1.55;
   min-height: 30px;
   max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   color: var(--text);
   user-select: text;
 }

@@ -212,8 +212,19 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
   useEffect(() => {
     const node = textarea.current;
     if (!node) return;
+    // 长文本：重置高度后 scrollTop 会停在任意处（看起来"只剩中间一段"）。
+    // 光标在末尾（输入/粘贴）贴底显示最新内容；编辑中部时按比例保持视口位置。
+    const beforeFull = node.scrollHeight;
+    const beforeTop = node.scrollTop;
+    const caret = node.selectionStart ?? node.value.length;
     node.style.height = 'auto';
     node.style.height = `${Math.min(node.scrollHeight, 220)}px`;
+    if (caret >= node.value.length) {
+      node.scrollTop = node.scrollHeight;
+    } else if (beforeFull > node.clientHeight) {
+      const fraction = beforeTop / Math.max(1, beforeFull - node.clientHeight);
+      node.scrollTop = Math.round(fraction * Math.max(0, node.scrollHeight - node.clientHeight));
+    }
   }, [text, home]);
 
   useEffect(() => {
