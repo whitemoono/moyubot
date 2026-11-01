@@ -506,8 +506,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             installMcp: async (json) => {
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
+              // Bot 自己安装的 MCP 部署到该 Bot 的云端家目录（.claude.json），与其它 Bot 隔离。
+              const botDirName = workspaceId === 'workspace_cloud' ? this.store.botDirName(bot.id) : undefined;
               const before = new Set((this.store.settings.mcpServers ?? []).map((item) => item.id));
-              const result = await this.capabilities.importMcp(workspaceId, json);
+              const result = await this.capabilities.importMcp(workspaceId, json, { botDirName });
               if (result.target === 'cloud') return { target: 'cloud' as const, names: result.names };
               const added = (this.store.settings.mcpServers ?? []).filter((item) => !before.has(item.id));
               const current = this.store.getBot(bot.id);
@@ -517,8 +519,9 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             installSkill: async (directory) => {
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
+              const botDirName = workspaceId === 'workspace_cloud' ? this.store.botDirName(bot.id) : undefined;
               const before = new Set((this.store.settings.skills ?? []).map((item) => item.id));
-              const result = await this.capabilities.importSkill(workspaceId, directory);
+              const result = await this.capabilities.importSkill(workspaceId, directory, { botDirName });
               if (result.target === 'cloud') return { target: 'cloud' as const, name: result.name };
               const added = (this.store.settings.skills ?? []).filter((item) => !before.has(item.id));
               const current = this.store.getBot(bot.id);

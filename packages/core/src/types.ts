@@ -492,10 +492,10 @@ export interface SkillConfig {
 export interface CapabilityStatus {
   servers: { id: string; state: 'disconnected' | 'connecting' | 'connected' | 'error' | 'deployed'; tools: { name: string; description?: string }[]; error?: string; cloud?: boolean; name?: string; transport?: string; source?: string }[];
   loadedSkills: { botId: string; skillId: string; loadedAt: number }[];
-  /** 云电脑真实部署的 MCP 服务（由云主机盘点而来，非本机配置）。 */
-  cloudServers?: { id: string; name: string; transport: string; command?: string; url?: string; source: string }[];
+  /** 云电脑真实部署的 MCP 服务（由云主机盘点而来，非本机配置）。botId/botDirName 标记该 Bot 家目录的部署项；共享项（~/.claude）无 botId。 */
+  cloudServers?: { id: string; name: string; transport: string; command?: string; url?: string; source: string; botId?: string; botDirName?: string }[];
   /** 云电脑真实部署的技能（目录盘点）。 */
-  cloudSkills?: { id: string; name: string; path: string; source: string }[];
+  cloudSkills?: { id: string; name: string; path: string; source: string; botId?: string; botDirName?: string }[];
 }
 
 /** importMcp / importSkill 的结果：云端安装还是本机安装。 */

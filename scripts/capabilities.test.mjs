@@ -164,6 +164,63 @@ test('unavailable MCP servers report failure without exposing authentication or 
   } finally { await manager.dispose(); }
 });
 
+test('cloud inventory is local-first: serves persisted list offline, survives probe failures, never wakes the machine', async () => {
+  const { store } = fixture();
+  let sleeping = true, failProbe = false, execs = 0, wakes = 0;
+  store.writeCloudInventory({
+    at: Date.now() - 10 * 60_000,
+    servers: [{ id: 'cloud-mcp-0', name: 'demo', transport: 'http', url: 'https://example.com/mcp', source: '云电脑' }],
+    skills: [{ id: 'cloud-skill-0', name: 'weekly-report', path: '/root/.claude/skills/weekly-report', source: '~/.claude/skills' }],
+  });
+  const host = {
+    status: () => ({ state: sleeping ? 'suspended' : 'ready' }),
+    ensureAwake: async () => { wakes++; return { id: 'fixture' }; },
+    exec: async () => {
+      execs++;
+      if (failProbe) return { stdout: '', stderr: 'connection refused', exitCode: 1, timedOut: false };
+      return { stdout: JSON.stringify({ mcpServers: [{ name: 'fresh', transport: 'http', url: 'https://example.com/mcp' }], claudeSkills: [{ name: 'fresh-skill', path: '/root/.claude/skills/fresh-skill' }] }), stderr: '', exitCode: 0, timedOut: false };
+    },
+    writeText: async () => {},
+  };
+  const manager = new CapabilityManager(store, () => host);
+  // 云电脑休眠：直接回落盘的上次清单，不探测、不唤醒
+  const offline = await manager.inventoryCloud();
+  assert.equal(offline.servers[0].name, 'demo');
+  assert.equal(offline.skills[0].name, 'weekly-report');
+  assert.equal(execs, 0);
+  assert.equal(wakes, 0);
+  // 云电脑在线但探测失败：保留旧清单，且不用空结果覆盖落盘文件
+  sleeping = false;
+  failProbe = true;
+  const failed = await manager.inventoryCloud();
+  assert.equal(failed.servers[0].name, 'demo');
+  assert.equal(store.readCloudInventory().servers[0].name, 'demo');
+  // 探测成功：刷新清单并落盘
+  failProbe = false;
+  const fresh = await manager.inventoryCloud();
+  assert.equal(fresh.servers[0].name, 'fresh');
+  assert.equal(fresh.skills[0].name, 'fresh-skill');
+  assert.equal(store.readCloudInventory().servers[0].name, 'fresh');
+  await manager.dispose();
+});
+
+test('cloud inventory without any persisted history stays empty while offline', async () => {
+  const { store } = fixture();
+  let execs = 0;
+  const host = {
+    status: () => ({ state: 'off' }),
+    ensureAwake: async () => { throw new Error('must not wake'); },
+    exec: async () => { execs++; return { stdout: '{}', stderr: '', exitCode: 0, timedOut: false }; },
+    writeText: async () => {},
+  };
+  const manager = new CapabilityManager(store, () => host);
+  const inventory = await manager.inventoryCloud();
+  assert.deepEqual(inventory, { servers: [], skills: [] });
+  assert.equal(execs, 0);
+  assert.equal(store.readCloudInventory(), undefined);
+  await manager.dispose();
+});
+
 test('agent asks before MCP calls and honors a declined approval', async () => {
   const { store, bot } = fixture();
   let approvals = 0, calls = 0, requests = 0;
@@ -185,4 +242,43 @@ test('agent asks before MCP calls and honors a declined approval', async () => {
     await runtime.runUnattended(bot.id, '调用测试服务');
     assert.equal(approvals, 1); assert.equal(calls, 0); assert.equal(requests, 2);
   } finally { cloud.dispose(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('云端盘点按 Bot 家目录分组返回，Bot 安装的 MCP 写入它自己的 .claude.json', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const bot = { ...store.settings.bots[0], workspaceId: 'workspace_cloud' };
+  store.updateSettings({ bots: [bot] });
+  const dirName = store.botDirName(bot.id);
+  const probe = {
+    shared: { mcpServers: [{ name: 'shared-mcp', transport: 'http', url: 'https://x.example/mcp' }], claudeSkills: [{ name: 'shared-skill', path: '/root/.claude/skills/shared-skill' }], agentSkills: [] },
+    bots: { [dirName]: { mcpServers: [{ name: 'bot-mcp', transport: 'stdio', command: 'node' }], claudeSkills: [{ name: 'bot-skill', path: `/data/moyubot/${dirName}/.claude/skills/bot-skill` }], agentSkills: [] } },
+  };
+  const execs = [];
+  const host = {
+    status: () => ({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 }),
+    ensureAwake: async () => ({ id: 'm1', name: 'mock', state: 'running', autoSuspendAfterSeconds: null }),
+    writeText: async () => {},
+    exec: async (cmd) => {
+      execs.push(cmd);
+      const body = cmd.includes('const out={shared') ? JSON.stringify(probe) : 'deployed:demo';
+      return { stdout: body + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    },
+  };
+  const manager = new CapabilityManager(store, () => host);
+  const inventory = await manager.inventoryCloud(true);
+  assert.ok(inventory.servers.some(s => s.name === 'shared-mcp' && !s.botId && s.source.includes('共享')));
+  const own = inventory.servers.find(s => s.name === 'bot-mcp');
+  assert.equal(own.botId, bot.id, 'Bot 家目录里的 MCP 要标记归属');
+  assert.equal(own.botDirName, dirName);
+  const ownSkill = inventory.skills.find(s => s.name === 'bot-skill');
+  assert.equal(ownSkill.botId, bot.id);
+  // Bot 在对话里安装 MCP → 写它自己的 .claude.json（并先创建家目录）
+  await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { command: 'node' } } }), { botDirName: dirName });
+  const perBot = execs.find(c => c.includes('conf.mcpServers=') && c.includes(dirName));
+  assert.ok(perBot, '部署脚本必须指向该 Bot 家目录的 .claude.json');
+  assert.ok(perBot.includes('mkdirSync'), '家目录可能不存在，部署前要先创建');
+  // 设置页导入（不带 bot）→ 仍然写共享 ~/.claude.json
+  await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo2: { command: 'node' } } }));
+  assert.ok(execs.some(c => c.includes('conf.mcpServers=') && c.includes('os.homedir()')), '共享部署仍写 ~/.claude.json');
+  await manager.dispose();
 });

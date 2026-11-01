@@ -33,8 +33,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
   const status = useCapabilityStatus(workspaceId);
   const servers = (settings.mcpServers ?? []).filter(s => s.workspaceId === workspaceId);
   const skills = (settings.skills ?? []).filter(s => s.workspaceId === workspaceId);
-  const cloudServers = status.cloudServers ?? [];
-  const cloudSkills = status.cloudSkills ?? [];
+  const cloudServers = (status.cloudServers ?? []).filter(s => !s.botId || s.botId === bot.id);
+  const cloudSkills = (status.cloudSkills ?? []).filter(s => !s.botId || s.botId === bot.id);
   const toggle = (field: 'mcpServerIds' | 'skillIds', id: string, enabled: boolean) => onChange({ [field]: enabled ? [...new Set([...(bot[field] ?? []), id])] : (bot[field] ?? []).filter(x => x !== id) });
   return <div className={`bot-capabilities ${inspector ? 'bot-capabilities--inspector' : ''}`}>
     <section className={inspector ? 'inspector-section' : 'editor-block'}>
@@ -55,8 +55,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
       {isLocalWorkspace ? null : cloudServers.length ? <details className="capability-cloud-block capability-cloud-block--fold">
         <summary className="capability-cloud-title">云电脑已部署 · MCP（{cloudServers.length}）</summary>
         <div className="capability-cloud-list">{cloudServers.map(server => <div className="capability-item" key={server.id}>
-          <span className="capability-cloud-badge">云端</span>
-          <div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · 由云电脑管理</small></div>
+          <span className="capability-cloud-badge">{server.botId ? '云端' : '共享'}</span>
+          <div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · {server.botId ? '该 Bot 家目录' : '~/.claude（全部 Bot 可见）'}</small></div>
         </div>)}</div>
       </details> : null}
     </section>
@@ -72,8 +72,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
       {isLocalWorkspace ? null : cloudSkills.length ? <details className="capability-cloud-block capability-cloud-block--fold">
         <summary className="capability-cloud-title">云电脑已部署 · 技能（{cloudSkills.length}）</summary>
         <div className="capability-cloud-list">{cloudSkills.map(skill => <div className="capability-item" key={skill.id}>
-          <span className="capability-cloud-badge">云端</span>
-          <div><strong>{skill.name}</strong><small>{skill.path} · {skill.source}</small></div>
+          <span className="capability-cloud-badge">{skill.botId ? '云端' : '共享'}</span>
+          <div><strong>{skill.name}</strong><small>{skill.source}{skill.botId ? ' · 该 Bot 家目录' : ' · 全部 Bot 可见'}</small></div>
         </div>)}</div>
       </details> : null}
     </section>
