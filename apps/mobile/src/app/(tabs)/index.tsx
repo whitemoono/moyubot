@@ -1,17 +1,15 @@
 import { Stack, router } from 'expo-router';
 import { useMemo } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { BotAvatar } from '../components/BotAvatar';
-import { GlassPill } from '../components/Glass';
-import { getClient, useCollection, useSyncStatus } from '../lib/data';
-import { colors } from '../theme';
+import { BotAvatar } from '../../components/BotAvatar';
+import { GlassPill } from '../../components/Glass';
+import { getClient, useCollection, useSyncStatus } from '../../lib/data';
+import { colors } from '../../theme';
 
 interface Bot { id: string; name: string; avatar?: { shape?: string; from?: string; glyph?: string } }
 interface Conversation { id: string; botId?: string; title?: string; group?: { memberBotIds?: string[] }; updatedAt?: number; deletedAt?: number }
 
-export default function Home() {
+export default function Chats() {
   const bots = useCollection<Bot>('bots');
   const conversations = useCollection<Conversation>('conversations');
   const status = useSyncStatus();
@@ -19,14 +17,6 @@ export default function Home() {
   const rows = useMemo(() => conversations
     .filter((c) => !c.deletedAt)
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)), [conversations]);
-
-  const hero = useMemo(() => {
-    for (const c of rows) {
-      const bot = bots.find((b) => b.id === c.botId);
-      if (bot) return { bot, conversation: c };
-    }
-    return null;
-  }, [rows, bots]);
 
   const titleFor = (conversation: Conversation): { name: string; bot?: Bot; isGroup: boolean } => {
     if (conversation.group) return { name: conversation.title || '群聊', isGroup: true };
@@ -36,18 +26,10 @@ export default function Home() {
 
   return (
     <View style={styles.screen}>
-      {/* 彩色光斑背景：液态玻璃的底色 */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <LinearGradient colors={['#e9eaf2', '#f3f3f6', '#ece9e2']} style={StyleSheet.absoluteFill} />
-        <LinearGradient colors={['rgba(10, 132, 255, 0.16)', 'rgba(10, 132, 255, 0)']} style={[styles.blob, { top: -60, right: -70, width: 260, height: 260 }]} />
-        <LinearGradient colors={['rgba(242, 193, 78, 0.15)', 'rgba(242, 193, 78, 0)']} style={[styles.blob, { bottom: 60, left: -80, width: 300, height: 300 }]} />
-        <LinearGradient colors={['rgba(52, 199, 89, 0.10)', 'rgba(52, 199, 89, 0)']} style={[styles.blob, { top: '45%', right: -90, width: 240, height: 240 }]} />
-      </View>
-
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* 原型 .home-top：我的头像 + 创建/状态胶囊，浮在滚动内容上 */}
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.topBar}>
+      {/* 原型 .home-top：我的头像 + 创建/状态胶囊 */}
+      <View style={styles.topBar}>
         <View style={styles.meAva}><Text style={styles.meAvaText}>鱼</Text></View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <GlassPill onPress={() => router.push('/create')}>
@@ -58,7 +40,7 @@ export default function Home() {
             <Text style={styles.statusText}>{status.connected ? (status.enabled ? '同步中' : '已连接') : '连接电脑'}</Text>
           </GlassPill>
         </View>
-      </SafeAreaView>
+      </View>
 
       {!status.connected ? (
         <View style={styles.empty}>
@@ -73,20 +55,16 @@ export default function Home() {
         <FlatList
           data={rows}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 78, paddingBottom: 140 }}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={() => void getClient()?.sync(true)} tintColor={colors.gray} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 70, paddingBottom: 130 }}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={() => void getClient()?.sync(true)} tintColor={colors.muted} />}
           ListHeaderComponent={(
             <View>
-              {hero ? (
-                <Pressable style={styles.hero} onPress={() => router.push(`/bot/${hero.bot.id}`)}>
-                  <View style={styles.heroAvatar}><BotAvatar bot={hero.bot} size={100} /></View>
-                  <Text style={styles.heroName}>{hero.bot.name}</Text>
-                </Pressable>
+              {rows.length ? (
+                <View style={styles.groupHead}>
+                  <Text style={styles.groupHeadText}>对话</Text>
+                  <Text style={styles.groupHeadCount}>{rows.length}</Text>
+                </View>
               ) : null}
-              <Pressable style={styles.groupHead} onPress={() => router.push('/pair')}>
-                <Text style={styles.groupHeadText}>对话</Text>
-                <Text style={styles.groupHeadCount}>{rows.length}</Text>
-              </Pressable>
             </View>
           )}
           renderItem={({ item }) => {
@@ -119,29 +97,25 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 8, zIndex: 20 },
-  meAva: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.84)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 54, zIndex: 20 },
+  meAva: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.43)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.glassStroke },
   meAvaText: { fontSize: 17, fontWeight: '600', color: colors.ink },
-  blob: { position: 'absolute', borderRadius: 999 },
-  hero: { alignItems: 'center', marginVertical: 10 },
-  heroAvatar: { width: 100, height: 100, borderRadius: 50, overflow: 'hidden' },
-  heroName: { marginTop: 11, fontSize: 15, color: colors.name, fontWeight: '500' },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 6, marginTop: 18, marginBottom: 8 },
-  groupHeadText: { fontSize: 15.5, color: colors.groupHead, fontWeight: '500' },
-  groupHeadCount: { fontSize: 13, color: colors.groupHead },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 6, marginTop: 14, marginBottom: 8 },
+  groupHeadText: { fontSize: 15.5, color: colors.muted, fontWeight: '500' },
+  groupHeadCount: { fontSize: 13, color: colors.muted },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 9, paddingHorizontal: 8, borderRadius: 24 },
   ava: { width: 58, height: 58 },
   rowMain: { flex: 1 },
   rowTitle: { fontSize: 16.5, fontWeight: '500', color: colors.ink },
-  rowPreview: { fontSize: 13.5, color: colors.gray, marginTop: 2 },
+  rowPreview: { fontSize: 13.5, color: colors.muted, marginTop: 2 },
   groupIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   groupIconText: { color: '#fff', fontSize: 22, fontWeight: '700' },
   statusText: { fontSize: 13, fontWeight: '500', color: colors.ink },
   dot: { width: 8, height: 8, borderRadius: 4 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 120 },
-  emptySymbol: { fontSize: 44, color: colors.gray2 },
+  emptySymbol: { fontSize: 44, color: colors.glassHighlight },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.ink },
-  emptyNote: { fontSize: 13, color: colors.gray, textAlign: 'center', lineHeight: 19, paddingHorizontal: 40 },
+  emptyNote: { fontSize: 13, color: colors.muted, textAlign: 'center', lineHeight: 19, paddingHorizontal: 40 },
   primaryButton: { marginTop: 14, backgroundColor: colors.ink, borderRadius: 16, paddingHorizontal: 26, paddingVertical: 14 },
   primaryButtonText: { color: '#fff', fontSize: 15.5, fontWeight: '600' },
 });
