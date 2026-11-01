@@ -62,6 +62,18 @@ function createWindow(): BrowserWindow {
     win.show();
     const capturePath = process.env.MOYU_CAPTURE;
     if (capturePath) {
+      // UI 验证钩子：MOYU_CAPTURE_CLICK 里放分号分隔的 aria-label/文本，截图前依次点击。
+      const clicks = (process.env.MOYU_CAPTURE_CLICK ?? '').split(';').map((item) => item.trim()).filter(Boolean);
+      for (const target of clicks) {
+        await win.webContents.executeJavaScript(`(() => {
+          const byLabel = document.querySelector('[aria-label="${target}"]');
+          if (byLabel) { byLabel.click(); return true; }
+          const byText = [...document.querySelectorAll('button,[role="menuitem"]')].find((el) => (el.textContent || '').includes('${target}'));
+          if (byText) { byText.click(); return true; }
+          return false;
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
       await new Promise((resolve) => setTimeout(resolve, 2500));
       const image = await win.webContents.capturePage();
       fs.mkdirSync(path.dirname(capturePath), { recursive: true });
