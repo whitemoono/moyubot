@@ -309,7 +309,7 @@ export interface ToolContext {
   killJob?: (conversationId: string) => boolean;
   listAgents?: () => { conversationId: string; task: string; running: boolean; updatedAt: number }[];
   controlAgent?: (conversationId: string, action: 'send' | 'stop', message?: string) => Promise<{ ok: boolean; text?: string; error?: string }>;
-  forkAgent?: (prompt: string) => Promise<{ ok: boolean; conversationId: string; text: string; error?: string }>;
+  forkAgent?: (callId: string, prompt: string) => Promise<{ ok: boolean; conversationId: string; text: string; error?: string }>;
   webSearch?: WebSearchSettings;
   imageGenerator: (request: { prompt: string; aspect: Bot['image']['aspect'] }) => Promise<GeneratedImage>;
   emitStatus: (status: CloudStatus, note?: string) => void;
@@ -640,7 +640,7 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       case 'subagent_fork': {
         if (!ctx.forkAgent) throw new Error('当前运行时不支持子代理分身');
         const prompt = requireString(args, 'prompt');
-        const result = await ctx.forkAgent(prompt);
+        const result = await ctx.forkAgent(call.id, prompt);
         return finish(result.ok
           ? { ok: true, summary: `分身已完成（id=${result.conversationId}）：${summarize(result.text, 80)}`, detail: pruneOutput(result.text, 12000, 0.6) }
           : { ok: false, summary: `分身失败：${result.error ?? '没有产出结论'}`, detail: result.text });

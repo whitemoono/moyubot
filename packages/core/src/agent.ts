@@ -577,7 +577,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               const result = await this.continueSubagent(targetId, message);
               return { ok: result.ok, text: result.text, error: result.error };
             },
-            forkAgent: (prompt) => this.forkSubagent(conversationId, prompt),
+            forkAgent: (callId, prompt) => this.forkSubagent(conversationId, callId, prompt),
             conversationMode: executingMode,
             // Deliberately ignores bot.approvalPolicy: approving a plan is the one gate that must
             // ask a human even for a Bot set to auto-execute, or plan mode would be decorative.
@@ -848,13 +848,16 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
    * fork：以父会话最近的上下文为底，开一个只读子代理继续深挖。
    * 上下文按消息条数截断（不复制工具输出大段），避免把 fork 变成第二次全量对话。
    */
-  async forkSubagent(parentConversationId: string, prompt: string): Promise<{ ok: boolean; conversationId: string; text: string; error?: string }> {
+  async forkSubagent(parentConversationId: string, callId: string, prompt: string): Promise<{ ok: boolean; conversationId: string; text: string; error?: string }> {
     const parentConversation = this.store.getConversation(parentConversationId);
     if (!parentConversation) throw new Error('父会话不存在');
     const parentBot = this.store.getBot(parentConversation.botId);
     if (!parentBot) throw new Error('父会话对应的 Bot 不存在');
     const depth = (parentConversation.subagent?.depth ?? 0) + 1;
     if (depth > SUBAGENT_MAX_DEPTH) throw new Error(`子智能体最多嵌套 ${SUBAGENT_MAX_DEPTH} 层`);
+    // fork 与 spawn 同一套进度事件：头部子代理胶囊据此把分身也纳入统计。
+    this.emit({ type: 'subagent', conversationId: parentConversationId, callId, status: 'start', tasks: [prompt] });
+    this.emit({ type: 'subagent', conversationId: parentConversationId, callId, status: 'child', index: 0, task: prompt, state: 'running' });
     const context = parentConversation.messages
       .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.content.trim()))
       .slice(-24)
@@ -886,6 +889,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
       this.runs.delete(conversation.id);
     }
     const text = assistantMessage.content.trim();
+    const fail = assistantMessage.error
+      ? assistantMessage.error
+      : text ? undefined : assistantMessage.stopped ? '已停止' : '子智能体没有产出结论';
+    this.emit({ type: 'subagent', conversationId: parentConversationId, callId, status: 'child', index: 0, task: prompt, state: fail ? 'error' : 'done', childConversationId: conversation.id });
     if (assistantMessage.error) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.error };
     if (!text) return { ok: false, conversationId: conversation.id, text, error: assistantMessage.stopped ? '已停止' : '子智能体没有产出结论' };
     return { ok: true, conversationId: conversation.id, text };
