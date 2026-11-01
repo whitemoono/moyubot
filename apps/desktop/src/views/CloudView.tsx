@@ -66,14 +66,63 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const [ghFallback, setGhFallback] = useState('');
   const [execCommand, setExecCommand] = useState('');
   const [execOnline, setExecOnline] = useState<boolean | undefined>(undefined);
+  // 设备码登录（为没有 Git 登录的用户准备的通用入口）
+  const [ghClientId, setGhClientId] = useState(() => settings.github?.oauthClientId ?? '');
+  const [ghFlow, setGhFlow] = useState<{ userCode: string; deviceCode: string; verifyUrl: string; expiresAt: number } | null>(null);
+  const [ghCopied, setGhCopied] = useState(false);
+  const [ghNow, setGhNow] = useState(Date.now());
+  const [showDeviceFlow, setShowDeviceFlow] = useState(false);
+  useEffect(() => {
+    if (!ghFlow) return;
+    const timer = window.setInterval(() => setGhNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [ghFlow?.deviceCode]);
+  const ghRemaining = ghFlow ? Math.max(0, ghFlow.expiresAt - ghNow) : 0;
   const openUrl = (url: string) => { void moyu().openExternal(url).catch(() => toast('自动打开失败：请复制链接到浏览器 ' + url, 'error')); };
   const installExec = async () => { try { setExecCommand((await moyu().githubExecInstall()).command); } catch (error) { setGhError((error as Error).message); } };
   const pingExec = async () => { try { setExecOnline((await moyu().githubExecPing()).online); } catch (error) { setGhError((error as Error).message); } };
   const connectGh = async () => {
     setGhError(''); setGhConnecting(true);
-    try { setGhConnect(await moyu().githubConnect()); }
-    catch (error) { setGhError((error as Error).message); }
+    try {
+      setGhConnect(await moyu().githubConnect());
+      setSshKey(undefined);
+      void moyu().githubRegisterKey('generate').then((r) => setSshKey(r)).catch(() => setSshKey(undefined));
+    }
+    catch (error) {
+      setGhError((error as Error).message);
+      setShowDeviceFlow(true);
+    }
     finally { setGhConnecting(false); }
+  };
+  const startGhLogin = async () => {
+    setGhError(''); setGhBusy(true);
+    try {
+      const clientId = ghClientId.trim();
+      await saveSettings({ github: { oauthClientId: clientId } });
+      const flow: DeviceFlowStart = await moyu().githubLoginStart();
+      const ghExpiresAt = Date.now() + flow.expiresInSeconds * 1000;
+      setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri, expiresAt: ghExpiresAt });
+      openUrl(flow.verificationUri);
+      const interval = Math.max(3, flow.intervalSeconds) * 1000;
+      const deadline = ghExpiresAt;
+      const pollTimer = window.setInterval(async () => {
+        if (Date.now() > deadline) { window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试'); return; }
+        try {
+          const poll: DeviceFlowPoll = await moyu().githubLoginPoll(clientId, flow.deviceCode);
+          if (poll.status === 'done' && poll.accessToken) {
+            window.clearInterval(pollTimer);
+            await moyu().githubTokenStore(poll.accessToken);
+            setGhFlow(null); setGhBusy(false);
+            toast('GitHub 已登录');
+            await connectGh();
+          } else if (poll.status === 'expired') {
+            window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试');
+          }
+        } catch {
+          setGhError('网络波动，正在重试…（授权码有效期内会自动继续）');
+        }
+      }, interval);
+    } catch (error) { setGhError((error as Error).message); setGhBusy(false); }
   };
   const registerSshKey = async () => {
     if (!sshKey) return;
@@ -174,9 +223,32 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
             </div>
           ) : (
             <div className="computer-policy">
-              <p className="computer-policy__note"><Icon name="key" size={13} />自动使用你电脑上已登录的 GitHub（Git 凭据），无需手动登录或粘贴密钥。</p>
+              <p className="computer-policy__note"><Icon name="key" size={13} />优先自动使用你电脑上已登录的 GitHub（Git 凭据）。</p>
               <Button variant="primary" size="sm" disabled={ghConnecting} loading={ghConnecting} onClick={() => void connectGh()}>连接 GitHub</Button>
               {ghError ? <p className="capability-error">{ghError}</p> : null}
+              <details open={showDeviceFlow && !ghConnect}>
+                <summary className="computer-link">没有 Git 登录？用设备码流程登录</summary>
+                <div className="computer-fields">
+                  <Field label="GitHub OAuth App Client ID" hint="github.com/settings/developers 创建 OAuth App（Callback 填 http://localhost），创建后勾选 Enable Device Flow，复制 Client ID。">
+                    <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
+                  </Field>
+                  {ghFlow ? (
+                    <div className="computer-policy__row">
+                      <div>
+                        <strong>
+                          授权码：{ghFlow.userCode}
+                          <button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button>
+                          <span className="computer-countdown">{ghRemaining > 0 ? `${Math.floor(ghRemaining / 60000)}:${String(Math.floor((ghRemaining % 60000) / 1000)).padStart(2, '0')} 后过期` : '已过期'}</span>
+                        </strong>
+                        <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); openUrl(ghFlow.verifyUrl); }}>github.com/login/device</a> 输入上方授权码并批准授权。过期了点「重新获取」。</p>
+                      </div>
+                      <Button size="sm" variant="ghost" disabled={ghBusy} loading={ghBusy} onClick={() => void startGhLogin()}>重新获取</Button>
+                    </div>
+                  ) : (
+                    <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
+                  )}
+                </div>
+              </details>
             </div>
           )}
         </section>
