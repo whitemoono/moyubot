@@ -87,13 +87,18 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       setGhConnect(await moyu().githubConnect());
       setSshKey(undefined);
-      void moyu().githubRegisterKey('generate').then((r) => setSshKey(r)).catch(() => setSshKey(undefined));
+      void moyu().githubRegisterKey('generate').then((r) => setSshKey({ publicKey: r.publicKey ?? '', registered: r.registered, manual: r.manual, manualUrl: r.manualUrl, error: r.error })).catch(() => setSshKey(undefined));
     }
     catch (error) {
       setGhError((error as Error).message);
       setShowDeviceFlow(true);
     }
     finally { setGhConnecting(false); }
+  };
+  const copyUserCode = async () => {
+    if (!ghFlow) return;
+    try { await navigator.clipboard.writeText(ghFlow.userCode); setGhCopied(true); window.setTimeout(() => setGhCopied(false), 1600); }
+    catch { toast('复制失败，请手动选中复制', 'error'); }
   };
   const startGhLogin = async () => {
     setGhError(''); setGhBusy(true);
@@ -217,7 +222,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
               <div className="computer-policy__row"><div><strong>创建 Codespace</strong><p>2 核 8GB，用于桌面环境；创建后出现在上方列表</p></div><Button size="sm" icon="plus" onClick={() => void createCodespace()}>创建</Button></div>
               {ghError ? <p className="capability-error">{ghError}</p> : null}
               {ghFallback ? <p><a className="computer-link" href={ghFallback} onClick={(event) => { event.preventDefault(); openUrl(ghFallback); }}>点此在网页创建 Codespace（github.com/codespaces/new）</a></p> : null}
-              <div className="computer-policy__row"><div><strong>执行服务</strong><p>在 Codespace 的终端里粘贴运行下面的安装命令（Codespace 重启后重跑一次）</p></div><Button size="sm" variant="ghost" onClick={() => void installExec()}>获取安装命令</Button></div>
+              <div className="computer-policy__row"><div><strong>执行服务</strong><p>已随 Codespace 配置自动启动（每次开机自动运行，InstaBox 式体验）。现有的这个 Codespace 需一次性重建：在其 VS Code 里按 F1 → 运行 Codespaces: Rebuild Container</p></div><Button size="sm" variant="ghost" onClick={() => void installExec()}>手动启动命令</Button></div>
               {execCommand ? <pre className="head-pill__objective" style={{ maxHeight: 120, overflow: 'auto' }}>{execCommand}</pre> : null}
               <div className="computer-policy__row"><div><strong>执行通道</strong><p>{execOnline === undefined ? '未检测' : execOnline ? '在线 ✓——云端工作区 Bot 的命令将在这台 Codespace 执行' : '不在线（服务未安装或 Codespace 已关机）'}</p></div><Button size="sm" variant="ghost" onClick={() => void pingExec()}>检测</Button></div>
               <Toggle checked={!!settings.github?.codespacesActive} disabled={!execOnline} onChange={(value) => { void saveSettings({ github: { ...settings.github, codespacesActive: value } }).catch((error: Error) => toast(error.message, 'error')); }} label="把 Codespace 用作云电脑" hint="启用后云端工作区 Bot 的命令与文件在这台 Codespace 执行（InstaBox 不受影响，可随时关回）" />
