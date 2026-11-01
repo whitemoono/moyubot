@@ -653,7 +653,7 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .chat .composer--compact.has-attachments { grid-template-areas: 'files files files files' 'attach input options actions'; }
 .composer--compact .attachment-row { grid-area: files; padding: 5px 7px 3px; }
 .composer__leading { grid-area: attach; display: flex; align-items: center; gap: 2px; }
-.chat .composer--compact .composer__input { grid-area: input; min-width: 0; width: 100%; min-height: 30px; max-height: 160px; padding: 3px 2px; font-size: 13px; line-height: 24px; }
+.chat .composer--compact .composer__input { grid-area: input; min-width: 0; width: 100%; min-height: 30px; padding: 3px 2px; font-size: 13px; line-height: 24px; }
 .composer--compact .composer__bar { display: contents; }
 .composer__options { grid-area: options; position: relative; min-width: 0; align-self: end; }
 .composer__options .composer-model-picker { width: auto; max-width: min(235px, 28vw); }
