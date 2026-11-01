@@ -69,7 +69,6 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const openUrl = (url: string) => { void moyu().openExternal(url).catch(() => toast('自动打开失败：请复制链接到浏览器 ' + url, 'error')); };
   const installExec = async () => { try { setExecCommand((await moyu().githubExecInstall()).command); } catch (error) { setGhError((error as Error).message); } };
   const pingExec = async () => { try { setExecOnline((await moyu().githubExecPing()).online); } catch (error) { setGhError((error as Error).message); } };
-  const openUrl = (url: string) => { void moyu().openExternal(url).catch(() => toast('自动打开失败：请复制链接到浏览器 ' + url, 'error')); };
   const connectGh = async () => {
     setGhError(''); setGhConnecting(true);
     try { setGhConnect(await moyu().githubConnect()); }
