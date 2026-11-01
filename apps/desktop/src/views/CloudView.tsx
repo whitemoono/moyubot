@@ -92,6 +92,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       const clientId = ghClientId.trim();
       await saveSettings({ github: { oauthClientId: clientId } });
+      if (ghPollTimer.current) { window.clearInterval(ghPollTimer.current); ghPollTimer.current = undefined; }
       const flow: DeviceFlowStart = await moyu().githubLoginStart();
       const ghExpiresAt = Date.now() + flow.expiresInSeconds * 1000;
       setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri, expiresAt: ghExpiresAt });
@@ -203,7 +204,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
                       <button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button>
                       <span className="computer-countdown">{ghRemaining > 0 ? `${Math.floor(ghRemaining / 60000)}:${String(Math.floor((ghRemaining % 60000) / 1000)).padStart(2, '0')} 后过期` : '已过期'}</span>
                     </strong>
-                    <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。过期了点「重新获取」。</p>
+                    <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); void moyu().openExternal(ghFlow.verifyUrl).catch(() => toast('打开失败，请手动复制链接到浏览器', 'error')); }}>github.com/login/device</a> 输入上方授权码并批准授权。过期了点「重新获取」。</p>
                   </div>
                   <Button size="sm" variant="ghost" disabled={ghBusy} loading={ghBusy} onClick={() => void startGhLogin()}>重新获取</Button>
                 </div>

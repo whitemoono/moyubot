@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { BrowserWindow, Menu, app, net, protocol } from 'electron';
+import { BrowserWindow, Menu, app, net, protocol, shell } from 'electron';
 import { resolveArtifact } from '@moyu/core';
 import { MoyuApp } from './app';
 import { startRendererServer } from './renderer-server';
@@ -55,6 +55,11 @@ function createWindow(): BrowserWindow {
       spellcheck: false,
       backgroundThrottling: false,
     },
+  });
+  // 外部链接（target="_blank" / window.open）一律交给系统浏览器，应用内不弹新窗口。
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   win.setMenu(null);
