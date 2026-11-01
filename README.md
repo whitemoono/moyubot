@@ -91,15 +91,6 @@ xAI Grok、OpenAI、Anthropic、Google Gemini、DeepSeek、OpenRouter、阿里�
 **共享云电脑 + 按需唤醒**
 所有云端 Bot 共用一台云主机。纯聊天和 API 绘图不会唤醒它；当 Agent 调用 `cloud_exec` / `cloud_read` / `cloud_write` 或桌面操作时按需唤醒。工作区按 Bot 隔离子目录（默认 `/data/home/moyubot/<bot>/`）持久保留，休眠不丢文件。本地空闲计时器（默认 3 分钟）和服务端 `autoSuspendAfterSeconds` 双重兜底，避免忘关烧配额。
 
-**GitHub Codespaces 云电脑（实验）**
-云电脑设置页支持登录 GitHub（设备码流程），登录后实时显示 Codespaces 免费额度（个人账号每月 120 core-小时）。完整流程：
-
-1. **创建 OAuth App**：github.com/settings/developers → New OAuth App → Homepage 填仓库地址、Callback 填 `http://localhost` → 注册后**在应用设置里勾选 Enable Device Flow**（新应用默认关闭，不勾会报错）→ 复制 Client ID。
-2. **登录**：云电脑设置 → GitHub Codespaces → 粘贴 Client ID → 「登录 GitHub」→ 浏览器打开 github.com/login/device，输入应用里显示的授权码并批准。
-3. **额度卡**：登录后实时显示本月已用/剩余（个人账号 120 core-小时/月，2 核机器折合 60 小时）。
-
-登录后应用会自动创建/复用私有仓库 `moyubot-workspace`（公开仓库会自动转私有），并准备 Codespaces 桌面环境；命令执行走 SSH、桌面走 noVNC 端口转发（自带 GitHub 登录鉴权）。Codespaces 驱动为后续版本，设计与限制见 [自托管与多端设计](docs/self-hosted-design.md)。
-
 「Bot 管理」与「共享云电脑」均整合进设置弹窗，头像菜单、搜索和顶部状态入口会打开对应分类。编辑 Bot 后留在管理页，点击开始对话则返回聊天。云电脑页用状态卡展示环境、运行时长和唤醒次数，下方并排管理连接与休眠策略；终端独立成页签，保存按钮固定在底部。配置草稿会在分类切换时保留，关闭前提示未保存更改；API Key 留空保留原密钥。唤醒、休眠、状态刷新和命令执行仍使用原有云电脑接口。
 
 头像菜单采用紧凑单行列表，移除定时任务入口，新增「用量」，直接打开设置内的 Token 仪表盘。支持最近 24 小时、7 天、30 天、12 周、12 个月以及自定义日期（本地时间，包含起止日），可按 Bot 和供应商模型筛选、切换堆叠趋势，并点击排行继续筛选。指标包含输入与输出 Token、缓存命中率、调用次数；数字、柱图与排行进度条使用轻量动效，遵循减少动效设置。
