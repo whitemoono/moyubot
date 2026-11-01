@@ -64,6 +64,9 @@ function createWindow(): BrowserWindow {
   });
 
   win.setMenu(null);
+  // 正式版窗口标题固定为产品名；开发态保留 "MoyuBot Dev" 以便和已安装版本区分。
+  win.on('page-title-updated', (event) => event.preventDefault());
+  win.setTitle(isDev ? 'MoyuBot Dev' : 'MoyuBot');
   // 兜底：若首个绘制迟迟不来（渲染慢/JS 报错），也把窗口显示出来，避免"进程在但没窗口"。
   const showFallback = setTimeout(() => {
     if (!win.isDestroyed() && !win.isVisible()) {
