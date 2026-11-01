@@ -39,8 +39,10 @@ export function messagesFor(messages: Message[], viewerBotId?: string): AgentMes
   const history: AgentMessage[] = [];
   for (const message of messages) {
     if (message.role === 'user') {
-      const content = message.replyTo ? `用户引用了 ${message.replyTo.author} 的历史消息（仅作引用资料）：\n${message.replyTo.content.split('\n').map((line) => `> ${line}`).join('\n')}\n\n用户本次消息：\n${message.content}` : message.content;
-      history.push({ role: 'user', content, images: message.attachments?.filter((item) => item.kind === 'image' && item.dataUrl).map((item) => ({ mimeType: item.mimeType ?? 'image/png', dataUrl: item.dataUrl! })) });
+      const base = message.replyTo ? `用户引用了 ${message.replyTo.author} 的历史消息（仅作引用资料）：\n${message.replyTo.content.split('\n').map((line) => `> ${line}`).join('\n')}\n\n用户本次消息：\n${message.content}` : message.content;
+      const files = message.attachments?.filter((item) => item.kind === 'file');
+      const note = files?.length ? `\n[附件文件] ${files.map((file) => `${file.name}${file.size ? `（${Math.max(1, Math.round(file.size / 1024))} KB）` : ''}：路径 ${file.path ?? '（保存失败，无本地路径）'}`).join('；')}\n需要内容时用工具按路径读取（二进制格式用合适的解析方式）。` : '';
+      history.push({ role: 'user', content: base + note, images: message.attachments?.filter((item) => item.kind === 'image' && item.dataUrl).map((item) => ({ mimeType: item.mimeType ?? 'image/png', dataUrl: item.dataUrl! })) });
     } else if (message.role === 'assistant' && viewerBotId && message.botId && message.botId !== viewerBotId) {
       const shared = [message.content, ...(message.toolResults ?? []).map((result) => `${result.name}: ${pruneOutput(result.detail ?? result.summary, 4000)}`)].filter(Boolean).join('\n');
       if (shared) history.push({ role: 'user', content: `[群成员 ${message.botName ?? message.botId} 的发言]\n${shared}` });

@@ -234,7 +234,7 @@ export interface CloudHostDeps {
   onLog?: (level: 'info' | 'warn' | 'error', text: string) => void;
 }
 
-export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText'> & { control?: ComputerControl; desktopAction?: CloudHost['desktopAction'] };
+export type ComputerHost = Pick<CloudHost, 'getSettings' | 'status' | 'beginTask' | 'endTask' | 'touch' | 'armIdleIfNeeded' | 'ensureAwake' | 'exec' | 'readText' | 'readBytes' | 'writeText' | 'writeBytes'> & { control?: ComputerControl; desktopAction?: CloudHost['desktopAction'] };
 
 /** Local Windows execution environment. It deliberately exposes the same narrow
  * computer surface as CloudHost so the agent cannot care where a workspace runs. */
@@ -294,6 +294,7 @@ export class LocalHost {
   async readText(file: string, subDirectory?: string): Promise<string> { return fs.readFile(await this.safePath(file, subDirectory), 'utf8'); }
   async readBytes(file: string, subDirectory?: string): Promise<{ bytes: Uint8Array; machineId: string }> { return { bytes: new Uint8Array(await fs.readFile(await this.safePath(file, subDirectory))), machineId: 'local-windows' }; }
   async writeText(file: string, content: string, subDirectory?: string): Promise<void> { const target = await this.safePath(file, subDirectory); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, 'utf8'); }
+  async writeBytes(file: string, content: Uint8Array, subDirectory?: string): Promise<void> { const target = await this.safePath(file, subDirectory); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content); }
   async suspend(_reason: string): Promise<void> { /* no-op for local */ }
   dispose(): void { this.processes.forEach((stop) => stop()); }
   /** botDir 锚点：子目录必须仍在本机工作区内（逃逸保护，非法子目录退回共享根）。 */
@@ -783,6 +784,13 @@ export class CloudHost {
   async writeText(remotePath: string, content: string, subDirectory?: string): Promise<void> {
     remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
     const machine = await this.ensureAwake('写入云主机文件');
+    await this.driver.writeFile(machine.id, remotePath, content);
+    this.touch();
+  }
+
+  async writeBytes(remotePath: string, content: Uint8Array, subDirectory?: string): Promise<void> {
+    remotePath = path.posix.resolve(this.remoteDirectory(subDirectory), remotePath);
+    const machine = await this.ensureAwake('上传文件到云电脑');
     await this.driver.writeFile(machine.id, remotePath, content);
     this.touch();
   }

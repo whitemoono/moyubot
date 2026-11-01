@@ -165,13 +165,46 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
 
   private attachmentsFrom(images: ChatImageInput[] | undefined) {
     if (!images?.length) return undefined;
-    return images.map((image) => ({
-      id: newId('att'),
-      kind: 'image' as const,
-      name: image.name ?? '粘贴的图片',
-      mimeType: image.mimeType,
-      dataUrl: image.dataUrl,
-    }));
+    return images.map((image) => {
+      const isImage = image.mimeType.startsWith('image/');
+      return {
+        id: newId('att'),
+        kind: (isImage ? 'image' : 'file') as 'image' | 'file',
+        name: image.name ?? (isImage ? '粘贴的图片' : '附件'),
+        mimeType: image.mimeType,
+        dataUrl: image.dataUrl,
+        ...(image.size ? { size: image.size } : {}),
+      };
+    });
+  }
+
+  /** 文件类附件落盘：本地工作区 uploads/<botDir>/（消息里只留路径，不再背 base64）；
+   *  云电脑工作区的 Bot 额外尽力上传到 <botDir>/uploads/，让 Bot 能在云端读到。 */
+  private async persistFileAttachments(bot: Bot, attachments: Message['attachments']): Promise<void> {
+    const files = (attachments ?? []).filter((item) => item.kind === 'file' && item.dataUrl);
+    if (!files.length) return;
+    const workspaceDir = this.computerFor(bot).getSettings().workspaceDir;
+    const botDir = this.store.botDirName(bot.id);
+    const safeName = (name: string) => name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 120) || 'attachment';
+    for (const attachment of files) {
+      try {
+        const base64 = attachment.dataUrl!.split(',').pop() ?? '';
+        const bytes = Buffer.from(base64, 'base64');
+        const name = safeName(attachment.name);
+        const relPath = `uploads/${botDir}/${name}`;
+        const absPath = path.join(workspaceDir, relPath);
+        fs.mkdirSync(path.dirname(absPath), { recursive: true });
+        fs.writeFileSync(absPath, bytes);
+        attachment.path = relPath;
+        attachment.size = attachment.size ?? bytes.length;
+        delete attachment.dataUrl;
+        if ((bot.workspaceId ?? 'workspace_cloud') !== 'workspace_local') {
+          await this.computerFor(bot).writeBytes?.(`uploads/${name}`, bytes, botDir).catch(() => {});
+        }
+      } catch {
+        // 单个文件保存失败不阻塞消息：保留 dataUrl，Bot 至少能通过多模态/后续工具处理
+      }
+    }
   }
 
   private replyFrom(input: SendMessageInput, conversation: Conversation): Message['replyTo'] {
@@ -201,13 +234,15 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     this.runs.set(conversationId, { abort, conversationId, kind: 'user', botId: bot.id, startedAt: Date.now() });
     this.emit({ type: 'run_start', runId, conversationId });
 
+    const attachments = this.attachmentsFrom(input.images);
+    await this.persistFileAttachments(bot, attachments);
     const userMessage: Message = {
       id: newId('msg'),
       role: 'user',
       content: input.text,
       replyTo,
       createdAt: Date.now(),
-      attachments: this.attachmentsFrom(input.images),
+      attachments,
     };
     this.store.appendMessage(conversationId, userMessage);
 
@@ -248,7 +283,9 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const abort = new AbortController();
     this.runs.set(conversationId, { abort, conversationId, kind: 'group', startedAt: Date.now() });
     this.emit({ type: 'run_start', runId, conversationId });
-    const userMessage: Message = { id: newId('msg'), role: 'user', content: input.text, replyTo, createdAt: Date.now(), attachments: this.attachmentsFrom(input.images) };
+    const attachments = this.attachmentsFrom(input.images);
+    await this.persistFileAttachments(bots[0]!, attachments);
+    const userMessage: Message = { id: newId('msg'), role: 'user', content: input.text, replyTo, createdAt: Date.now(), attachments };
     this.store.appendMessage(conversationId, userMessage);
     const startReply = (bot: Bot): Message => {
       const message: Message = { id: newId('msg'), role: 'assistant', botId: bot.id, botName: bot.name, content: '', model: bot.model, createdAt: Date.now(), streaming: true, toolCalls: [], toolResults: [] };

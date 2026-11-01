@@ -552,6 +552,8 @@ export interface ChatImageInput {
   name?: string;
   mimeType: string;
   dataUrl: string;
+  /** 字节数；文件类附件在界面上展示大小 */
+  size?: number;
 }
 
 export interface SendMessageInput {

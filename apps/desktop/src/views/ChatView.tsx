@@ -73,7 +73,7 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
 }
 
 const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
-  const { botActivities, setView, settings } = useMoyu();
+  const { botActivities, setView, settings, toast } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
 
@@ -105,7 +105,18 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           {message.replyTo ? <ReplyPreview reply={message.replyTo} onClick={() => jumpToMessage(message.replyTo!.messageId, settings.ui.reduceMotion)} /> : null}
           {message.attachments?.length ? (
             <div className="artifact-grid artifact-grid--user">
-              {message.attachments.map((attachment) => (
+              {message.attachments.map((attachment) => attachment.kind === 'file' ? (
+                <button
+                  key={attachment.id}
+                  type="button"
+                  className="artifact artifact--file"
+                  title="打开文件"
+                  onClick={() => { if (attachment.path) void moyu().openArtifact(attachment.path).catch((error: Error) => toast(error.message, 'error')); }}
+                >
+                  <Icon name="folder" size={16} />
+                  <span className="artifact__file-meta"><strong>{attachment.name}</strong><small>{humanSize(attachment.size)}</small></span>
+                </button>
+              ) : (
                 <button
                   key={attachment.id}
                   type="button"
@@ -193,13 +204,17 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
   );
 });
 
+const humanSize = (bytes?: number) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
   const recipient = group ? conversation.title : bot.name;
   const [text, setText] = useState('');
-  const [images, setImages] = useState<{ name?: string; mimeType: string; dataUrl: string }[]>([]);
-  const [dragOver, setDragOver] = useState(false);
+  const [attachments, setAttachments] = useState<{ name?: string; mimeType: string; dataUrl: string; size?: number }[]>([]);
+  const dropDepth = useRef(0);
+  const [dropActive, setDropActive] = useState(false);
+  const readFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
   const [savingOptions, setSavingOptions] = useState(false);
   const [editMenu, setEditMenu] = useState<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -254,57 +269,95 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
     finally { setSavingOptions(false); }
   };
 
-  const readFiles = async (files: FileList | File[]) => {
-    const next: typeof images = [];
-    for (const file of Array.from(files).slice(0, 4)) {
-      if (!file.type.startsWith('image/')) continue;
-      if (file.size > 8 * 1024 * 1024) continue;
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      next.push({ name: file.name, mimeType: file.type, dataUrl });
-    }
-    setImages((prev) => [...prev, ...next].slice(0, 4));
+  const readFiles = (files: FileList | File[]) => {
+    void (async () => {
+      const accepted: typeof attachments = [];
+      for (const file of Array.from(files)) {
+        const isImage = file.type.startsWith('image/');
+        if (isImage && file.size > 8 * 1024 * 1024) { toast(`图片超过 8MB，已跳过：${file.name}`, 'error'); continue; }
+        if (!isImage && file.size > 20 * 1024 * 1024) { toast(`文件超过 20MB，已跳过：${file.name}`, 'error'); continue; }
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+          accepted.push({ name: file.name, mimeType: file.type || 'application/octet-stream', dataUrl, size: file.size });
+        } catch { toast(`读取失败：${file.name}`, 'error'); }
+      }
+      if (accepted.length) setAttachments((prev) => [...prev, ...accepted].slice(0, 8));
+    })();
   };
+  readFilesRef.current = readFiles;
+
+  useEffect(() => {
+    // 全屏拖入层：窗口任意位置拖文件都会出现，drop 在任何地方都被接住（不只输入框）。
+    const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
+    const onEnter = (event: DragEvent) => { if (!hasFiles(event)) return; event.preventDefault(); dropDepth.current++; setDropActive(true); };
+    const onOver = (event: DragEvent) => { if (!hasFiles(event)) return; event.preventDefault(); };
+    const onLeave = (event: DragEvent) => { if (!hasFiles(event)) return; dropDepth.current = Math.max(0, dropDepth.current - 1); if (!dropDepth.current) setDropActive(false); };
+    const onDrop = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dropDepth.current = 0;
+      setDropActive(false);
+      if (event.dataTransfer?.files.length) readFilesRef.current(event.dataTransfer.files);
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   const submit = async () => {
-    if (running || (!text.trim() && images.length === 0)) return;
+    if (running || (!text.trim() && attachments.length === 0)) return;
     const payload = text;
-    const payloadImages = images;
+    const payloadAttachments = attachments;
     setText('');
-    setImages([]);
-    const sent = await sendMessage(payload, payloadImages, replyTo);
+    setAttachments([]);
+    const sent = await sendMessage(payload, payloadAttachments, replyTo);
     if (sent) onClearReply();
-    else { setText(payload); setImages(payloadImages); }
+    else { setText(payload); setAttachments(payloadAttachments); }
     textarea.current?.focus();
   };
 
   return (
     <div
       ref={wrapRef}
-      className={`composer-wrap ${!home ? 'composer-wrap--floating' : ''} ${dragOver ? 'is-dragover' : ''}`.trim()}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDragOver(false);
-        void readFiles(event.dataTransfer.files);
-      }}
+      className={`composer-wrap ${!home ? 'composer-wrap--floating' : ''}`.trim()}
     >
+      {dropActive ? (
+        <div className="drop-overlay" role="region" aria-label="拖入文件添加">
+          <div className="drop-overlay__box">
+            <Icon name="plus" size={44} />
+            <strong>拖入图片或文件到此处添加</strong>
+            <small>支持多个图片和文件 · 图片 ≤ 8MB · 文件 ≤ 20MB</small>
+          </div>
+        </div>
+      ) : null}
       {replyTo ? <div className="composer-reply" role="region" aria-label="正在引用的消息"><ReplyPreview reply={replyTo} onClick={() => jumpToMessage(replyTo.messageId, settings.ui.reduceMotion)} /><button type="button" className="composer-reply__dismiss" aria-label="取消引用" title="取消引用" onClick={() => { onClearReply(); textarea.current?.focus(); }}><Icon name="close" size={14} /></button></div> : null}
-      <div className={`composer glass composer--compact ${images.length ? 'has-attachments' : ''}`.trim()}>
-        {images.length ? (
+      <div className={`composer glass composer--compact ${attachments.length ? 'has-attachments' : ''}`.trim()}>
+        {attachments.length ? (
           <div className="attachment-row">
-            {images.map((image, index) => (
-              <div className="attachment-chip" key={`${image.name}-${index}`}>
-                <img src={image.dataUrl} alt={image.name ?? '图片'} />
-                <button type="button" aria-label="移除" onClick={() => setImages((prev) => prev.filter((_, i) => i !== index))}>
+            {attachments.map((item, index) => item.mimeType.startsWith('image/') ? (
+              <div className="attachment-chip" key={`${item.name}-${index}`}>
+                <img src={item.dataUrl} alt={item.name ?? '图片'} />
+                <button type="button" aria-label="移除" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}>
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="attachment-chip attachment-chip--file" key={`${item.name}-${index}`}>
+                <Icon name="folder" size={16} />
+                <span className="attachment-chip__meta"><strong>{item.name}</strong><small>{humanSize(item.size)}</small></span>
+                <button type="button" aria-label="移除" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}>
                   <Icon name="close" size={12} />
                 </button>
               </div>
@@ -312,7 +365,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           </div>
         ) : null}
         <div className="composer__leading">
-          <IconButton name="plus" label="添加图片" className="composer__attach" onClick={() => fileInput.current?.click()} />
+          <IconButton name="plus" label="添加图片或文件" className="composer__attach" onClick={() => fileInput.current?.click()} />
           {!group ? <Select label="执行权限" className={`composer-policy-picker composer-policy-picker--${bot.approvalPolicy}`} icon={bot.approvalPolicy === 'ask' ? 'shield' : 'spark'} iconOnly menuMinWidth={230} value={bot.approvalPolicy} disabled={savingOptions} onChange={(value) => void updateOptions({ approvalPolicy: value as Bot['approvalPolicy'] })} options={[
             { value: 'never', label: '自动执行', hint: '工具直接执行，不逐步确认' },
             { value: 'ask', label: '每次确认', hint: '执行命令和写入文件前确认' },
@@ -371,7 +424,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
                 type="button"
                 className="send-btn"
                 aria-label="发送"
-                disabled={!text.trim() && images.length === 0}
+                disabled={!text.trim() && attachments.length === 0}
                 onClick={() => void submit()}
               >
                 <Icon name="arrowUp" size={19} strokeWidth={2} />
@@ -386,11 +439,10 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
           <Icon name={item.icon} size={16} /><span>{item.title}</span>
         </button>)}
       </div> : null}
-      {home ? <p className="composer-hint">Enter 发送 · Shift + Enter 换行 · 支持粘贴或拖入图片</p> : null}
+      {home ? <p className="composer-hint">Enter 发送 · Shift + Enter 换行 · 支持粘贴或拖入图片与文件</p> : null}
       <input
         ref={fileInput}
         type="file"
-        accept="image/*"
         multiple
         hidden
         onChange={(event) => {
