@@ -50,6 +50,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const [command, setCommand] = useState('uname -a');
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const output = useRef<HTMLDivElement>(null);
+  const ghPollTimer = useRef<number | undefined>(undefined);
   const dirty = JSON.stringify(draft) !== JSON.stringify(connection(settings.cloud)) || Boolean(apiKey);
   useEffect(() => onDirty?.(dirty), [dirty, onDirty]);
   const awake = cloud.state === 'ready' || cloud.state === 'busy';
