@@ -2682,3 +2682,9 @@ select {
 .question-card__foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .question-card__hint { color: var(--text-faint); font-size: 11px; }
 .question-card .spacer { flex: 1; }
+
+/* 输入类 textarea 去掉全局黑色 focus 外框：输入框容器自身已有玻璃视觉，聚焦用柔和光晕提示 */
+.composer__input:focus-visible, .composer__input:focus,
+.question__input:focus-visible, .question__input:focus { outline: none; }
+.question__input:focus { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.composer-wrap:has(.composer__input:focus) .composer { border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong)); }
