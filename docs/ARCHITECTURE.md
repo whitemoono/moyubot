@@ -22,7 +22,7 @@ packages/core/src/index.ts        对外 barrel
 | 组件 | 职责 |
 | --- | --- |
 | `SafeSecretBox` | 用 Electron `safeStorage` 加解密，密钥存 `secrets.bin.json` |
-| `Store` | `settings.json`、`conversations/*.json`、`memories/`（按 Bot / 群聊分目录的 Markdown 记忆库）、`schedules.json` |
+| `Store` | `settings.json`、`conversations/*.json`、`memories.db`（单库长期记忆，SQLite + 关键词/语义混合检索）、`schedules.json` |
 | `CloudHost` | 懒加载 driver，持有云主机状态机与空闲计时器 |
 | `AgentRuntime` | 一次会话内的工具循环，事件以 `moyu:event` 推给渲染层 |
 | `ScheduleRunner` | 30s tick，到点调 `AgentRuntime.runUnattended` |

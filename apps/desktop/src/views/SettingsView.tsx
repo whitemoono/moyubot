@@ -10,6 +10,7 @@ import { FeedbackSettings } from './FeedbackSettings';
 import { ProvidersSettings } from './ProvidersSettings';
 import { BotsView } from './BotsView';
 import { CloudView } from './CloudView';
+import { MemoriesView } from './MemoriesView';
 import { UsageView } from './UsageView';
 import { WorkspacePathSettings } from '../components/WorkspacePathSettings';
 import { CapabilitiesSettings } from './CapabilitiesSettings';
@@ -20,6 +21,7 @@ const SECTIONS = [
   { id: 'appearance', label: '通用', icon: 'sliders', hint: '让工作空间更合你的习惯。' },
   { id: 'profile', label: '个人资料', icon: 'users', hint: '为你的工作空间换个表情。' },
   { id: 'bots', label: 'Bot 管理', icon: 'bots', hint: '管理你的角色、模型、人格与工具。' },
+  { id: 'memories', label: '长期记忆', icon: 'memory', hint: '记忆整理成每个 Bot 一套的 Markdown 资料库，可随时查看与修改。' },
   { id: 'plugins', label: '工具插件', icon: 'grid', hint: '查看工作区可用的内置工具与扩展能力。' },
   { id: 'capabilities', label: 'MCP 与 Skills', icon: 'plug', hint: '为当前工作区添加工具服务与技能，再分配给 Bot。' },
   { id: 'providers', label: '模型供应商', icon: 'spark', hint: '连接官方服务、第三方中转站与本地模型。' },
@@ -34,6 +36,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
   const sections = SECTIONS.map((item) => item.id === 'cloud' && activeWorkspace?.kind === 'local' ? { ...item, label: '本地电脑', hint: '工作区内的 Bot 共用本机 Windows，文件与命令在本地完成。' } : item);
   const dialog = useRef<HTMLDivElement>(null);
   const [providerDirty, setProviderDirty] = useState(false);
+  const [embeddingDirty, setEmbeddingDirty] = useState(false);
   const [cloudDirty, setCloudDirty] = useState(false);
   const [closeNotice, setCloseNotice] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -43,7 +46,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
     const timer = window.setTimeout(closeSettings, settings.ui.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 150);
     return () => window.clearTimeout(timer);
   }, [closing, closeSettings, settings.ui.reduceMotion]);
-  const close = useCallback(() => { if (providerDirty || cloudDirty) setCloseNotice(true); else finishClose(); }, [providerDirty, cloudDirty, finishClose]);
+  const close = useCallback(() => { if (providerDirty || embeddingDirty || cloudDirty) setCloseNotice(true); else finishClose(); }, [providerDirty, embeddingDirty, cloudDirty, finishClose]);
   useDialogFocus(dialog, close);
   const updateUi = (patch: Partial<AppSettings['ui']>) => void saveSettings({ ui: { ...settings.ui, ...patch } }).catch((error: Error) => toast(error.message, 'error'));
   const selected = sections.find((item) => item.id === section)!;
@@ -57,10 +60,11 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
         <header className="settings-heading"><div><h2 id="settings-title">{selected.label}</h2><p>{selected.hint}</p></div><IconButton name="close" label="关闭设置" onClick={close} /></header>
         <div className="settings-content">
           {section === 'plugins' ? <ToolsView /> : null}
+          {section === 'memories' ? <MemoriesView /> : null}
           {section === 'capabilities' ? <CapabilitiesSettings key={activeWorkspace?.id} /> : null}
           {section === 'usage' ? <UsageView /> : null}
           {section === 'feedback' ? <FeedbackSettings /> : null}
-          <div hidden={section !== 'providers'} className="settings-provider-page"><ProvidersSettings onDirty={setProviderDirty} /></div>
+          <div hidden={section !== 'providers'} className="settings-provider-page"><ProvidersSettings onDirty={setProviderDirty} onEmbeddingDirty={setEmbeddingDirty} /></div>
           <div hidden={section !== 'bots'} className="settings-bots-page">{section === 'bots' ? <BotsView embedded onCreate={onCreateBot} /> : null}</div>
           <div hidden={section !== 'cloud'} className="settings-cloud-page"><CloudView active={section === 'cloud'} onDirty={setCloudDirty} /></div>
           <ProfileSettings hidden={section !== 'profile'} />

@@ -28,6 +28,13 @@
 .memory-record__foot .icon-btn svg { width: 14px; height: 14px; }
 .memory-record__foot .icon-btn:hover { color: #d9534f; }
 .memory-record__pin { display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; }
+.memory-record__actions { display: inline-flex; align-items: center; gap: 2px; }
+.memory-record__foot .icon-btn.is-active { color: var(--text); }
+.memory-record.is-editing { border-color: var(--line-strong); background: var(--selected); }
+.memory-record__edit { display: flex; flex-direction: column; gap: 8px; margin: 0 0 10px; }
+.memory-record__edit textarea { width: 100%; min-height: 64px; max-height: 160px; resize: vertical; font-size: 12px; line-height: 1.7; border-radius: 9px; }
+.memory-record__edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.memory-record__edit-actions .btn { min-height: 30px; border-radius: 8px; }
 .bot-memory-dialog .sheet__foot { display: block; padding: 14px 20px 18px; background: transparent; }
 .memory-compose { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .memory-compose > label { font-size: 11px; color: var(--text-dim); }

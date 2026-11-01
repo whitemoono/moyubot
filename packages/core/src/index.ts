@@ -24,5 +24,6 @@ export { createChatProvider, PROVIDER_PRESETS, generateImageWithProvider } from 
 export { setProviderFetch } from './providers/transport';
 export type { ChatProvider, AgentMessage, StreamHandlers, GeneratedImage, ImageRequest } from './providers';
 export { parseCron, nextCronTime, ScheduleRunner } from './scheduler';
+export { embedTexts } from './embedding';
 export { TelegramGateway } from './telegram';
 export * from './sync';

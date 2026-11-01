@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { ProviderConfig } from '@moyu/core';
+import type { EmbeddingSettings, ProviderConfig } from '@moyu/core';
 import { useMoyu } from '../state';
 import { moyu } from '../lib/bridge';
 import { PRESETS } from '../lib/presets';
-import { Button, Field } from '../components/Glass';
+import { Button, Field, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { validateModelSettings, modelSettings, modelProfile } from '@moyu/core/dist/generation';
@@ -25,7 +25,7 @@ function validate(provider: ProviderConfig, requireModel = true) {
   return { ...provider, name: provider.name.trim(), baseUrl: provider.baseUrl.trim().replace(/\/+$/, ''), defaultModel: provider.defaultModel.trim(), models: [...new Set([...provider.models, provider.defaultModel.trim()].filter(Boolean))] };
 }
 
-export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => void }) {
+export function ProvidersSettings({ onDirty, onEmbeddingDirty }: { onDirty: (dirty: boolean) => void; onEmbeddingDirty?: (dirty: boolean) => void }) {
   const { settings, saveSettings, secrets, saveProviderKey, toast } = useMoyu();
   const [drafts, setDrafts] = useState(settings.providers);
   const [selected, setSelected] = useState(settings.providers[0]?.id ?? '');
@@ -127,5 +127,53 @@ export function ProvidersSettings({ onDirty }: { onDirty: (dirty: boolean) => vo
       </div>}
     </div>
     <footer className="provider-savebar"><span>{dirty ? '有未保存的更改' : '所有更改已保存'}<small>测试使用当前配置，不会自动保存</small></span><div>{current && !adding ? <Button variant="glass" size="sm" disabled={!!busy} loading={busy === 'test'} onClick={() => void request('test')}>测试连接</Button> : null}<Button variant="primary" size="sm" disabled={!!busy || !dirty} loading={busy === 'save'} icon="check" onClick={() => void save()}>保存更改</Button></div></footer>
+    <EmbeddingCard onDirty={onEmbeddingDirty} />
+  </div>;
+}
+
+/** 向量模型（记忆检索）：OpenAI 兼容 /embeddings 端点，默认硅基流动 bge-m3；服务不可用时自动退化为关键词检索。 */
+function EmbeddingCard({ onDirty }: { onDirty?: (dirty: boolean) => void }) {
+  const { settings, saveSettings, toast } = useMoyu();
+  const fallback: EmbeddingSettings = { enabled: true, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' };
+  const current = settings.embedding ?? fallback;
+  const [draft, setDraft] = useState<EmbeddingSettings>(current);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState<'test' | 'save' | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(settings.embedding ?? null) || !!key.trim();
+  useEffect(() => onDirty?.(dirty), [dirty, onDirty]);
+  const patch = (next: Partial<EmbeddingSettings>) => { setDraft((prev) => ({ ...prev, ...next })); setResult(null); };
+  const save = async () => {
+    setBusy('save');
+    try {
+      await saveSettings({ embedding: draft });
+      if (key.trim()) { await moyu().saveEmbeddingKey(key.trim()); setKey(''); }
+      toast('向量模型配置已保存，正在回填记忆向量');
+    } catch (error) { toast((error as Error).message, 'error'); }
+    finally { setBusy(null); }
+  };
+  const test = async () => {
+    setBusy('test'); setResult(null);
+    try {
+      const response = await moyu().testEmbedding(draft, key.trim() || undefined);
+      setResult({ ok: response.ok, message: response.ok ? `${response.message} · ${response.latencyMs} ms` : response.message });
+    } catch (error) { setResult({ ok: false, message: (error as Error).message }); }
+    finally { setBusy(null); }
+  };
+  return <div className="provider-embedding">
+    <div className="provider-embedding__head">
+      <div><h4>向量模型（记忆检索）</h4><p>为长期记忆提供语义召回，默认硅基流动 bge-m3（免费档，中文效果好）。向量服务不可用时，记忆检索自动退化为纯关键词模式。</p></div>
+      <Toggle checked={draft.enabled} onChange={(value) => patch({ enabled: value })} label="启用向量召回" hint="关闭后仅按关键词检索记忆。" />
+    </div>
+    {draft.enabled ? <div className="provider-embedding__form">
+      <Field label="API 地址" hint="OpenAI 兼容的 /embeddings 端点。"><input className="input mono" aria-label="向量模型 API 地址" placeholder="https://api.siliconflow.cn/v1" value={draft.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} /></Field>
+      <Field label="模型 ID" hint="如 BAAI/bge-m3，维度以连通测试为准。"><input className="input mono" aria-label="向量模型 ID" placeholder="BAAI/bge-m3" value={draft.model} onChange={(e) => patch({ model: e.target.value })} spellCheck={false} /></Field>
+      <Field label="API Key" hint="留空保留已保存的 Key。"><input className="input mono" aria-label="向量模型 API Key" type="password" autoComplete="new-password" value={key} placeholder="输入 API Key" onChange={(e) => { setKey(e.target.value); setResult(null); }} /></Field>
+      <div className="provider-embedding__ops">
+        <Button variant="glass" size="sm" disabled={!!busy} loading={busy === 'test'} onClick={() => void test()}>测试连通</Button>
+        <Button variant="primary" size="sm" icon="check" disabled={!!busy} loading={busy === 'save'} onClick={() => void save()}>保存</Button>
+      </div>
+    </div> : <p className="provider-embedding__off">已停用向量召回，记忆检索仅使用关键词匹配。</p>}
+    {result ? <p role="status" className={`provider-result ${result.ok ? 'is-ok' : 'is-error'}`}><Icon name={result.ok ? 'check' : 'alert'} size={14} />{result.message}</p> : null}
   </div>;
 }
