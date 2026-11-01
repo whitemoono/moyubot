@@ -5,7 +5,7 @@ import { useMoyu } from '../state';
 import { Button, Field, Segmented, Sheet } from './Glass';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
-import { editorToolCatalog, INSTALL_TOOLS, isToolEnabled, toggleTool } from '../lib/bots';
+import { editorToolCatalog, isToolEnabled, toggleTool } from '../lib/bots';
 import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
 import { BotGenerationEditor } from './BotGenerationEditor';
@@ -189,7 +189,7 @@ export function BotEditor({
           <h3>可用工具</h3>
           <div className="tool-toggles">
             {editorToolCatalog(builtinTools).map((tool) => {
-              const defaultEnabled = builtinTools.filter((item) => !INSTALL_TOOLS.includes(item.name)).map((item) => item.name);
+              const defaultEnabled = builtinTools.map((item) => item.name);
               const enabled = isToolEnabled(draft.tools, tool.id, defaultEnabled);
               return (
                 <button

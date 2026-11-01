@@ -20,9 +20,8 @@ export const BOT_TOOLS = [
   { id: 'install_skill', label: '安装 Skill', hint: '从工作区目录安装技能并绑定（需确认）' },
 ];
 
-const HIDDEN_TOOLS = new Set(['install_mcp', 'install_skill']);
+const HIDDEN_TOOLS = new Set<string>();
 const TOOL_LABELS = new Map(BOT_TOOLS.map((tool) => [tool.id, tool]));
-export const INSTALL_TOOLS = ['install_mcp', 'install_skill'];
 
 /** 空清单 = 全量默认（除 install_* 外全部启用，toolNamesFor 的语义）。defaultEnabled 由调用方从内置工具目录算出。 */
 export function isToolEnabled(tools: string[], id: string, defaultEnabled: readonly string[]): boolean {

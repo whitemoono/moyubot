@@ -4,8 +4,8 @@ import { moyu } from '../lib/bridge';
 
 /** 依赖云电脑的工具（需要唤醒共享云主机执行）。 */
 const CLOUD_TOOLS = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action']);
-/** 系统级安装工具，不参与 Bot 工具列表展示。 */
-const HIDDEN_TOOLS = new Set(['install_mcp', 'install_skill']);
+/** 系统级安装工具：默认启用（安装动作仍需审批），这里不再单独隐藏。 */
+const HIDDEN_TOOLS = new Set<string>();
 
 export function ToolsView() {
   const { settings, activeWorkspace } = useMoyu();

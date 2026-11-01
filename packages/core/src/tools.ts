@@ -334,8 +334,8 @@ export interface ToolContext {
 }
 
 export function toolNamesFor(bot: Bot): string[] {
-  // Installation tools are opt-in: never part of the implicit "all tools" default.
-  const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => name !== 'install_mcp' && name !== 'install_skill');
+  // 空清单 = 全部内置工具（含安装类；安装动作本身仍需用户审批，计划模式会收走）。
+  const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
   const expanded = names.includes('schedule_task') ? [...names, 'list_tasks', 'update_task'] : [...names];
   if (bot.workspaceId !== 'workspace_local' && names.includes('cloud_exec')) expanded.push('desktop_action');
   return [...new Set(expanded)].filter((name) => bot.workspaceId !== 'workspace_local' || name !== 'desktop_action');
