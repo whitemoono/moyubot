@@ -203,6 +203,7 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
   const [savingOptions, setSavingOptions] = useState(false);
   const [editMenu, setEditMenu] = useState<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const pastedRef = useRef(false);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const provider = settings.providers.find((item) => item.id === bot.providerId);
@@ -212,14 +213,17 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
   useEffect(() => {
     const node = textarea.current;
     if (!node) return;
-    // 长文本：重置高度后 scrollTop 会停在任意处（看起来"只剩中间一段"）。
-    // 光标在末尾（输入/粘贴）贴底显示最新内容；编辑中部时按比例保持视口位置。
+    // 长文本：重置高度后 scrollTop 会停在任意处。三种情况贴底显示最新内容：
+    // 刚粘贴（onPaste 打标记）、光标在末尾、输入框未聚焦（重启/切换后恢复长草稿）。
+    // 只有"聚焦且编辑中部"才按比例保持视口位置。
     const beforeFull = node.scrollHeight;
     const beforeTop = node.scrollTop;
     const caret = node.selectionStart ?? node.value.length;
+    const pinBottom = pastedRef.current || caret >= node.value.length || document.activeElement !== node;
+    pastedRef.current = false;
     node.style.height = 'auto';
     node.style.height = `${Math.min(node.scrollHeight, 220)}px`;
-    if (caret >= node.value.length) {
+    if (pinBottom) {
       node.scrollTop = node.scrollHeight;
     } else if (beforeFull > node.clientHeight) {
       const fraction = beforeTop / Math.max(1, beforeFull - node.clientHeight);
@@ -340,6 +344,9 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
             if (files.length) {
               event.preventDefault();
               void readFiles(files);
+              pastedRef.current = false;
+            } else {
+              pastedRef.current = true;
             }
           }}
           onKeyDown={(event) => {
