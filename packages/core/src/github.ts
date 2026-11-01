@@ -92,13 +92,20 @@ export class GitHubClient {
     };
   }
 
-  /** ② 流程第一步：确保存在专用的私有工作区仓库（moyubot-workspace），已存在则复用。 */
+  /** ② 流程第一步：确保存在专用的私有工作区仓库（moyubot-workspace 或 MoyuBot-Codespace），已存在则复用；都没有才新建私有库。 */
   async ensureWorkspaceRepo(token: string, name = 'moyubot-workspace'): Promise<{ fullName: string; id: number; created: boolean }> {
     const user = await this.getUser(token);
-    const existing = await fetch(`${API}/repos/${user.login}/${name}`, { headers: this.headers(token) });
-    if (existing.ok) {
-      const repo = await existing.json();
-      return { fullName: String(repo.full_name), id: Number(repo.id), created: false };
+    const candidates = [name, 'MoyuBot-Codespace'];
+    for (const candidate of candidates) {
+      const existing = await fetch(`${API}/repos/${user.login}/${candidate}`, { headers: this.headers(token) });
+      if (existing.ok) {
+        const repo = await existing.json();
+        if (!repo.private) {
+          const patch = await fetch(`${API}/repos/${user.login}/${candidate}`, { method: 'PATCH', headers: { ...this.headers(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ private: true }) });
+          if (!patch.ok) throw new Error(`仓库 ${candidate} 是公开的，且自动转私失败（${patch.status}）——请在 GitHub 上手动转私有`);
+        }
+        return { fullName: String(repo.full_name), id: Number(repo.id), created: false };
+      }
     }
     const res = await fetch(`${API}/user/repos`, {
       method: 'POST',
