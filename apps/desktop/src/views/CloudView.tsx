@@ -61,6 +61,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   // GitHub Codespaces（实验）：复用本机 Git 已登录的 GitHub 授权（无需设备码流程），连接 + 列出 + SSH 密钥
   const [ghConnect, setGhConnect] = useState<{ user: GitHubUser; codespaces: { name: string; state: string; repository: string }[] } | undefined>(undefined);
   const [ghConnecting, setGhConnecting] = useState(false);
+  const [ghBusy, setGhBusy] = useState(false);
   const [sshKey, setSshKey] = useState<{ publicKey: string; registered: boolean; manual?: boolean; manualUrl?: string; error?: string } | undefined>(undefined);
   const [ghError, setGhError] = useState('');
   const [ghFallback, setGhFallback] = useState('');
