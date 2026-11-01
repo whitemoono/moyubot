@@ -32,7 +32,7 @@ const templateOptions = (driver: string) => TEMPLATE_OPTIONS[driver] ?? TEMPLATE
 const driverLabel = (driver: string) => DRIVER_LABEL[driver] ?? driver;
 // Default API base URL per driver: InstaBox ships a hosted endpoint; E2B official cloud uses an empty baseUrl.
 const defaultBaseUrl = (driver: string) => (driver === 'instabox' ? 'https://api.instabox.sh' : '');
-const connection = (cloud: AppSettings['cloud']) => ({ driver: cloud.driver, baseUrl: cloud.baseUrl, machineName: cloud.machineName, templateId: cloud.templateId, idleSuspendMinutes: cloud.idleSuspendMinutes, autoSuspendAfterSeconds: cloud.autoSuspendAfterSeconds, wakeOnDemand: cloud.wakeOnDemand });
+const connection = (cloud: AppSettings['cloud']) => ({ driver: cloud.driver, baseUrl: cloud.baseUrl, e2bDomain: cloud.e2bDomain, machineName: cloud.machineName, templateId: cloud.templateId, idleSuspendMinutes: cloud.idleSuspendMinutes, autoSuspendAfterSeconds: cloud.autoSuspendAfterSeconds, wakeOnDemand: cloud.wakeOnDemand });
 
 export function CloudView(props: { active?: boolean; onDirty?: (value: boolean) => void }) {
   const { activeWorkspace } = useMoyu();
@@ -93,6 +93,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
     try {
       if (!draft.machineName.trim()) throw new Error('请填写机器名称');
       const baseUrl = draft.baseUrl.trim().replace(/\/+$/, '');
+      const e2bDomain = draft.driver === 'e2b' ? (draft.e2bDomain ?? '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '') : undefined;
       // E2B official cloud works with an empty apiUrl; self-hosted needs a valid URL.
       if (baseUrl) {
         const url = new URL(baseUrl);
@@ -100,7 +101,10 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
       } else if (draft.driver !== 'e2b') {
         throw new Error('请填写 API 地址');
       }
-      const next = { ...draft, machineName: draft.machineName.trim(), baseUrl };
+      // 自建 E2B 必须同时提供控制面地址和沙箱域名，否则连得上 API 却打不开沙箱端口。
+      if (draft.driver === 'e2b' && e2bDomain && !baseUrl) throw new Error('自建 E2B 需要同时填写 API 地址');
+      if (draft.driver === 'e2b' && baseUrl && !e2bDomain) throw new Error('自建 E2B 需要同时填写沙箱域名（如 yourdomain.com）');
+      const next = { ...draft, machineName: draft.machineName.trim(), baseUrl, e2bDomain };
       await saveCloud(next, apiKey.trim() || undefined);
       setDraft(next); setApiKey('');
     } catch (error) { toast((error as Error).message, 'error'); }
@@ -138,9 +142,10 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
       <div className="computer-subnav" role="tablist" aria-label="云电脑页面"><button type="button" role="tab" id="computer-tab-connection" aria-controls="computer-panel-connection" aria-selected={tab === 'connection'} onClick={() => setTab('connection')} onKeyDown={(e) => { if (e.key === 'ArrowRight') { setTab('terminal'); document.getElementById('computer-tab-terminal')?.focus(); } }}><Icon name="sliders" size={14} />连接与策略</button><button type="button" role="tab" id="computer-tab-terminal" aria-controls="computer-panel-terminal" aria-selected={tab === 'terminal'} onClick={() => setTab('terminal')} onKeyDown={(e) => { if (e.key === 'ArrowLeft') { setTab('connection'); document.getElementById('computer-tab-connection')?.focus(); } }}><Icon name="terminal" size={14} />云终端</button><span>{cloud.machine?.id ?? '尚未分配机器'}</span></div>
       <div id="computer-panel-connection" role="tabpanel" aria-labelledby="computer-tab-connection" hidden={tab !== 'connection'} className="computer-config">
         <section className="computer-card"><header><Icon name="plug" size={16} /><h4>连接配置</h4><span>{secrets.cloudKey ? '密钥已保存' : draft.driver === 'mock' ? '无需密钥' : '等待连接'}</span></header><fieldset disabled={saving || acting || executing || transitioning} className="computer-fields">
-          <div className="computer-fields__pair"><Field label="运行环境"><Select label="云电脑驱动" value={draft.driver} onChange={(value) => patch({ driver: value as typeof draft.driver, templateId: templateOptions(value)[0].value, baseUrl: defaultBaseUrl(value) })} options={DRIVER_OPTIONS} /></Field><Field label="环境模板"><Select label="云电脑模板" value={draft.templateId} onChange={(value) => patch({ templateId: value })} options={templateOptions(draft.driver)} /></Field></div>
+          <div className="computer-fields__pair"><Field label="运行环境"><Select label="云电脑驱动" value={draft.driver} onChange={(value) => patch({ driver: value as typeof draft.driver, templateId: templateOptions(value)[0].value, baseUrl: defaultBaseUrl(value), e2bDomain: value === 'e2b' ? draft.e2bDomain : undefined })} options={DRIVER_OPTIONS} /></Field><Field label="环境模板"><Select label="云电脑模板" value={draft.templateId} onChange={(value) => patch({ templateId: value })} options={templateOptions(draft.driver)} /></Field></div>
           <Field label="机器名称"><input className="input" aria-label="云电脑机器名" value={draft.machineName} onChange={(e) => patch({ machineName: e.target.value })} /></Field>
-          <Field label="API 地址" hint={draft.driver === 'e2b' ? 'E2B 官方云留空即可；自建填你的 API 地址。' : undefined}><input className="input mono" aria-label="云电脑 API 地址" value={draft.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} placeholder={draft.driver === 'e2b' ? '留空 = E2B 官方云' : ''} /></Field>
+          <Field label="API 地址" hint={draft.driver === 'e2b' ? 'E2B 官方云留空即可；自建填控制面地址（如 https://api.yourdomain.com）。' : undefined}><input className="input mono" aria-label="云电脑 API 地址" value={draft.baseUrl} onChange={(e) => patch({ baseUrl: e.target.value })} spellCheck={false} placeholder={draft.driver === 'e2b' ? '留空 = E2B 官方云' : ''} /></Field>
+          {draft.driver === 'e2b' ? <Field label="沙箱域名（仅自建）" hint="自建时填沙箱访问域名，官方云留空。形如 yourdomain.com（不含协议）。"><input className="input mono" aria-label="E2B 沙箱域名" value={draft.e2bDomain ?? ''} onChange={(e) => patch({ e2bDomain: e.target.value })} spellCheck={false} placeholder="留空 = 官方云；自建填 yourdomain.com" /></Field> : null}
           <Field label={`${driverLabel(draft.driver)} API Key`} hint={secrets.cloudKey ? '留空保留已保存密钥。' : draft.driver === 'mock' ? '演示模式无需填写，密钥在本机独立保存。' : draft.driver === 'e2b' ? 'E2B 控制台获取；保存在本机。' : '密钥在本机独立保存。'}><input className="input mono" aria-label="云电脑 API Key" autoComplete="new-password" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={secrets.cloudKey ? '••••••••••••••••' : draft.driver === 'e2b' ? 'e2b_…' : 'ibk_…'} /></Field>
         </fieldset></section>
         <section className="computer-card"><header><Icon name="moon" size={16} /><h4>运行策略</h4><span>按需运行</span></header><div className="computer-policy">
