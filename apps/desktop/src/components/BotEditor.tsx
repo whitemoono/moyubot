@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ApprovalPolicy, Bot, ProviderConfig } from '@moyu/core';
 import { moyu } from '../lib/bridge';
 import { useMoyu } from '../state';
 import { Button, Field, Segmented, Sheet } from './Glass';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
-import { editorToolCatalog, isToolEnabled, toggleTool } from '../lib/bots';
+import { editorToolCatalog, INSTALL_TOOLS, isToolEnabled, toggleTool } from '../lib/bots';
 import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
 import { BotGenerationEditor } from './BotGenerationEditor';
@@ -28,6 +28,8 @@ export function BotEditor({
 }) {
   const { secrets, saveProviderKey, toast } = useMoyu();
   const [draft, setDraft] = useState<Bot>(initial);
+  const [builtinTools, setBuiltinTools] = useState<{ name: string; description?: string }[]>([]);
+  useEffect(() => { let active = true; void moyu().listTools().then((tools) => { if (active) setBuiltinTools(tools); }).catch(() => {}); return () => { active = false; }; }, []);
   const [key, setKey] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -186,15 +188,16 @@ export function BotEditor({
         <section className="editor-block editor-block--wide">
           <h3>可用工具</h3>
           <div className="tool-toggles">
-            {editorToolCatalog().map((tool) => {
-              const enabled = isToolEnabled(draft.tools, tool.id);
+            {editorToolCatalog(builtinTools).map((tool) => {
+              const defaultEnabled = builtinTools.filter((item) => !INSTALL_TOOLS.includes(item.name)).map((item) => item.name);
+              const enabled = isToolEnabled(draft.tools, tool.id, defaultEnabled);
               return (
                 <button
                   key={tool.id}
                   type="button"
                   className={`tool-toggle ${enabled ? 'is-on' : ''}`}
                   onClick={() =>
-                    patch('tools', toggleTool(draft.tools, tool.id))
+                    patch('tools', toggleTool(draft.tools, tool.id, defaultEnabled))
                   }
                 >
                   <span className="tool-toggle__check">

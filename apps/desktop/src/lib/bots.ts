@@ -1,4 +1,4 @@
-import { TOOL_SCHEMAS, type Bot, type ProviderConfig } from '@moyu/core';
+import type { Bot, ProviderConfig } from '@moyu/core';
 
 export const BOT_TOOLS = [
   { id: 'cloud_exec', label: '执行电脑命令', hint: '在所属工作区的电脑上执行命令' },
@@ -22,25 +22,25 @@ export const BOT_TOOLS = [
 
 const HIDDEN_TOOLS = new Set(['install_mcp', 'install_skill']);
 const TOOL_LABELS = new Map(BOT_TOOLS.map((tool) => [tool.id, tool]));
-/** 空清单 = 全量默认：除 install_* 外全部启用（toolNamesFor 的语义）。 */
-export const DEFAULT_ENABLED_TOOLS = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !HIDDEN_TOOLS.has(name));
+export const INSTALL_TOOLS = ['install_mcp', 'install_skill'];
 
-export function isToolEnabled(tools: string[], id: string): boolean {
-  return tools.length ? tools.includes(id) : DEFAULT_ENABLED_TOOLS.includes(id);
+/** 空清单 = 全量默认（除 install_* 外全部启用，toolNamesFor 的语义）。defaultEnabled 由调用方从内置工具目录算出。 */
+export function isToolEnabled(tools: string[], id: string, defaultEnabled: readonly string[]): boolean {
+  return tools.length ? tools.includes(id) : defaultEnabled.includes(id);
 }
 
 /** 翻转一个工具的启用态；翻回"全量默认"时存 []，未来新增工具自动带上。 */
-export function toggleTool(tools: string[], id: string): string[] {
-  const set = new Set(tools.length ? tools : DEFAULT_ENABLED_TOOLS);
+export function toggleTool(tools: string[], id: string, defaultEnabled: readonly string[]): string[] {
+  const set = new Set(tools.length ? tools : defaultEnabled);
   if (set.has(id)) set.delete(id);
   else set.add(id);
   const list = [...set];
-  return list.length === DEFAULT_ENABLED_TOOLS.length && DEFAULT_ENABLED_TOOLS.every((name) => set.has(name)) ? [] : list;
+  return list.length === defaultEnabled.length && defaultEnabled.every((name) => set.has(name)) ? [] : list;
 }
 
-/** 编辑器目录：动态取自 TOOL_SCHEMAS（新工具自动出现），文案用 BOT_TOOLS 的手工标注。 */
-export function editorToolCatalog() {
-  return TOOL_SCHEMAS.map((tool) => ({
+/** 编辑器目录：内置工具清单 + BOT_TOOLS 的手工文案。 */
+export function editorToolCatalog(builtin: ReadonlyArray<{ name: string; description?: string }>) {
+  return builtin.map((tool) => ({
     id: tool.name,
     label: TOOL_LABELS.get(tool.name)?.label ?? tool.name,
     hint: TOOL_LABELS.get(tool.name)?.hint ?? (tool.description ?? '').slice(0, 50),
