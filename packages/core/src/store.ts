@@ -253,6 +253,7 @@ export class Store {
     if (!this.settings.workspaces.some((item) => item.id === this.settings.activeWorkspaceId)) this.settings.activeWorkspaceId = this.settings.workspaces[0]?.id;
     this.persistSettings();
     this.loadConversations();
+    this.sweepInterruptedMessages();
     for (const bot of this.settings.bots) this.botConversation(bot.id);
     this.usage = new UsageLedger(dataDir);
     this.usage.backfill(this.conversations.values(), this.settings.bots);
@@ -435,6 +436,21 @@ export class Store {
   }
 
   // ----- conversations -----
+  /** 启动清扫：上次运行被中断（进程退出/崩溃）留下的 streaming 消息不可能再有下文，
+   *  统一标记为失败，避免界面永远显示"正在思考/正在回复"。 */
+  private sweepInterruptedMessages(): void {
+    for (const conversation of this.conversations.values()) {
+      let dirty = false;
+      for (const message of conversation.messages) {
+        if (!message.streaming) continue;
+        message.streaming = false;
+        message.error = message.error ?? '上次运行被中断，此回复未完成';
+        dirty = true;
+      }
+      if (dirty && !conversation.subagent) this.saveConversation(conversation.id);
+    }
+  }
+
   private loadConversations(): void {
     const dir = this.dir('conversations');
     for (const entry of fs.readdirSync(dir)) {
