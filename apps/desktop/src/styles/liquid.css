@@ -2746,3 +2746,5 @@ select {
 .head-pill__batch-head svg { flex: none; transition: transform 140ms ease; color: var(--text-faint); }
 .head-pill__batch-state { flex: none; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
 .head-pill__batch-body { padding: 2px 4px 4px 22px; }
+
+.computer-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }

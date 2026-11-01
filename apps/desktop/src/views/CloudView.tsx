@@ -81,7 +81,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
       await saveSettings({ github: { oauthClientId: clientId } });
       const flow: DeviceFlowStart = await moyu().githubLoginStart();
       setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri });
-      void moyu().openExternal(flow.verificationUri);
+      void moyu().openExternal(flow.verificationUri).catch(() => toast('未能自动打开浏览器，请点击下方链接手动打开', 'error'));
       const interval = Math.max(3, flow.intervalSeconds) * 1000;
       const deadline = Date.now() + flow.expiresInSeconds * 1000;
       const pollTimer = window.setInterval(async () => {
@@ -179,7 +179,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
                 <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
               </Field>
               {ghFlow ? (
-                <div className="computer-policy__row"><div><strong>授权码：{ghFlow.userCode}</strong><p>已打开 github.com/login/device，输入上方授权码并批准授权。</p></div><span>等待授权…</span></div>
+                <div className="computer-policy__row"><div><strong>授权码：{ghFlow.userCode}</strong><p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。</p></div><span>等待授权…</span></div>
               ) : (
                 <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
               )}
