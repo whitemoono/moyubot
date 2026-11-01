@@ -2731,3 +2731,16 @@ select {
 .head-pill__tick.is-error { background: color-mix(in srgb, #dc2626 16%, transparent); border-color: color-mix(in srgb, #dc2626 40%, transparent); color: #dc2626; }
 .head-pill__batch { padding: 2px 0; }
 .head-pill__batch + .head-pill__batch { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 6px; }
+
+.head-pill__batch-head {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 6px 8px; border: 0; border-radius: 9px;
+  background: transparent; color: var(--text); cursor: pointer; text-align: left;
+  font-size: 12px;
+}
+.head-pill__batch-head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.head-pill__batch-head .head-pill__batch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-pill__batch-head.is-open svg { transform: rotate(90deg); }
+.head-pill__batch-head svg { flex: none; transition: transform 140ms ease; color: var(--text-faint); }
+.head-pill__batch-state { flex: none; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+.head-pill__batch-body { padding: 2px 4px 4px 22px; }

@@ -245,6 +245,43 @@ function QuestionCard() {
   );
 }
 
+/** 子代理浮层：按批次折叠，只显示名字与状态计数，点击展开子任务明细。 */
+function SubagentPopover({ batches }: { batches: [string, { conversationId: string; tasks: string[]; children: Record<number, { task: string; state: 'running' | 'done' | 'error'; conversationId?: string }> }][] }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  return (
+    <div className="head-pill__subagents">
+      <p className="head-pill__caption">子代理 · 点击名字展开明细</p>
+      {batches.map(([callId, batch], batchIndex) => {
+        const children = Object.entries(batch.children);
+        const running = children.filter(([, child]) => child.state === 'running').length;
+        const errors = children.filter(([, child]) => child.state === 'error').length;
+        const done = children.filter(([, child]) => child.state === 'done').length;
+        const isOpen = !!expanded[callId];
+        const title = (batch.tasks[0] ?? '子代理').slice(0, 36);
+        return (
+          <div className="head-pill__batch" key={callId}>
+            <button type="button" className={`head-pill__batch-head ${isOpen ? 'is-open' : ''}`} onClick={() => setExpanded((prev) => ({ ...prev, [callId]: !prev[callId] }))}>
+              <Icon name="chevron" size={12} />
+              <span className="head-pill__batch-title">子代理 {batchIndex + 1} · {title}</span>
+              <span className="head-pill__batch-state">{running ? `⟳${running}` : ''}{errors ? ` ✗${errors}` : ''} ✓{done}/{children.length}</span>
+            </button>
+            {isOpen ? (
+              <div className="head-pill__batch-body">
+                {children.map(([index, child]) => (
+                  <div className="head-pill__row" key={`${callId}-${index}`}>
+                    <span className={`head-pill__tick ${child.state === 'done' ? 'is-done' : ''} ${child.state === 'error' ? 'is-error' : ''}`}>{child.state === 'done' ? '✓' : child.state === 'error' ? '✗' : '…'}</span>
+                    <span>{child.task}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Composer({ bot, home, replyTo, onClearReply, topSlot }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void; topSlot?: React.ReactNode }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
@@ -628,27 +665,12 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
             const children = batches.flatMap(([, batch]) => Object.values(batch.children));
             if (!children.length) return null;
             const running = children.filter((child) => child.state === 'running').length;
-            const done = children.filter((child) => child.state === 'done').length;
             return (
               <HeaderPill
                 align="right"
                 icon={<Icon name="users" size={13} />}
                 label={<span className="head-pill__count">{running ? `⟳ ${running}/${children.length}` : `子代理 ${children.length}`}</span>}
-                popover={
-                  <div className="head-pill__subagents">
-                    <p className="head-pill__caption">子代理 · {done} 完成 · {running} 运行中 · 共 {children.length}</p>
-                    {batches.map(([callId, batch]) => (
-                      <div key={callId} className="head-pill__batch">
-                        {Object.entries(batch.children).map(([index, child]) => (
-                          <div className="head-pill__row" key={`${callId}-${index}`}>
-                            <span className={`head-pill__tick ${child.state === 'done' ? 'is-done' : ''} ${child.state === 'error' ? 'is-error' : ''}`}>{child.state === 'done' ? '✓' : child.state === 'error' ? '✗' : '…'}</span>
-                            <span>{child.task}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                }
+                popover={<SubagentPopover batches={batches} />}
               />
             );
           })()}
