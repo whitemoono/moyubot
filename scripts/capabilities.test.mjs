@@ -169,8 +169,8 @@ test('cloud inventory is local-first: serves persisted list offline, survives pr
   let sleeping = true, failProbe = false, execs = 0, wakes = 0;
   store.writeCloudInventory({
     at: Date.now() - 10 * 60_000,
-    servers: [{ id: 'cloud-mcp-0', name: 'demo', transport: 'http', url: 'https://example.com/mcp', source: '云电脑' }],
-    skills: [{ id: 'cloud-skill-0', name: 'weekly-report', path: '/root/.claude/skills/weekly-report', source: '~/.claude/skills' }],
+    servers: [{ id: 'moyu-shared-mcp-0', name: 'demo', transport: 'http', url: 'https://example.com/mcp', source: '共享 · .moyu/shared' }],
+    skills: [{ id: 'moyu-shared-skill-0', name: 'weekly-report', path: '/data/moyubot/.moyu/shared/skills/weekly-report', source: '共享 · .moyu/shared' }],
   });
   const host = {
     status: () => ({ state: sleeping ? 'suspended' : 'ready' }),
@@ -318,5 +318,25 @@ test('一次性迁移：云机 claude 的 MCP/技能复制进 .moyu/shared，之
   assert.ok(inventory.servers.some(s => s.name === 'migrated-mcp' && s.source.includes('共享')));
   const probeCmd = execs.find(c => c.includes('const out={shared'));
   assert.ok(probeCmd && !probeCmd.includes('.claude'), '迁移后的探针不读 ~/.claude');
+  await manager.dispose();
+});
+
+test('persisted pre-moyu entries (claude-sourced) stay hidden until a fresh .moyu probe', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  store.writeCloudInventory({
+    at: Date.now() - 60_000,
+    servers: [{ id: 'claude-mcp-0', name: 'old', transport: 'http', url: 'https://x.example/mcp', source: 'claude（外部）' }],
+    skills: [{ id: 'claude-skill-0', name: 'old-skill', path: '/root/.claude/skills/old-skill', source: '~/.claude/skills' }],
+  });
+  const host = {
+    status: () => ({ state: 'suspended' }),
+    ensureAwake: async () => ({ id: 'fixture' }),
+    writeText: async () => {},
+    exec: async () => ({ stdout: '', stderr: 'offline', exitCode: 1, timedOut: false }),
+  };
+  const manager = new CapabilityManager(store, () => host);
+  const offline = await manager.inventoryCloud();
+  assert.equal(offline.servers.length, 0, '迁移前的 claude 条目不应再展示');
+  assert.equal(offline.skills.length, 0, '迁移前的 ~/.claude 技能不应再展示');
   await manager.dispose();
 });

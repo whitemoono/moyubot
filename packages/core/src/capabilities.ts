@@ -43,7 +43,12 @@ export class CapabilityManager {
   async inventoryCloud(force = false): Promise<{ servers: NonNullable<CapabilityStatus['cloudServers']>; skills: NonNullable<CapabilityStatus['cloudSkills']> }> {
     const empty = { servers: [], skills: [] };
     const host = this.cloud();
-    const cached = this.cloudInventory ?? this.store.readCloudInventory();
+    const raw = this.cloudInventory ?? this.store.readCloudInventory();
+    // 旧版清单可能含 .moyu 之前的条目（claude（外部）/~/.claude 来源/「云电脑」）：.moyu 时代不再展示，
+    // 读缓存时直接滤掉，避免云机睡眠期间一直显示迁移前的 claude 清单；等在线探测后由 .moyu 清单覆盖。
+    const cached = raw
+      ? { ...raw, servers: raw.servers.filter(s => s.source.startsWith('共享') || s.source.startsWith('自有')), skills: raw.skills.filter(s => s.source.startsWith('共享') || s.source.startsWith('自有')) }
+      : undefined;
     if (cached) this.cloudInventory = cached;
     if (!host || this.disposed) return cached ?? empty;
     const now = Date.now();
