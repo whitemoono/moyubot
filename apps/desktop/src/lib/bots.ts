@@ -8,6 +8,8 @@ export const BOT_TOOLS = [
   { id: 'remember', label: '写长期记忆', hint: '记住偏好与重要事项' },
   { id: 'recall', label: '查长期记忆', hint: '关键词检索记忆' },
   { id: 'schedule_task', label: '定时任务', hint: '通过对话创建、查询、修改和启停任务' },
+  { id: 'set_goal', label: '跨轮目标', hint: '记住这次要完成什么，跨多轮推进直到完成或受阻' },
+  { id: 'update_goal', label: '更新目标', hint: '标记目标完成或受阻，需要附上证据' },
   { id: 'web_fetch', label: '网页抓取', hint: '只读 https 页面' },
   { id: 'web_search', label: '网页搜索', hint: '返回标题/链接/摘要，默认 DuckDuckGo' },
   { id: 'spawn_agent', label: '子智能体', hint: '派只读的调研分身，并行分头查，不继承本对话历史' },

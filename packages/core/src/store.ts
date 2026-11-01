@@ -116,7 +116,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
         temperature: 0.7,
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         approvalPolicy: 'never',
-        tools: ['cloud_exec', 'cloud_read', 'cloud_write', 'generate_image', 'remember', 'recall', 'schedule_task'],
+        tools: [],
         image: {
           aspect: '1:1',
         },
