@@ -8,6 +8,14 @@ const DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const API = 'https://api.github.com';
 
+import { systemFetch } from './providers/transport';
+
+/** GitHub 的网络通道与供应商一致：跟随系统代理（桌面端注入 Chromium 网络）。 */
+async function http(input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> {
+  const transport = systemFetch();
+  return (transport ?? fetch)(input, init);
+}
+
 /** 申请的权限：管 Codespaces、从自己仓库创建、注册 SSH 公钥。 */
 export const GITHUB_SCOPES = 'codespace repo admin:public_key';
 
@@ -41,7 +49,7 @@ export class GitHubClient {
   constructor(private clientId: string) {}
 
   async startDeviceFlow(): Promise<DeviceFlowStart> {
-    const res = await fetch(DEVICE_CODE_URL, {
+    const res = await http(DEVICE_CODE_URL, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: this.clientId, scope: GITHUB_SCOPES }),
@@ -63,7 +71,7 @@ export class GitHubClient {
   }
 
   async pollDeviceFlow(deviceCode: string): Promise<DeviceFlowPoll> {
-    const res = await fetch(ACCESS_TOKEN_URL, {
+    const res = await http(ACCESS_TOKEN_URL, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: this.clientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
@@ -77,14 +85,14 @@ export class GitHubClient {
   }
 
   async getUser(token: string): Promise<GitHubUser> {
-    const res = await fetch(`${API}/user`, { headers: this.headers(token) });
+    const res = await http(`${API}/user`, { headers: this.headers(token) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message ?? `获取用户信息失败（${res.status}）`);
     return { login: String(data.login), name: data.name ? String(data.name) : undefined, avatarUrl: data.avatar_url ? String(data.avatar_url) : undefined };
   }
 
   async getQuota(token: string): Promise<CodespacesQuota> {
-    const res = await fetch(`${API}/user/codespaces/quota`, { headers: this.headers(token) });
+    const res = await http(`${API}/user/codespaces/quota`, { headers: this.headers(token) });
     if (res.status === 404) throw new Error('当前账号不支持 Codespaces（需要个人账号而非组织机器人）');
     const raw = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(raw.message ?? `获取额度失败（${res.status}）`);
@@ -102,17 +110,17 @@ export class GitHubClient {
     const user = await this.getUser(token);
     const candidates = [name, 'MoyuBot-Codespace'];
     for (const candidate of candidates) {
-      const existing = await fetch(`${API}/repos/${user.login}/${candidate}`, { headers: this.headers(token) });
+      const existing = await http(`${API}/repos/${user.login}/${candidate}`, { headers: this.headers(token) });
       if (existing.ok) {
         const repo = await existing.json();
         if (!repo.private) {
-          const patch = await fetch(`${API}/repos/${user.login}/${candidate}`, { method: 'PATCH', headers: { ...this.headers(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ private: true }) });
+          const patch = await http(`${API}/repos/${user.login}/${candidate}`, { method: 'PATCH', headers: { ...this.headers(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ private: true }) });
           if (!patch.ok) throw new Error(`仓库 ${candidate} 是公开的，且自动转私失败（${patch.status}）——请在 GitHub 上手动转私有`);
         }
         return { fullName: String(repo.full_name), id: Number(repo.id), created: false };
       }
     }
-    const res = await fetch(`${API}/user/repos`, {
+    const res = await http(`${API}/user/repos`, {
       method: 'POST',
       headers: { ...this.headers(token), 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, private: true, auto_init: true, description: 'MoyuBot 云电脑工作区（自动创建）' }),
@@ -124,7 +132,7 @@ export class GitHubClient {
 
   /** ② 流程第二步：从工作区仓库创建 Codespace（2 核 8GB）。 */
   async createCodespace(token: string, repositoryId: number, machine = 'basicLinux32gb'): Promise<{ name: string; state: string }> {
-    const res = await fetch(`${API}/user/codespaces`, {
+    const res = await http(`${API}/user/codespaces`, {
       method: 'POST',
       headers: { ...this.headers(token), 'Content-Type': 'application/json' },
       body: JSON.stringify({ repository_id: repositoryId, machine }),
@@ -136,7 +144,7 @@ export class GitHubClient {
 
   /** 列出账号下所有 Codespace（驱动选择用）。 */
   async listCodespaces(token: string): Promise<{ name: string; state: string; repository: string }[]> {
-    const res = await fetch(`${API}/user/codespaces?per_page=100`, { headers: this.headers(token) });
+    const res = await http(`${API}/user/codespaces?per_page=100`, { headers: this.headers(token) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message ?? `获取 Codespace 列表失败（${res.status}）`);
     return (data.codespaces ?? []).map((item: any) => ({ name: String(item.name), state: String(item.state), repository: String(item.repository?.full_name ?? '') }));

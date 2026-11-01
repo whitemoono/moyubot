@@ -103,7 +103,10 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
           } else if (poll.status === 'expired') {
             window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试');
           }
-        } catch (error) { window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError((error as Error).message); }
+        } catch {
+          // 网络波动不杀流程：GitHub 直连时好时坏，重试到授权码过期为止
+          setGhError('网络波动，正在重试…（授权码有效期内会自动继续）');
+        }
       }, interval);
     } catch (error) { setGhError((error as Error).message); setGhBusy(false); }
   };
