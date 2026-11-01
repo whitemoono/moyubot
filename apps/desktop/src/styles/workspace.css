@@ -647,15 +647,15 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .chat:not(.chat--home) .messages__inner { padding-bottom: calc(var(--composer-height, 44px) + 40px); }
 .composer__preferences { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .chat .composer-wrap--floating { position: absolute; z-index: 5; bottom: 18px; left: 50%; transform: translateX(-50%); max-width: 848px; margin: 0; padding: 0 34px; background: transparent; border: 0; box-shadow: none; pointer-events: none; }
-:root .chat .composer--compact { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 30px; grid-template-areas: 'attach input options actions'; align-items: end; column-gap: 7px; row-gap: 6px; min-height: 42px; padding: 5px 6px 5px 10px; border-radius: 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--line-strong); box-shadow: 0 2px 8px #0000000a; pointer-events: auto; }
+:root .chat .composer--compact { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'input input input input' 'attach options options actions'; align-items: end; column-gap: 7px; row-gap: 6px; min-height: 42px; padding: 5px 6px 5px 10px; border-radius: 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--line-strong); box-shadow: 0 2px 8px #0000000a; pointer-events: auto; }
 :root[data-theme="light"] .chat .composer--compact { background: #fffffff5; }
 .chat .composer--compact:focus-within { border-color: color-mix(in srgb, var(--text) 28%, transparent); box-shadow: 0 2px 10px #00000016; }
-.chat .composer--compact.has-attachments { grid-template-areas: 'files files files files' 'attach input options actions'; }
+.chat .composer--compact.has-attachments { grid-template-areas: 'files files files files' 'input input input input' 'attach options options actions'; }
 .composer--compact .attachment-row { grid-area: files; padding: 5px 7px 3px; }
 .composer__leading { grid-area: attach; display: flex; align-items: center; gap: 2px; }
 .chat .composer--compact .composer__input { grid-area: input; min-width: 0; width: 100%; min-height: 30px; padding: 3px 2px; font-size: 13px; line-height: 24px; }
 .composer--compact .composer__bar { display: contents; }
-.composer__options { grid-area: options; position: relative; min-width: 0; align-self: end; }
+.composer__options { grid-area: options; position: relative; min-width: 0; align-self: end; justify-self: end; }
 .composer__options .composer-model-picker { width: auto; max-width: min(235px, 28vw); }
 .composer-model-picker .picker__trigger, .composer-policy-picker .picker__trigger { height: 30px; min-height: 30px; padding: 0 6px; gap: 5px; border: 0; background: transparent; box-shadow: none; font-size: 11px; color: var(--text-dim); transition: color 160ms, background 160ms; }
 .composer-model-picker .picker__trigger svg { width: 10px; height: 10px; flex-shrink: 0; }
