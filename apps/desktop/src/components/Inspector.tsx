@@ -18,6 +18,9 @@ type Tab = typeof TABS[number]['id'];
 export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: () => void; onCreateBot: () => void; onOpenTerminal: () => void }) {
   const { cloud: cloudStatus, local, activeWorkspace, cloudAction, bot, settings, toast, conversation, compacting, setView, runningGroupIds, runningBotIds, saveBot } = useMoyu();
   const [savingCapabilities, setSavingCapabilities] = useState(false);
+  // 空 tools 清单 = 全部内置工具启用；内置工具数通过 IPC 取，避免跨包常量导入
+  const [toolCount, setToolCount] = useState(0);
+  useEffect(() => { let active = true; void moyu().listTools().then((tools) => { if (active) setToolCount(tools.length); }).catch(() => {}); return () => { active = false; }; }, []);
   const isGroup = !!conversation?.group;
   const isLocal = activeWorkspace?.kind === 'local';
   const cloud = isLocal ? local : cloudStatus;
@@ -98,7 +101,7 @@ export function Inspector({ onClose, onCreateBot, onOpenTerminal }: { onClose: (
             <div><dt>供应商</dt><dd>{provider?.name ?? '未绑定'}</dd></div>
             <div><dt>模型</dt><dd>{bot?.model || '未选择'}</dd></div>
             <div><dt>权限</dt><dd>{bot?.approvalPolicy === 'ask' ? '每次确认' : '自动执行'}</dd></div>
-            <div><dt>工具</dt><dd>{bot?.tools.length ?? 0} 个已启用</dd></div>
+            <div><dt>工具</dt><dd>{bot ? (bot.tools.length ? bot.tools.length : toolCount) : 0} 个已启用</dd></div>
           </dl></section></>}
           <section className="inspector-section context-card"><h3>持续对话</h3>
             <p>{compacting ? '正在整理上下文与长期记忆…' : isGroup ? '群成员共享本群对话，较早的内容会自动整理。' : '每个 Bot 一个对话，较早的内容会自动整理。'}</p>
