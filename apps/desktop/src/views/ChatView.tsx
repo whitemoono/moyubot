@@ -207,6 +207,44 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 
 const humanSize = (bytes?: number) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+/** Codex 式提问卡：贴在输入框上方，非全屏遮罩；只处理当前会话的提问（其他会话走 App 的全局兜底）。 */
+function QuestionCard() {
+  const { question, answerQuestion } = useMoyu();
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => { setDraft(''); if (question) window.setTimeout(() => inputRef.current?.focus(), 60); }, [question?.id]);
+  if (!question) return null;
+  const skip = () => void answerQuestion({ requestId: question.id, answer: '' });
+  const send = () => { if (draft.trim()) void answerQuestion({ requestId: question.id, answer: draft }); };
+  return (
+    <div className="question-card" role="region" aria-label="Bot 需要你的回答">
+      <div className="question-card__head">
+        <div><strong>Bot 需要你的回答</strong><small>它查不到，或需要你拍板</small></div>
+        <IconButton name="close" label="跳过并关闭" onClick={skip} />
+      </div>
+      <p className="question-card__question">{question.question}</p>
+      <textarea
+        ref={inputRef}
+        className="question__input"
+        value={draft}
+        rows={3}
+        placeholder="输入你的回答；留空发送 = 跳过"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send(); }
+          if (event.key === 'Escape') { event.preventDefault(); skip(); }
+        }}
+      />
+      <div className="question-card__foot">
+        <span className="question-card__hint">Ctrl + Enter 发送 · Esc 跳过</span>
+        <span className="spacer" />
+        <Button size="sm" variant="ghost" onClick={skip}>跳过</Button>
+        <Button size="sm" variant="primary" icon="send" disabled={!draft.trim()} onClick={send}>发送回答</Button>
+      </div>
+    </div>
+  );
+}
+
 function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
@@ -469,7 +507,7 @@ function EmptyState({ bot }: { bot: Bot }) {
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, toast } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -532,6 +570,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
         </div>
       </div>
 
+      {question?.conversationId === conversation.id ? <QuestionCard /> : null}
       <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} />
       </div>
       {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}

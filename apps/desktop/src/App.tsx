@@ -53,10 +53,11 @@ function ApprovalSheet() {
 }
 
 function QuestionSheet() {
-  const { question, answerQuestion } = useMoyu();
+  const { question, answerQuestion, conversation } = useMoyu();
   const [draft, setDraft] = useState('');
   useEffect(() => { setDraft(''); }, [question?.id]);
-  if (!question) return null;
+  // 当前会话的提问由聊天页输入框上方的浮动卡片处理；这里只兜底"提问属于别的会话"的场景。
+  if (!question || question.conversationId === conversation?.id) return null;
   const send = () => { if (draft.trim()) void answerQuestion({ requestId: question.id, answer: draft }); };
   return (
     <Sheet
