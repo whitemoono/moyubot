@@ -43,6 +43,7 @@ export interface ContextUsageSnapshot {
 
 /** 按工具调用 id 聚合的子任务进度：界面用它显示"第几个在跑、第几个已完成"。 */
 export interface SubagentProgress {
+  conversationId: string;
   tasks: string[];
   children: Record<number, { task: string; state: 'running' | 'done' | 'error'; conversationId?: string }>;
 }
@@ -469,8 +470,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       }
       if (event.type === 'subagent') {
         setSubagents((previous) => {
-          const current = previous[event.callId] ?? { tasks: [], children: {} };
-          if (event.status === 'start') return { ...previous, [event.callId]: { tasks: event.tasks, children: {} } };
+          const current = previous[event.callId] ?? { conversationId: event.conversationId, tasks: [], children: {} };
+          if (event.status === 'start') return { ...previous, [event.callId]: { conversationId: event.conversationId, tasks: event.tasks, children: {} } };
           if (event.status === 'child') {
             return { ...previous, [event.callId]: { ...current, children: { ...current.children, [event.index]: { task: event.task, state: event.state, conversationId: event.childConversationId ?? current.children[event.index]?.conversationId } } } };
           }

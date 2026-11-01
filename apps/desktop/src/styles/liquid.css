@@ -2727,3 +2727,7 @@ select {
 }
 .head-pill__tick.is-done { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .head-pill__rounds { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+
+.head-pill__tick.is-error { background: color-mix(in srgb, #dc2626 16%, transparent); border-color: color-mix(in srgb, #dc2626 40%, transparent); color: #dc2626; }
+.head-pill__batch { padding: 2px 0; }
+.head-pill__batch + .head-pill__batch { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 6px; }

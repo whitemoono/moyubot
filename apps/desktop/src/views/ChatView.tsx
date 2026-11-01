@@ -535,7 +535,7 @@ function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: Reac
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -623,6 +623,35 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
               }
             />
           ) : null}
+          {(() => {
+            const batches = Object.entries(subagents).filter(([, batch]) => batch.conversationId === conversation.id);
+            const children = batches.flatMap(([, batch]) => Object.values(batch.children));
+            if (!children.length) return null;
+            const running = children.filter((child) => child.state === 'running').length;
+            const done = children.filter((child) => child.state === 'done').length;
+            return (
+              <HeaderPill
+                align="right"
+                icon={<Icon name="users" size={13} />}
+                label={<span className="head-pill__count">{running ? `⟳ ${running}/${children.length}` : `子代理 ${children.length}`}</span>}
+                popover={
+                  <div className="head-pill__subagents">
+                    <p className="head-pill__caption">子代理 · {done} 完成 · {running} 运行中 · 共 {children.length}</p>
+                    {batches.map(([callId, batch]) => (
+                      <div key={callId} className="head-pill__batch">
+                        {Object.entries(batch.children).map(([index, child]) => (
+                          <div className="head-pill__row" key={`${callId}-${index}`}>
+                            <span className={`head-pill__tick ${child.state === 'done' ? 'is-done' : ''} ${child.state === 'error' ? 'is-error' : ''}`}>{child.state === 'done' ? '✓' : child.state === 'error' ? '✗' : '…'}</span>
+                            <span>{child.task}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                }
+              />
+            );
+          })()}
         </h2>
       </header>
 
