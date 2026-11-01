@@ -2693,7 +2693,7 @@ select {
 .chat__head, .chat__title { overflow: visible; }
 .chat__head { position: relative; z-index: 30; }
 .chat__title { display: inline-flex; align-items: center; gap: 8px; }
-.head-pill { position: relative; display: inline-flex; }
+.head-pill { position: relative; display: inline-flex; pointer-events: auto; }
 .head-pill__chip {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 10px; border-radius: 999px;
