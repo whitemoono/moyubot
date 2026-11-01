@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AppSettings, CodespacesQuota, DeviceFlowPoll, DeviceFlowStart, GitHubUser } from '@moyu/core';
+import type { AppSettings } from '@moyu/core';
 import { CLOUD_META, formatDuration } from '../lib/format';
 import { moyu } from '../lib/bridge';
 import { useMoyu } from '../state';
@@ -58,95 +58,6 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
   const meta = CLOUD_META[cloud.state];
   const patch = (value: Partial<typeof draft>) => setDraft((previous) => ({ ...previous, ...value }));
 
-  // GitHub Codespaces（实验）：复用本机 Git 已登录的 GitHub 授权（无需设备码流程），连接 + 列出 + SSH 密钥
-  const [ghConnect, setGhConnect] = useState<{ user: GitHubUser; codespaces: { name: string; state: string; repository: string }[] } | undefined>(undefined);
-  const [ghConnecting, setGhConnecting] = useState(false);
-  const [ghBusy, setGhBusy] = useState(false);
-  const [sshKey, setSshKey] = useState<{ publicKey: string; registered: boolean; manual?: boolean; manualUrl?: string; error?: string } | undefined>(undefined);
-  const [ghError, setGhError] = useState('');
-  const [ghFallback, setGhFallback] = useState('');
-  const [execCommand, setExecCommand] = useState('');
-  const [execOnline, setExecOnline] = useState<boolean | undefined>(undefined);
-  // 设备码登录（为没有 Git 登录的用户准备的通用入口）
-  const [ghClientId, setGhClientId] = useState(() => settings.github?.oauthClientId ?? '');
-  const [ghFlow, setGhFlow] = useState<{ userCode: string; deviceCode: string; verifyUrl: string; expiresAt: number } | null>(null);
-  const [ghCopied, setGhCopied] = useState(false);
-  const [ghNow, setGhNow] = useState(Date.now());
-  const [showDeviceFlow, setShowDeviceFlow] = useState(false);
-  useEffect(() => {
-    if (!ghFlow) return;
-    const timer = window.setInterval(() => setGhNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [ghFlow?.deviceCode]);
-  const ghRemaining = ghFlow ? Math.max(0, ghFlow.expiresAt - ghNow) : 0;
-  const openUrl = (url: string) => { void moyu().openExternal(url).catch(() => toast('自动打开失败：请复制链接到浏览器 ' + url, 'error')); };
-  const installExec = async () => { try { setExecCommand((await moyu().githubExecInstall()).command); } catch (error) { setGhError((error as Error).message); } };
-  const pingExec = async () => { try { setExecOnline((await moyu().githubExecPing()).online); } catch (error) { setGhError((error as Error).message); } };
-  const connectGh = async () => {
-    setGhError(''); setGhConnecting(true);
-    try {
-      setGhConnect(await moyu().githubConnect());
-      setSshKey(undefined);
-      void moyu().githubRegisterKey('generate').then((r) => setSshKey({ publicKey: r.publicKey ?? '', registered: r.registered, manual: !r.registered, manualUrl: r.manualUrl, error: r.error })).catch(() => setSshKey(undefined));
-    }
-    catch (error) {
-      setGhError((error as Error).message);
-      setShowDeviceFlow(true);
-    }
-    finally { setGhConnecting(false); }
-  };
-  const copyUserCode = async () => {
-    if (!ghFlow) return;
-    try { await navigator.clipboard.writeText(ghFlow.userCode); setGhCopied(true); window.setTimeout(() => setGhCopied(false), 1600); }
-    catch { toast('复制失败，请手动选中复制', 'error'); }
-  };
-  const startGhLogin = async () => {
-    setGhError(''); setGhBusy(true);
-    try {
-      const clientId = ghClientId.trim();
-      await saveSettings({ github: { oauthClientId: clientId } });
-      const flow: DeviceFlowStart = await moyu().githubLoginStart();
-      const ghExpiresAt = Date.now() + flow.expiresInSeconds * 1000;
-      setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri, expiresAt: ghExpiresAt });
-      openUrl(flow.verificationUri);
-      const interval = Math.max(3, flow.intervalSeconds) * 1000;
-      const deadline = ghExpiresAt;
-      const pollTimer = window.setInterval(async () => {
-        if (Date.now() > deadline) { window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试'); return; }
-        try {
-          const poll: DeviceFlowPoll = await moyu().githubLoginPoll(clientId, flow.deviceCode);
-          if (poll.status === 'done' && poll.accessToken) {
-            window.clearInterval(pollTimer);
-            await moyu().githubTokenStore(poll.accessToken);
-            setGhFlow(null); setGhBusy(false);
-            toast('GitHub 已登录');
-            await connectGh();
-          } else if (poll.status === 'expired') {
-            window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试');
-          }
-        } catch {
-          setGhError('网络波动，正在重试…（授权码有效期内会自动继续）');
-        }
-      }, interval);
-    } catch (error) { setGhError((error as Error).message); setGhBusy(false); }
-  };
-  const registerSshKey = async () => {
-    if (!sshKey) return;
-    try {
-      const result = await moyu().githubRegisterKey(sshKey.publicKey);
-      if (result.registered) { setSshKey({ ...sshKey, registered: true }); toast('SSH 公钥已注册到 GitHub'); }
-      else { setSshKey({ ...sshKey, registered: false, manual: true, manualUrl: result.manualUrl, error: result.error }); toast('自动注册需要额外权限——点击卡片里的 github.com/settings/keys 链接手动添加', 'error'); }
-    } catch (error) { toast((error as Error).message, 'error'); }
-  };
-  const createCodespace = async () => {
-    setGhError('');
-    try {
-      const result = await moyu().githubCreateCodespace();
-      if (result.created) { toast(`Codespace 创建中：${result.name}`); void connectGh(); }
-      else { setGhError('当前授权没有创建 Codespace 的权限——点下方链接在网页创建'); setGhFallback(result.fallbackUrl ?? 'https://github.com/codespaces/new'); }
-    } catch (error) { setGhError((error as Error).message); }
-  };
-  useEffect(() => { if (active) void connectGh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [active]);
   useEffect(() => {
     if (!active || !awake) return;
     setNow(Date.now());
@@ -210,54 +121,6 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
           <div className="computer-policy__row"><div><strong>服务端空闲休眠</strong><p>由云主机自动保存运行现场</p></div></div><Select label="空闲休眠" disabled={saving || acting || executing || transitioning} value={String(draft.autoSuspendAfterSeconds)} options={IDLE_OPTIONS} onChange={(value) => patch({ autoSuspendAfterSeconds: Number(value) })} />
           <p className="computer-policy__note"><Icon name="folder" size={13} />休眠保留工作文件，唤醒后继续使用。</p>
         </div></section>
-        <section className="computer-card"><header><Icon name="key" size={16} /><h4>GitHub Codespaces</h4><span>{ghConnect ? `已连接 · ${ghConnect.user.login}` : ghConnecting ? '连接中…' : '未连接'}</span></header>
-          {ghConnect ? (
-            <div className="computer-policy">
-              <div className="computer-policy__row"><div><strong>Codespaces（{ghConnect.codespaces.length}）</strong><p>来自你的 GitHub 账号；没有的话点「创建 Codespace」</p></div><Button size="sm" variant="ghost" onClick={() => void connectGh()}>刷新</Button></div>
-              {ghConnect.codespaces.map((item) => (
-                <div className="computer-policy__row" key={item.name}><div><strong>{item.name}</strong><p>{item.repository} · {item.state}</p></div></div>
-              ))}
-              <div className="computer-policy__row"><div><strong>SSH 公钥</strong><p>{sshKey ? (sshKey.registered ? '已注册到你的 GitHub 账号，Codespaces 将信任这个密钥' : sshKey.manual ? <span>自动注册需要额外权限——<a className="computer-link" href={sshKey.manualUrl ?? 'https://github.com/settings/keys'} onClick={(event) => { event.preventDefault(); openUrl(sshKey.manualUrl ?? 'https://github.com/settings/keys'); }}>点此在网页添加公钥</a>（或复制上面公钥手动粘贴）</span> : sshKey.error ?? '未注册') : '生成中…'}</p></div><Button size="sm" variant="ghost" disabled={!sshKey} onClick={() => void navigator.clipboard.writeText(sshKey?.publicKey ?? '')}>复制公钥</Button></div>
-              {sshKey?.publicKey ? <pre className="head-pill__objective" style={{ maxHeight: 96 }}>{sshKey.publicKey}</pre> : null}
-              <div className="computer-policy__row"><div><strong>创建 Codespace</strong><p>2 核 8GB，用于桌面环境；创建后出现在上方列表</p></div><Button size="sm" icon="plus" onClick={() => void createCodespace()}>创建</Button></div>
-              {ghError ? <p className="capability-error">{ghError}</p> : null}
-              {ghFallback ? <p><a className="computer-link" href={ghFallback} onClick={(event) => { event.preventDefault(); openUrl(ghFallback); }}>点此在网页创建 Codespace（github.com/codespaces/new）</a></p> : null}
-              <div className="computer-policy__row"><div><strong>执行服务</strong><p>已随 Codespace 配置自动启动（每次开机自动运行，InstaBox 式体验）。现有的这个 Codespace 需一次性重建：在其 VS Code 里按 F1 → 运行 Codespaces: Rebuild Container</p></div><Button size="sm" variant="ghost" onClick={() => void installExec()}>手动启动命令</Button></div>
-              {execCommand ? <pre className="head-pill__objective" style={{ maxHeight: 120, overflow: 'auto' }}>{execCommand}</pre> : null}
-              <div className="computer-policy__row"><div><strong>执行通道</strong><p>{execOnline === undefined ? '未检测' : execOnline ? '在线 ✓——云端工作区 Bot 的命令将在这台 Codespace 执行' : '不在线（服务未安装或 Codespace 已关机）'}</p></div><Button size="sm" variant="ghost" onClick={() => void pingExec()}>检测</Button></div>
-              <Toggle checked={!!settings.github?.codespacesActive} disabled={!execOnline} onChange={(value) => { void saveSettings({ github: { ...settings.github, codespacesActive: value } }).catch((error: Error) => toast(error.message, 'error')); }} label="把 Codespace 用作云电脑" hint="启用后云端工作区 Bot 的命令与文件在这台 Codespace 执行（InstaBox 不受影响，可随时关回）" />
-            </div>
-          ) : (
-            <div className="computer-policy">
-              <p className="computer-policy__note"><Icon name="key" size={13} />优先自动使用你电脑上已登录的 GitHub（Git 凭据）。</p>
-              <Button variant="primary" size="sm" disabled={ghConnecting} loading={ghConnecting} onClick={() => void connectGh()}>连接 GitHub</Button>
-              {ghError ? <p className="capability-error">{ghError}</p> : null}
-              <details open={showDeviceFlow && !ghConnect}>
-                <summary className="computer-link">没有 Git 登录？用设备码流程登录</summary>
-                <div className="computer-fields">
-                  <Field label="GitHub OAuth App Client ID" hint="github.com/settings/developers 创建 OAuth App（Callback 填 http://localhost），创建后勾选 Enable Device Flow，复制 Client ID。">
-                    <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
-                  </Field>
-                  {ghFlow ? (
-                    <div className="computer-policy__row">
-                      <div>
-                        <strong>
-                          授权码：{ghFlow.userCode}
-                          <button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button>
-                          <span className="computer-countdown">{ghRemaining > 0 ? `${Math.floor(ghRemaining / 60000)}:${String(Math.floor((ghRemaining % 60000) / 1000)).padStart(2, '0')} 后过期` : '已过期'}</span>
-                        </strong>
-                        <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); openUrl(ghFlow.verifyUrl); }}>github.com/login/device</a> 输入上方授权码并批准授权。过期了点「重新获取」。</p>
-                      </div>
-                      <Button size="sm" variant="ghost" disabled={ghBusy} loading={ghBusy} onClick={() => void startGhLogin()}>重新获取</Button>
-                    </div>
-                  ) : (
-                    <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
-                  )}
-                </div>
-              </details>
-            </div>
-          )}
-        </section>
         <div className="computer-workspace"><Icon name="folder" size={14} /><span>云端工作目录<strong title={settings.cloud.remoteWorkspaceDir ?? '/data/moyubot'}>{settings.cloud.remoteWorkspaceDir ?? '/data/moyubot'}</strong></span><small>可在通用设置中修改</small></div>
       </div>
       <section id="computer-panel-terminal" role="tabpanel" aria-labelledby="computer-tab-terminal" hidden={tab !== 'terminal'} className="computer-terminal">
