@@ -46,13 +46,18 @@ export default function Home() {
 
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* 原型 .home-top：我的头像 + 状态胶囊，浮在滚动内容上 */}
+      {/* 原型 .home-top：我的头像 + 创建/状态胶囊，浮在滚动内容上 */}
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.topBar}>
         <View style={styles.meAva}><Text style={styles.meAvaText}>鱼</Text></View>
-        <GlassPill onPress={() => router.push('/pair')}>
-          <View style={[styles.dot, { backgroundColor: status.connected ? (status.enabled ? colors.green : colors.gray2) : '#c60' }]} />
-          <Text style={styles.statusText}>{status.connected ? (status.enabled ? '同步中' : '已连接') : '连接电脑'}</Text>
-        </GlassPill>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <GlassPill onPress={() => router.push('/create')}>
+            <Text style={styles.statusText}>＋</Text>
+          </GlassPill>
+          <GlassPill onPress={() => router.push('/pair')}>
+            <View style={[styles.dot, { backgroundColor: status.connected ? (status.enabled ? colors.green : colors.gray2) : '#c60' }]} />
+            <Text style={styles.statusText}>{status.connected ? (status.enabled ? '同步中' : '已连接') : '连接电脑'}</Text>
+          </GlassPill>
+        </View>
       </SafeAreaView>
 
       {!status.connected ? (
