@@ -47,7 +47,12 @@ export class GitHubClient {
       body: JSON.stringify({ client_id: this.clientId, scope: GITHUB_SCOPES }),
     });
     const data = await res.json();
-    if (!res.ok || !data.device_code) throw new Error(data.error_description ?? `GitHub 设备码请求失败（${res.status}）`);
+    if (!res.ok || !data.device_code) {
+      if (data.error === 'device_flow_disabled' || /Device Flow must be explicitly enabled/i.test(String(data.error_description ?? data.error ?? ''))) {
+        throw new Error('这个 Client ID 是 GitHub App 类型且未开启设备码流程。请改用经典 OAuth App：github.com/settings/developers → New OAuth App（Client ID 是 20 位字母数字），创建后重新粘贴即可。');
+      }
+      throw new Error(data.error_description ?? `GitHub 设备码请求失败（${res.status}）`);
+    }
     return {
       deviceCode: String(data.device_code),
       userCode: String(data.user_code),
