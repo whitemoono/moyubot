@@ -8,7 +8,9 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self'",
   "connect-src 'self'",
-  "frame-src https://dashboard.instabox.sh",
+  // 云电脑实时桌面通过 iframe 嵌入：InstaBox 用 dashboard.instabox.sh，
+  // E2B 用 https://<port>-<sandboxId>.e2b.app（自建则是自己的沙箱域名）。
+  "frame-src https://dashboard.instabox.sh https://*.e2b.app https://*.e2b.dev https:",
   "font-src 'self' data:",
 ].join('; ');
 
