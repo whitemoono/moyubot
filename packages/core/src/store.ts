@@ -108,9 +108,9 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
     bots: [
       {
         id: 'bot_default',
-        name: 'Atlas',
-        handle: 'atlas',
-        avatar: { from: '#7aa2ff', to: '#c084fc', glyph: 'A' },
+        name: '大肥鱼',
+        handle: 'dafeiyu',
+        avatar: { from: '#7aa2ff', to: '#c084fc', glyph: '鱼' },
         providerId,
         model: 'grok-4',
         temperature: 0.7,
