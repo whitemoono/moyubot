@@ -13,8 +13,3 @@ export function providerFetch(config: Pick<ProviderConfig, 'networkMode'>, input
   const transport = config.networkMode === 'system' ? systemTransport : directTransport;
   return (transport ?? globalThis.fetch)(input, init);
 }
-
-/** 供 GitHub 等其他外部调用复用：跟随系统代理的传输（桌面端注入 Chromium 网络）。 */
-export function systemFetch(): typeof fetch | undefined {
-  return systemTransport;
-}
