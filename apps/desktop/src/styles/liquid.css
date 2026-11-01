@@ -2751,3 +2751,5 @@ select {
 
 .computer-copy { padding: 2px 9px; margin-left: 9px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font-size: 10px; cursor: pointer; vertical-align: 1px; }
 .computer-copy:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+
+.computer-countdown { margin-left: 9px; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }

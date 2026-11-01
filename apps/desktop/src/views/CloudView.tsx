@@ -59,12 +59,19 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
 
   // GitHub Codespaces（实验）：Device Flow 登录 + 额度
   const [ghClientId, setGhClientId] = useState(() => settings.github?.oauthClientId ?? '');
-  const [ghFlow, setGhFlow] = useState<{ userCode: string; deviceCode: string; verifyUrl: string } | null>(null);
+  const [ghFlow, setGhFlow] = useState<{ userCode: string; deviceCode: string; verifyUrl: string; expiresAt: number } | null>(null);
   const [ghBusy, setGhBusy] = useState(false);
   const [ghUser, setGhUser] = useState<GitHubUser | undefined>(undefined);
   const [quota, setQuota] = useState<CodespacesQuota | undefined>(undefined);
   const [ghError, setGhError] = useState('');
   const [ghCopied, setGhCopied] = useState(false);
+  const [ghNow, setGhNow] = useState(Date.now());
+  useEffect(() => {
+    if (!ghFlow) return;
+    const timer = window.setInterval(() => setGhNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [ghFlow?.deviceCode]);
+  const ghRemaining = ghFlow ? Math.max(0, ghFlow.expiresAt - ghNow) : 0;
   const ghClientIdSaved = settings.github?.oauthClientId ?? '';
   const copyUserCode = async () => {
     if (!ghFlow) return;
@@ -86,10 +93,11 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
       const clientId = ghClientId.trim();
       await saveSettings({ github: { oauthClientId: clientId } });
       const flow: DeviceFlowStart = await moyu().githubLoginStart();
-      setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri });
+      const ghExpiresAt = Date.now() + flow.expiresInSeconds * 1000;
+      setGhFlow({ userCode: flow.userCode, deviceCode: flow.deviceCode, verifyUrl: flow.verificationUri, expiresAt: ghExpiresAt });
       void moyu().openExternal(flow.verificationUri).catch(() => toast('未能自动打开浏览器，请点击下方链接手动打开', 'error'));
       const interval = Math.max(3, flow.intervalSeconds) * 1000;
-      const deadline = Date.now() + flow.expiresInSeconds * 1000;
+      const deadline = ghExpiresAt;
       const pollTimer = window.setInterval(async () => {
         if (Date.now() > deadline) { window.clearInterval(pollTimer); setGhFlow(null); setGhBusy(false); setGhError('授权码已过期，请重试'); return; }
         try {
@@ -188,7 +196,17 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
                 <input className="input mono" aria-label="GitHub OAuth App Client ID" value={ghClientId} onChange={(e) => setGhClientId(e.target.value)} placeholder="Ov23li…" spellCheck={false} />
               </Field>
               {ghFlow ? (
-                <div className="computer-policy__row"><div><strong>授权码：{ghFlow.userCode}<button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button></strong><p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。</p></div><span>等待授权…</span></div>
+                <div className="computer-policy__row">
+                  <div>
+                    <strong>
+                      授权码：{ghFlow.userCode}
+                      <button type="button" className="computer-copy" onClick={() => void copyUserCode()}>{ghCopied ? '已复制' : '复制'}</button>
+                      <span className="computer-countdown">{ghRemaining > 0 ? `${Math.floor(ghRemaining / 60000)}:${String(Math.floor((ghRemaining % 60000) / 1000)).padStart(2, '0')} 后过期` : '已过期'}</span>
+                    </strong>
+                    <p>在 <a className="computer-link" href={ghFlow.verifyUrl} target="_blank" rel="noreferrer">github.com/login/device</a> 输入上方授权码并批准授权；没自动打开浏览器就点这个链接。过期了点「重新获取」。</p>
+                  </div>
+                  <Button size="sm" variant="ghost" disabled={ghBusy} loading={ghBusy} onClick={() => void startGhLogin()}>重新获取</Button>
+                </div>
               ) : (
                 <Button variant="primary" size="sm" disabled={ghBusy || !ghClientId.trim()} loading={ghBusy} onClick={() => void startGhLogin()}>登录 GitHub</Button>
               )}
