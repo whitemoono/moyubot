@@ -882,8 +882,10 @@ select {
   padding: 0;
   font-size: 12.5px;
   line-height: 1.6;
-  color: #dbe6ff;
+  color: var(--text);
 }
+:root[data-theme="light"] .prose code { background: rgba(0, 0, 0, 0.055); border-color: rgba(0, 0, 0, 0.08); }
+:root[data-theme="light"] .code-copy { background: rgba(0, 0, 0, 0.05); border-color: rgba(0, 0, 0, 0.1); }
 .prose table { width: 100%; border-collapse: collapse; margin: 0.7em 0; font-size: 12.5px; }
 .prose th, .prose td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; }
 .prose th { color: var(--text-dim); font-weight: 560; }
