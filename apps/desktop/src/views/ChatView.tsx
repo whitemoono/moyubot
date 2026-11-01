@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { MouseEvent } from 'react';
 import type { Bot, Message, ToolResult } from '@moyu/core';
 import { assetUrl, moyu } from '../lib/bridge';
@@ -333,14 +334,15 @@ function Composer({ bot, home, replyTo, onClearReply }: { bot: Bot; home: boolea
       ref={wrapRef}
       className={`composer-wrap ${!home ? 'composer-wrap--floating' : ''}`.trim()}
     >
-      {dropActive ? (
+      {dropActive ? createPortal(
         <div className="drop-overlay" role="region" aria-label="拖入文件添加">
           <div className="drop-overlay__box">
             <Icon name="plus" size={44} />
             <strong>拖入图片或文件到此处添加</strong>
             <small>支持多个图片和文件 · 图片 ≤ 8MB · 文件 ≤ 20MB</small>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {replyTo ? <div className="composer-reply" role="region" aria-label="正在引用的消息"><ReplyPreview reply={replyTo} onClick={() => jumpToMessage(replyTo.messageId, settings.ui.reduceMotion)} /><button type="button" className="composer-reply__dismiss" aria-label="取消引用" title="取消引用" onClick={() => { onClearReply(); textarea.current?.focus(); }}><Icon name="close" size={14} /></button></div> : null}
       <div className={`composer glass composer--compact ${attachments.length ? 'has-attachments' : ''}`.trim()}>
