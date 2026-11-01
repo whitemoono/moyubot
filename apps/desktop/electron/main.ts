@@ -13,6 +13,14 @@ let moyuApp: MoyuApp | undefined;
 let mainWindow: BrowserWindow | undefined;
 let rendererServer: Awaited<ReturnType<typeof startRendererServer>> | undefined;
 
+// 云电桌面走 noVNC 的 WebSocket（wss://<port>-<id>.e2b.app/websockify）。系统代理
+// （常见 127.0.0.1:7890）通常不转发 WebSocket 升级，接上就整块黑屏。这里让云电脑
+// 域名绕过代理直连；失败时 Chromium 仍会回退到系统代理规则。
+app.commandLine.appendSwitch(
+  'proxy-bypass-list',
+  ['<local>', '*.e2b.app', '*.e2b.dev', '*.instabox.sh', '*.e2b.com'].join(';'),
+);
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'moyu-asset',
