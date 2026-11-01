@@ -137,7 +137,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
       remoteWorkspaceDir: '/data/home/moyubot',
       wakeOnDemand: true,
     },
-    github: { oauthClientId: '' },
+    github: {},
     telegram: { enabled: false, token: '', allowedIds: [] },
     embedding: { enabled: true, baseUrl: 'https://api.siliconflow.cn/v1', model: 'BAAI/bge-m3' },
     workspaces: [
@@ -328,10 +328,6 @@ export class Store {
   }
 
   upsertBot(bot: AppSettings['bots'][number]) {
-    // [moyu-debug] 临时探针：谁在写回"15 个工具的旧清单"（无 set_goal）就打调用栈，定位后移除
-    if (Array.isArray(bot.tools) && bot.tools.length === 15 && !bot.tools.includes('set_goal')) {
-      console.error(`[moyu-debug] upsertBot 写入旧工具清单 name=${bot.name} tools=${JSON.stringify(bot.tools).slice(0, 120)} stack=${new Error().stack?.split('\n').slice(2, 7).join(' <= ')}`);
-    }
     validateGeneration(bot.generation);
     const existing = this.getBot(bot.id);
     bot = { ...bot, image: { aspect: bot.image?.aspect ?? '1:1' }, workspaceId: bot.workspaceId ?? existing?.workspaceId ?? 'workspace_cloud' };
