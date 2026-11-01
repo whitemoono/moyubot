@@ -46,31 +46,29 @@
 - 逃逸保护：本地子目录必须仍在工作区内；云端目录由 `remoteDirectory()` 规范化
 - 兼容：`subDirectory` 缺省时行为与旧版完全一致（共享根）；子代理临时 Bot 只推导不落盘
 
-## 4. MCP / Skills 按 Bot 隔离（设计，下一步实现）
+## 4. MCP / Skills 按 Bot 隔离
 
-现状：云端 MCP 部署到**共享** `~/.claude.json`，技能放共享 `~/.claude/skills`；本地 stdio MCP 进程 cwd 为工作区根。
-
-目标（配合每 bot 文件夹）：
+现状（✅ 盘点与部署已按 Bot 分流，见下"已实现"）：
 
 ```
 /data/home/moyubot/<dirName>/          ← Bot 家目录（云端）
-├── .claude.json                       ← 该 Bot 自己的 MCP 配置（deployCloudMcp 写这里）
-├── .claude/skills/<skill>/            ← 该 Bot 启用的技能
-├── .agents/skills/<skill>/
+├── .claude.json                       ← 该 Bot 自己的 MCP 配置（Bot 对话里 install_mcp 写这里）
+├── .claude/skills/<skill>/            ← 该 Bot 安装的技能（install_skill 写这里）
 └── …（Bot 的工作文件）
 
-D:\dev\moyubot\workspace\<dirName>\    ← 本地家目录
-├── .claude.json                       ← 本地 stdio MCP 若按 Bot 启动，cwd/HOME 指向这里
-└── .claude/skills/<skill>/
+D:\dev\moyubot\workspace\<dirName>\    ← 本地家目录（文件工具已锚定，见第 3 节）
+└── .claude/skills/<skill>/            ← 本地技能目录约定（同云端）
 ```
 
-改动点：
-1. `deployCloudMcp(entries, bot)` → 写 `<botDir>/.claude.json`；执行/盘点时以 `HOME=<botDir>` 运行（Claude 类 agent 天然支持）
-2. `inventoryCloud()` → 逐 Bot 盘点（探针枚举 `/data/home/moyubot/*/`），返回按 bot 分组；BotCapabilities 按当前 Bot 过滤显示
-3. `load_skill` → 技能物化到 `<botDir>/.claude/skills/<name>/`（按需复制，Bot 之间互不可见）
-4. 本地 stdio MCP（`CapabilityManager.connect`）→ transport cwd 设为 `<botDir>`（需要 per-bot 连接池：同一 MCP 服务被多个 Bot 启用时按 `(serverId, botDir)` 键控）
+已实现：
+- **盘点**：探针枚举共享 `~/.claude*` + 每个 Bot 家目录的 `.claude*`，条目带 `botId/botDirName`；右侧栏按当前 Bot 过滤，共享项标"共享"、Bot 项标"云端"
+- **部署分流**：Bot 在对话里 `install_mcp` / `install_skill` → 写该 Bot 家目录（自动建目录）；设置页的工作区级导入 → 仍写共享 `~/.claude*`（界面标"共享"）
 
-顺序建议：先做 2（盘点按 bot），再做 1/3（云端部署与技能物化），最后 4（本地连接池）——1/3 依赖每 bot HOME 语义在云机上验证。
+待实现：
+1. `load_skill` 物化到 `<botDir>/.claude/skills/<name>/`（按需复制，Bot 之间互不可见）
+2. 执行时以 `HOME=<botDir>` 运行云端 Claude 类 agent（让 `.claude.json` 真正按 Bot 生效）
+3. 本地 stdio MCP 按 Bot 启动（per-bot 连接池：`(serverId, botDir)` 键控，cwd/HOME 指向 Bot 家目录）
+4. 共享项"提升为 Bot 专属"的 UI（把共享条目迁入某 Bot 家目录）
 
 ## 5. 冲突与语义（沿用现有引擎）
 
