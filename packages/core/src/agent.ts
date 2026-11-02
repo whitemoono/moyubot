@@ -568,7 +568,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               fs.mkdirSync(path.dirname(absPath), { recursive: true });
               fs.writeFileSync(absPath, bytes);
               assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
-                id: newId('att'), kind, name: safe, mimeType, path: relPath, size: bytes.length,
+                id: newId('att'), kind, name: safe, mimeType, path: relPath, size: bytes.length, origin: (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local' ? 'local' : 'cloud',
                 ...(kind === 'image' ? { dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}` } : {}),
               }];
               this.store.saveConversation(conversationId);

@@ -695,14 +695,26 @@ export class MoyuApp {
       const file = this.resolveWorkspaceArtifact(relPath);
       if (!file || !fs.existsSync(file)) throw new Error('文件不存在或已被移动');
       const ext = path.extname(file).replace('.', '');
-      const result = await dialog.showSaveDialog({ title: '另存为', defaultPath: path.basename(file), filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [] });
-      if (result.canceled || !result.filePath) return;
+      const result = await dialog.showSaveDialog({ title: '下载文件', defaultPath: path.basename(file), filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [] });
+      if (result.canceled || !result.filePath) return false;
       await fs.promises.copyFile(file, result.filePath);
+      return true;
+    });
+
+    // 内置查看器读文本：只允许工作区内的产物，最多 256KB。
+    handle('moyu:artifact:read-text', (_event, relPath: string) => {
+      const file = this.resolveWorkspaceArtifact(relPath);
+      if (!file || !fs.existsSync(file)) throw new Error('文件不存在或已被移动');
+      const stat = fs.statSync(file);
+      if (stat.size > 256 * 1024) return { text: '', truncated: true };
+      return { text: fs.readFileSync(file, 'utf8'), truncated: false };
     });
 
     handle('moyu:artifact:reveal', (_event, relPath: string) => {
       const file = this.resolveWorkspaceArtifact(relPath);
-      if (file && fs.existsSync(file)) shell.showItemInFolder(file);
+      if (!file || !fs.existsSync(file)) return false;
+      shell.showItemInFolder(file);
+      return true;
     });
 
     handle('moyu:open-external', async (_event, url: string) => {

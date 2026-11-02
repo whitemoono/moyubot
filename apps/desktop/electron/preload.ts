@@ -133,8 +133,9 @@ const api = {
   testEmbedding: (draft?: EmbeddingSettings, draftKey?: string) => invoke<EmbeddingTestResult>('moyu:embedding:test', draft, draftKey),
 
   openArtifact: (relPath: string) => invoke<void>('moyu:artifact:open', relPath),
-  saveArtifact: (relPath: string) => invoke<void>('moyu:artifact:save-as', relPath),
-  revealArtifact: (relPath: string) => invoke<void>('moyu:artifact:reveal', relPath),
+  saveArtifact: (relPath: string) => invoke<boolean>('moyu:artifact:save-as', relPath),
+  revealArtifact: (relPath: string) => invoke<boolean>('moyu:artifact:reveal', relPath),
+  readArtifactText: (relPath: string) => invoke<{ text: string; truncated: boolean }>('moyu:artifact:read-text', relPath),
   openExternal: (url: string) => invoke<void>('moyu:open-external', url),
   win: (action: 'minimize' | 'maximize' | 'close') => invoke<void>('moyu:win', action),
 
