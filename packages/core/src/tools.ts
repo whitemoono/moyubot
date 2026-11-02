@@ -287,6 +287,35 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'local_read_file',
+    description: '读取用户本机（这台电脑）工作区里的文本文件。不会唤醒云电脑；读云电脑上的文件请用 cloud_read。路径相对本机工作区。',
+    parameters: {
+      type: 'object',
+      properties: { path: { type: 'string', description: '文件路径（相对本机工作区）' } },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'local_list_files',
+    description: '列出用户本机工作区某个目录下的文件。不会唤醒云电脑。',
+    parameters: {
+      type: 'object',
+      properties: { path: { type: 'string', description: '目录（相对本机工作区，默认根目录）' } },
+    },
+  },
+  {
+    name: 'local_write_file',
+    description: '把文本写入用户本机工作区。不会唤醒云电脑；写入属于敏感操作，按执行权限可能要先确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '目标路径（相对本机工作区）' },
+        content: { type: 'string', description: '写入内容' },
+      },
+      required: ['path', 'content'],
+    },
+  },
+  {
     name: 'deliver_file',
     description: '把电脑上的文件交付给用户：在对话里显示成可打开的文件卡片（图片显示缩略图）。只读取不改动文件；路径相对本 Bot 的工作目录。产出文件后用它交付，不要让用户去电脑里找路径。交付成功后正文里不要再把文件名写成行内代码（不要再写 `文件名`），卡片已经展示了文件，重复列出会让用户以为有两个文件。',
     parameters: {
@@ -340,6 +369,8 @@ export interface ToolContext {
   askUser?: (question: string) => Promise<string>;
   /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
+  /** 用户本机执行器（云 Bot 也可用）：local_* 工具走它，不唤醒云电脑。 */
+  localDevice?: ComputerHost;
   /** 文件交付：把电脑上的文件读出来挂到当前回复上，用户在对话里直接打开。 */
   deliverFile?: (filePath: string, name?: string) => Promise<{ ok: boolean; name: string; size: number; relPath: string }>;
   /** Bot 专属工作目录（botDirName）：cloud_exec/read/write 的相对路径与 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
@@ -375,7 +406,7 @@ const EXIT_PLAN_TOOL: ToolSchema = {
 export function schemasFor(bot: Bot, mode: 'execute' | 'plan' = 'execute'): ToolSchema[] {
   const allowed = new Set(toolNamesFor(bot));
   const schemas = TOOL_SCHEMAS
-    .filter((tool) => allowed.has(tool.name) && !(mode === 'plan' && WRITE_TOOLS.has(tool.name)))
+    .filter((tool) => allowed.has(tool.name) && !(mode === 'plan' && WRITE_TOOLS.has(tool.name)) && !(bot.workspaceId === 'workspace_local' && tool.name.startsWith('local_')))
     .map((tool) => bot.workspaceId !== 'workspace_local' || !tool.name.startsWith('cloud_') ? tool : { ...tool, description: tool.name === 'cloud_exec' ? '在本机 Windows 工作区运行 PowerShell 命令（兼容工具名），不使用云电脑。' : tool.name === 'cloud_read' ? '读取本机工作区目录内的文本文件，可使用相对路径。' : '写入本机工作区目录内的文件，可使用相对路径。' });
   return mode === 'plan' ? [...schemas, EXIT_PLAN_TOOL] : schemas;
 }
@@ -672,6 +703,30 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           const saved = result.screenshot ? await saveImage(ctx.workspaceDir, { bytes: result.screenshot, mimeType: 'image/png' }) : undefined;
           return finish({ ok: true, summary: result.text, artifactPath: saved?.relPath });
         } finally { ctx.cloud.endTask(); }
+      }
+      case 'local_read_file': {
+        if (!ctx.localDevice) throw new Error('当前 Bot 在本机工作区运行，local_* 工具不适用于它（直接用 cloud_* 即可）');
+        const target = requireString(args, 'path');
+        const text = await ctx.localDevice.readText(target, ctx.botDir);
+        return finish({ ok: true, summary: `已读取本机文件 ${target}（${text.length} 字符，未唤醒云电脑）`, detail: pruneOutput(text, 20000, 0.7) });
+      }
+      case 'local_list_files': {
+        if (!ctx.localDevice) throw new Error('当前 Bot 在本机工作区运行，local_* 工具不适用于它（直接用 cloud_* 即可）');
+        const dir = typeof args.path === 'string' && args.path.trim() ? args.path.trim() : '.';
+        const sub = [ctx.botDir, dir === '.' ? '' : dir].filter(Boolean).join('/');
+        const result = await ctx.localDevice.exec('Get-ChildItem -Force | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize', { subDirectory: sub, timeoutSeconds: 30 });
+        return finish({ ok: !result.exitCode, summary: `已列出本机目录 ${dir}（未唤醒云电脑）`, detail: pruneOutput(result.stdout || result.stderr || '(空目录)', 12000, 0.7) });
+      }
+      case 'local_write_file': {
+        if (!ctx.localDevice) throw new Error('当前 Bot 在本机工作区运行，local_* 工具不适用于它（直接用 cloud_* 即可）');
+        const target = requireString(args, 'path');
+        const content = typeof args.content === 'string' ? args.content : JSON.stringify(args.content ?? '');
+        if (ctx.requestApproval) {
+          const approved = await ctx.requestApproval(call, `写入本机文件：${target}（${content.length} 字符）`);
+          if (!approved) return finish({ ok: false, summary: '已拒绝写入' });
+        }
+        await ctx.localDevice.writeText(target, content, ctx.botDir);
+        return finish({ ok: true, summary: `已写入本机文件 ${target}（${content.length} 字符，未唤醒云电脑）` });
       }
       case 'deliver_file': {
         if (!ctx.deliverFile) throw new Error('当前运行时不支持文件交付');

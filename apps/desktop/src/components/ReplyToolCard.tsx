@@ -28,6 +28,9 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   update_goal: { label: '更新目标', icon: 'pin' },
   exit_plan_mode: { label: '提交计划', icon: 'shield' },
   deliver_file: { label: '交付文件', icon: 'download' },
+  local_read_file: { label: '读本机文件', icon: 'folder' },
+  local_list_files: { label: '列本机目录', icon: 'folder' },
+  local_write_file: { label: '写本机文件', icon: 'edit' },
   web_search: { label: '搜索网络', icon: 'globe' },
 };
 

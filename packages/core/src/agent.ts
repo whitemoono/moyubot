@@ -539,6 +539,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             : await runTool(call, {
             bot,
             cloud: this.computerFor(bot),
+            localDevice: (bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' ? this.computers['workspace_local'] : undefined,
             botDir: this.store.botDirName(bot.id),
             workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
