@@ -62,9 +62,12 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
     : subagentTasks.map((task, index) => ({ index, task, state: (result ? (result.ok ? 'done' : 'error') : running ? 'running' : 'error') as 'running' | 'done' | 'error', conversationId: undefined as string | undefined }));
   const summary = rows.length
     ? `${rows.filter((row) => row.state === 'done').length}/${rows.length} 完成 · ${rows[0]!.task.slice(0, 36)}`
-    : scriptLine
-      ? scriptLine.slice(0, 60)
-      : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
+    // 交付文件不显示路径：文件名由消息里的文件卡呈现，工具行只留“交付文件 · 状态”，避免和文件卡撞脸。
+    : call.name === 'deliver_file'
+      ? ''
+      : scriptLine
+        ? scriptLine.slice(0, 60)
+        : call.arguments.path ?? call.arguments.url ?? call.arguments.title ?? (command ? command.split('\n')[0] : result?.summary);
 
   useEffect(() => {
     if (!copied) return;
