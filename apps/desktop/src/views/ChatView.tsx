@@ -660,13 +660,15 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
           {(() => {
             const batches = Object.entries(subagents).filter(([, batch]) => batch.conversationId === conversation.id);
             const children = batches.flatMap(([, batch]) => Object.values(batch.children));
-            if (!children.length) return null;
+            // 与清单/目标一致：胶囊是活状态指示器——还有子任务在跑才显示；
+            // 全部结束后消失（历史结论在消息流工具卡里），subagent_control 重新唤醒时自然再出现。
             const running = children.filter((child) => child.state === 'running').length;
+            if (!running) return null;
             return (
               <HeaderPill
                 align="right"
                 icon={<Icon name="users" size={13} />}
-                label={<span className="head-pill__count">{running ? `⟳ ${running}/${children.length}` : `子代理 ${children.length}`}</span>}
+                label={<span className="head-pill__count">{`⟳ ${running}/${children.length}`}</span>}
                 popover={<SubagentPopover batches={batches} />}
               />
             );
