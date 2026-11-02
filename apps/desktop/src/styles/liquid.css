@@ -2773,3 +2773,9 @@ select {
 .file-chip__close { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 8px; }
 .file-chip__close:hover { color: var(--text); }
 .attachment-chip--file { padding: 0; border: 0; background: none; box-shadow: none; }
+
+/* 文件 chip 的操作按钮：hover 时浮现（另存为 / 打开所在目录） */
+.file-chip__tools { display: inline-flex; align-items: center; gap: 2px; padding-right: 4px; opacity: 0; transition: opacity 140ms ease; }
+.file-chip:hover .file-chip__tools, .file-chip:focus-within .file-chip__tools { opacity: 1; }
+.file-chip__tool { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0; width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: 7px; }
+.file-chip__tool:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }

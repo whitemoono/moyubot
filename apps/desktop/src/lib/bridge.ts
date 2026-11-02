@@ -137,6 +137,8 @@ export interface MoyuBridge {
   saveEmbeddingKey(key: string): Promise<void>;
   testEmbedding(draft?: EmbeddingSettings, draftKey?: string): Promise<EmbeddingTestResult>;
   openArtifact(relPath: string): Promise<void>;
+  saveArtifact(relPath: string): Promise<void>;
+  revealArtifact(relPath: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   win(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   onEvent(listener: (event: AgentEvent) => void): () => void;

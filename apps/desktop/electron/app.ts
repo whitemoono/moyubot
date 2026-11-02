@@ -691,6 +691,20 @@ export class MoyuApp {
       if (file) await shell.openPath(file);
     });
 
+    handle('moyu:artifact:save-as', async (_event, relPath: string) => {
+      const file = this.resolveWorkspaceArtifact(relPath);
+      if (!file || !fs.existsSync(file)) throw new Error('文件不存在或已被移动');
+      const ext = path.extname(file).replace('.', '');
+      const result = await dialog.showSaveDialog({ title: '另存为', defaultPath: path.basename(file), filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [] });
+      if (result.canceled || !result.filePath) return;
+      await fs.promises.copyFile(file, result.filePath);
+    });
+
+    handle('moyu:artifact:reveal', (_event, relPath: string) => {
+      const file = this.resolveWorkspaceArtifact(relPath);
+      if (file && fs.existsSync(file)) shell.showItemInFolder(file);
+    });
+
     handle('moyu:open-external', async (_event, url: string) => {
       if (/^https:\/\//i.test(url)) await shell.openExternal(url);
     });

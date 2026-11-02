@@ -111,6 +111,8 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   name={attachment.name}
                   size={attachment.size}
                   onOpen={attachment.path ? () => void moyu().openArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onSave={attachment.path ? () => void moyu().saveArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
               ) : (
                 <button
@@ -194,6 +196,8 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   name={attachment.name}
                   size={attachment.size}
                   onOpen={attachment.path ? () => void moyu().openArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onSave={attachment.path ? () => void moyu().saveArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
               ))}
           </div>
@@ -225,7 +229,7 @@ function fileBadge(name?: string): { label: string; tone: string } {
   return { label: ext ? ext.slice(0, 4).toUpperCase() : 'FILE', tone: 'file' };
 }
 
-function FileChip({ name, size, onOpen, onRemove }: { name?: string; size?: number; onOpen?: () => void; onRemove?: () => void }) {
+function FileChip({ name, size, onOpen, onRemove, onSave, onReveal }: { name?: string; size?: number; onOpen?: () => void; onRemove?: () => void; onSave?: () => void; onReveal?: () => void }) {
   const badge = fileBadge(name);
   const body = (
     <>
@@ -239,6 +243,12 @@ function FileChip({ name, size, onOpen, onRemove }: { name?: string; size?: numb
   return (
     <span className="file-chip">
       {onOpen ? <button type="button" className="file-chip__main" title={`打开 ${name ?? '附件'}`} onClick={onOpen}>{body}</button> : <span className="file-chip__main">{body}</span>}
+      {onSave || onReveal ? (
+        <span className="file-chip__tools">
+          {onSave ? <button type="button" className="file-chip__tool" aria-label="另存为" title="另存为…" onClick={onSave}><Icon name="download" size={13} /></button> : null}
+          {onReveal ? <button type="button" className="file-chip__tool" aria-label="打开所在目录" title="打开所在目录" onClick={onReveal}><Icon name="folder" size={13} /></button> : null}
+        </span>
+      ) : null}
       {onRemove ? <button type="button" className="file-chip__close" aria-label="移除附件" onClick={onRemove}><Icon name="close" size={12} /></button> : null}
     </span>
   );

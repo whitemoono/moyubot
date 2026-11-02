@@ -98,6 +98,7 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M11.5 12H21M17.5 12v3M14.5 12v2" />
     </>
   ),
+  download: <><path d="M12 4.5v10.5" /><path d="M7.5 10.5 12 15l4.5-4.5" /><path d="M5 19h14" /></>,
   folder: <path d="M3.5 8.5A2.5 2.5 0 0 1 6 6h3l2 2.5h6.5A2.5 2.5 0 0 1 20 11v6a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17v-8.5Z" />,
   alert: (
     <>
