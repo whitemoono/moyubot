@@ -286,6 +286,18 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       required: ['prompt'],
     },
   },
+  {
+    name: 'deliver_file',
+    description: '把电脑上的文件交付给用户：在对话里显示成可打开的文件卡片（图片显示缩略图）。只读取不改动文件；路径相对本 Bot 的工作目录。产出文件后用它交付，不要让用户去电脑里找路径。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '文件路径（相对 Bot 工作目录，例如 market-research.md；也可绝对路径）' },
+        name: { type: 'string', description: '展示名（可选，默认取文件名）' },
+      },
+      required: ['path'],
+    },
+  },
 ];
 
 export interface ToolContext {
@@ -328,6 +340,8 @@ export interface ToolContext {
   askUser?: (question: string) => Promise<string>;
   /** 脚本编排：write=false 时脚本内的子代理只读。返回值直接进工具结果。 */
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
+  /** 文件交付：把电脑上的文件读出来挂到当前回复上，用户在对话里直接打开。 */
+  deliverFile?: (filePath: string, name?: string) => Promise<{ ok: boolean; name: string; size: number; relPath: string }>;
   /** Bot 专属工作目录（botDirName）：cloud_exec/read/write 的相对路径与 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
   botDir?: string;
   signal?: AbortSignal;
@@ -658,6 +672,17 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           const saved = result.screenshot ? await saveImage(ctx.workspaceDir, { bytes: result.screenshot, mimeType: 'image/png' }) : undefined;
           return finish({ ok: true, summary: result.text, artifactPath: saved?.relPath });
         } finally { ctx.cloud.endTask(); }
+      }
+      case 'deliver_file': {
+        if (!ctx.deliverFile) throw new Error('当前运行时不支持文件交付');
+        const target = requireString(args, 'path');
+        const displayName = typeof args.name === 'string' && args.name.trim() ? args.name.trim() : undefined;
+        const delivered = await ctx.deliverFile(target, displayName);
+        return finish({
+          ok: true,
+          summary: `已交付：${delivered.name}（${Math.max(1, Math.round(delivered.size / 1024))} KB）`,
+          detail: '文件已出现在对话里，用户点卡片就能打开；不需要再让用户去电脑里找路径。',
+        });
       }
       case 'cloud_exec': {
         const cmd = requireString(args, 'cmd');

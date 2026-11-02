@@ -184,6 +184,20 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
         ) : null}
 
         {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <button type="button" onClick={() => setView('settings')}>配置供应商</button> : null}</div> : null}
+        {message.attachments?.filter((attachment) => attachment.kind === 'file').length ? (
+          <div className="artifact-grid artifact-grid--files">
+            {message.attachments
+              .filter((attachment) => attachment.kind === 'file')
+              .map((attachment) => (
+                <FileChip
+                  key={attachment.id}
+                  name={attachment.name}
+                  size={attachment.size}
+                  onOpen={attachment.path ? () => void moyu().openArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                />
+              ))}
+          </div>
+        ) : null}
         {message.streaming || kind === 'done' || kind === 'stopped' ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatar bot={bot} activity={avatarKind} animated={animate || kind === 'stopped' || kind === 'done'} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
         {!message.streaming && message.usage ? (
           <span className="msg__usage">

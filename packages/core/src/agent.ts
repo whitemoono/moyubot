@@ -543,6 +543,37 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
+            deliverFile: async (filePath, name) => {
+              const computer = this.computerFor(bot);
+              const botDir = this.store.botDirName(bot.id);
+              // 先按 Bot 工作目录解析；失败再按共享根解析（模型常把产出写到云机根目录）。
+              let read: { bytes: Uint8Array; machineId: string };
+              try {
+                read = await computer.readBytes(filePath, botDir);
+              } catch (first) {
+                try {
+                  read = await computer.readBytes(filePath);
+                } catch {
+                  throw new Error(`找不到要交付的文件：${filePath}。相对路径按本 Bot 工作目录（${botDir}/）解析，也试过共享根目录；请确认文件已写在这些位置之一。`);
+                }
+              }
+              const { bytes } = read;
+              const safe = (name ?? filePath.split('/').pop() ?? 'file').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 120) || 'file';
+              const ext = (safe.split('.').pop() ?? '').toLowerCase();
+              const mimes: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', md: 'text/markdown', txt: 'text/plain', csv: 'text/csv', tsv: 'text/tab-separated-values', json: 'application/json', html: 'text/html', xml: 'application/xml', yml: 'text/yaml', yaml: 'text/yaml', zip: 'application/zip', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+              const mimeType = mimes[ext] ?? 'application/octet-stream';
+              const kind: 'image' | 'file' = mimeType.startsWith('image/') ? 'image' : 'file';
+              const relPath = `uploads/${botDir}/${safe}`;
+              const absPath = path.join(computer.getSettings().workspaceDir, relPath);
+              fs.mkdirSync(path.dirname(absPath), { recursive: true });
+              fs.writeFileSync(absPath, bytes);
+              assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
+                id: newId('att'), kind, name: safe, mimeType, path: relPath, size: bytes.length,
+                ...(kind === 'image' ? { dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}` } : {}),
+              }];
+              this.store.saveConversation(conversationId);
+              return { ok: true, name: safe, size: bytes.length, relPath };
+            },
             requestApproval:
               bot.approvalPolicy === 'ask'
                 ? (pending, summary) =>
