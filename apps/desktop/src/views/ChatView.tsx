@@ -569,7 +569,7 @@ function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: Reac
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, blockedGoal, reopenGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents } = useMoyu();
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
@@ -625,20 +625,21 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
             {conversation.group ? <span className="group-chat-icon"><Icon name="users" size={21} /></span> : <BotAvatar bot={bot} size="lg" activity="idle" />}
             <span className="chat__name">{conversation.group ? conversation.title : bot.name}</span>
           </button>
-          {goal || resumableGoal ? (
+          {goal || resumableGoal || blockedGoal ? (
             <HeaderPill
               align="right"
-              tone={resumableGoal ? 'resume' : undefined}
+              tone={goal ? undefined : 'resume'}
               icon={<Icon name="spark" size={13} />}
               label={
                 <span className="head-pill__count">
-                  {goal ? <>目标{goal.criteria?.length ? ` ✓ ${goal.criteria.filter((item) => item.done).length}/${goal.criteria.length}` : ''}{goal.autonomy === 'until_done' ? ` ⟳ ${goal.roundsUsed ?? 0}/${goal.maxRounds ?? 8}` : ''}</> : '续航暂停'}
+                  {goal ? <>目标{goal.criteria?.length ? ` ✓ ${goal.criteria.filter((item) => item.done).length}/${goal.criteria.length}` : ''}{goal.autonomy === 'until_done' ? ` ⟳ ${goal.roundsUsed ?? 0}/${goal.maxRounds ?? 8}` : ''}</> : resumableGoal ? '续航暂停' : '目标受阻'}
                 </span>
               }
               popover={
                 <div className="head-pill__goal">
-                  <p className="head-pill__caption">当前目标</p>
-                  <p className="head-pill__objective">{(goal ?? resumableGoal)?.objective}</p>
+                  <p className="head-pill__caption">{goal ? '当前目标' : resumableGoal ? '续航暂停' : '受阻的目标'}</p>
+                  <p className="head-pill__objective">{(goal ?? resumableGoal ?? blockedGoal)?.objective}</p>
+                  {(goal ? undefined : (resumableGoal ?? blockedGoal)?.note) ? <p className="head-pill__rounds">原因：{goal ? '' : ((resumableGoal ?? blockedGoal)?.note ?? '')}</p> : null}
                   {goal?.criteria?.length ? (
                     <div className="head-pill__criteria">
                       {goal.criteria.map((item, index) => (
@@ -650,9 +651,12 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
                     </div>
                   ) : null}
                   {goal?.autonomy === 'until_done' ? <p className="head-pill__rounds">续航模式 ⟳ {goal.roundsUsed ?? 0}/{goal.maxRounds ?? 8} 轮</p> : null}
-                  {resumableGoal
-                    ? <Button size="sm" icon="send" onClick={async () => { if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined); }}>续跑 5 轮</Button>
-                    : <Button size="sm" icon="check" onClick={() => void completeGoal()}>标记目标完成</Button>}
+                  <div className="head-pill__actions">
+                    {goal ? <Button size="sm" icon="check" onClick={() => void completeGoal()}>标记目标完成</Button> : null}
+                    {resumableGoal ? <Button size="sm" icon="send" onClick={async () => { if (await resumeGoal(5)) void sendMessage('（人工续跑）继续推进之前未完成的目标', [], undefined); }}>续跑 5 轮</Button> : null}
+                    {!goal && blockedGoal ? <Button size="sm" icon="send" onClick={async () => { if (await reopenGoal()) void sendMessage('（人工继续推进）按原目标继续，先说明你准备怎么做', [], undefined); }}>继续推进</Button> : null}
+                    {!goal ? <Button size="sm" icon="check" onClick={() => void completeGoal()}>标记完成</Button> : null}
+                  </div>
                 </div>
               }
             />

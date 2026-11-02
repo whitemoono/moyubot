@@ -2753,3 +2753,5 @@ select {
 .computer-copy:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
 
 .computer-countdown { margin-left: 9px; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.head-pill__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

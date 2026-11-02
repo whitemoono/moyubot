@@ -557,6 +557,7 @@ export class MoyuApp {
     handle('moyu:goal', (_event, conversationId: string) => this.store.activeGoal(conversationId));
     handle('moyu:goal:state', (_event, conversationId: string) => this.store.goalState(conversationId));
     handle('moyu:goal:resume', (_event, conversationId: string, extraRounds?: number) => this.store.resumeGoal(conversationId, extraRounds));
+    handle('moyu:goal:reopen', (_event, conversationId: string) => this.store.reopenGoal(conversationId));
     handle('moyu:goal:update', (_event, conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }) => this.store.updateGoal(conversationId, patch, { requireEvidence: false }));
     handle('moyu:todos:list', (_event, conversationId: string) => this.store.listTodos(conversationId));
 

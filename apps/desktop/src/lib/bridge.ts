@@ -90,7 +90,8 @@ export interface MoyuBridge {
   setConversationMode(id: string, mode: 'execute' | 'plan'): Promise<Conversation>;
   setConversationAutonomy(id: string, autonomy: 'turn' | 'until_done'): Promise<Conversation>;
   activeGoal(conversationId: string): Promise<Goal | undefined>;
-  goalState(conversationId: string): Promise<{ active?: Goal; resumable?: Goal }>;
+  goalState(conversationId: string): Promise<{ active?: Goal; resumable?: Goal; blocked?: Goal }>;
+  reopenGoal(conversationId: string): Promise<Goal>;
   resumeGoal(conversationId: string, extraRounds?: number): Promise<Goal>;
   updateGoal(conversationId: string, patch: { status: 'complete' | 'blocked'; note?: string }): Promise<Goal>;
   listTodos(conversationId: string): Promise<TodoList | undefined>;

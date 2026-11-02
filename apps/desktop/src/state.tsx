@@ -86,7 +86,9 @@ interface MoyuContextValue {
   stopSubagent: (childConversationId: string) => Promise<boolean>;
   completeGoal: () => Promise<void>;
   resumableGoal: Goal | undefined;
+  blockedGoal: Goal | undefined;
   resumeGoal: (extraRounds?: number) => Promise<boolean>;
+  reopenGoal: () => Promise<boolean>;
   conversations: ConversationSummary[];
   running: boolean;
   runningBotIds: Set<string>;
@@ -191,6 +193,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   const [goal, setGoal] = useState<Goal | undefined>(undefined);
   const [todos, setTodos] = useState<TodoList | undefined>(undefined);
   const [resumableGoal, setResumableGoal] = useState<Goal | undefined>(undefined);
+  const [blockedGoal, setBlockedGoal] = useState<Goal | undefined>(undefined);
   const [subagents, setSubagents] = useState<Record<string, SubagentProgress>>({});
   const [question, setQuestion] = useState<AskRequest | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -302,6 +305,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       await moyu().updateGoal(current.id, { status: 'complete' });
       setGoal(undefined);
       setResumableGoal(undefined);
+      setBlockedGoal(undefined);
       toast('目标已标记完成');
     } catch (error) {
       toast((error as Error).message, 'error');
@@ -316,6 +320,22 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
       setResumableGoal(undefined);
       const state = await moyu().goalState(current.id);
       setGoal(state.active);
+      return true;
+    } catch (error) {
+      toast((error as Error).message, 'error');
+      return false;
+    }
+  }, [toast]);
+
+  /** 受阻目标「继续推进」：重新打开为活动目标。 */
+  const reopenGoal = useCallback(async () => {
+    const current = conversationRef.current;
+    if (!current) return false;
+    try {
+      const goal = await moyu().reopenGoal(current.id);
+      setResumableGoal(undefined);
+      setBlockedGoal(undefined);
+      setGoal(goal);
       return true;
     } catch (error) {
       toast((error as Error).message, 'error');
@@ -441,7 +461,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (event.type === 'goal') {
-        if (conversationRef.current?.id === event.conversationId) { setGoal(event.active); setResumableGoal(event.resumable); }
+        if (conversationRef.current?.id === event.conversationId) { setGoal(event.active); setResumableGoal(event.resumable); setBlockedGoal(event.blocked); }
         return;
       }
       if (event.type === 'message_end') {
@@ -457,7 +477,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
         void loadConversations();
         // 一轮结束时目标可能刚被 set_goal / update_goal 改过，顺手同步一次。
         if (conversationRef.current?.id === event.conversationId) {
-          void moyu().goalState(event.conversationId).then((state) => { setGoal(state.active); setResumableGoal(state.resumable); }).catch(() => {});
+          void moyu().goalState(event.conversationId).then((state) => { setGoal(state.active); setResumableGoal(state.resumable); setBlockedGoal(state.blocked); }).catch(() => {});
           void moyu().listTodos(event.conversationId).then((list) => setTodos(list)).catch(() => {});
         }
         void moyu().conversation(event.conversationId).then((conv) => {
@@ -562,7 +582,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     void Promise.all([settingsRef.current.bots.some((item) => item.id === activeBotId) ? moyu().botConversation(activeBotId) : moyu().conversation(activeBotId), moyu().memories(activeBotId)]).then(([conv, facts]) => {
       if (conv && !cancelled && selectedBotRef.current === activeBotId) {
         setConversation(conv); setMemories(facts);
-        void moyu().goalState(conv.id).then((state) => { if (!cancelled && selectedBotRef.current === activeBotId) { setGoal(state.active); setResumableGoal(state.resumable); } }).catch(() => {});
+        void moyu().goalState(conv.id).then((state) => { if (!cancelled && selectedBotRef.current === activeBotId) { setGoal(state.active); setResumableGoal(state.resumable); setBlockedGoal(state.blocked); } }).catch(() => {});
         void moyu().listTodos(conv.id).then((list) => { if (!cancelled && selectedBotRef.current === activeBotId) setTodos(list); }).catch(() => {});
         // 重启后从磁盘补上三段快照（实时事件已有则不覆盖）。
         void moyu().contextUsage(conv.id).then((snap) => { if (snap && !cancelled && selectedBotRef.current === activeBotId) setContextUsage((prev) => (prev[conv.id] ? prev : { ...prev, [conv.id]: snap })); }).catch(() => {});
@@ -907,6 +927,8 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     goal,
     todos,
     resumableGoal,
+    blockedGoal,
+    reopenGoal,
     resumeGoal,
     subagents,
     question,

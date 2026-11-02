@@ -1128,12 +1128,26 @@ export class Store {
     return goal ? { ...goal } : undefined;
   }
 
-  /** UI 面板用：活动目标 + 最近一个"触顶暂停"的续航目标（可续跑）。模型续航判定仍只看 activeGoal。 */
-  goalState(conversationId: string): { active?: Goal; resumable?: Goal } {
+  /** UI 面板用：活动目标 + 最近一个"触顶暂停"的续航目标（可续跑）+ 最近一个受阻目标（含被手动 blocked 的）。模型续航判定仍只看 activeGoal。 */
+  goalState(conversationId: string): { active?: Goal; resumable?: Goal; blocked?: Goal } {
     const active = this.activeGoal(conversationId);
-    const resumable = [...this.goalList].reverse().find((item) =>
-      item.conversationId === conversationId && item.status === 'blocked' && item.autonomy === 'until_done' && (item.note ?? '').includes('轮数上限'));
-    return { active, ...(resumable ? { resumable: { ...resumable } } : {}) };
+    const blockedAll = this.goalList.filter((item) => item.conversationId === conversationId && item.status === 'blocked');
+    const isTopOut = (item: Goal) => item.autonomy === 'until_done' && (item.note ?? '').includes('轮数上限');
+    const resumable = [...blockedAll].reverse().find(isTopOut);
+    const blocked = [...blockedAll].reverse().find((item) => !isTopOut(item));
+    return { active, ...(resumable ? { resumable: { ...resumable } } : {}), ...(blocked ? { blocked: { ...blocked } } : {}) };
+  }
+
+  /** 人工把受阻目标重新打开（继续推进）：恢复 active 并清掉受阻说明。 */
+  reopenGoal(conversationId: string): Goal {
+    const goal = [...this.goalList].reverse().find((item) => item.conversationId === conversationId && item.status === 'blocked');
+    if (!goal) throw new Error('没有可继续的受阻目标');
+    const index = this.goalList.indexOf(goal);
+    const next = [...this.goalList];
+    next[index] = { ...goal, status: 'active', note: '人工继续推进', updatedAt: Date.now() };
+    this.persistGoals(next);
+    this.notifyGoals(conversationId);
+    return { ...next[index] };
   }
 
   setGoal(input: { conversationId: string; botId: string; objective: string; successCriteria?: string[]; autonomy?: 'turn' | 'until_done'; maxRounds?: number }): Goal {
