@@ -205,9 +205,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
           if (!text.includes('\uFFFD')) attachment.text = text;
         }
         delete attachment.dataUrl;
-        if ((bot.workspaceId ?? 'workspace_cloud') !== 'workspace_local') {
-          await this.computerFor(bot).writeBytes?.(`uploads/${name}`, bytes, botDir).catch(() => {});
-        }
+        // 不在这里自动上传到云机：那会在“拖文件发送”时唤醒云电脑。
+        // 需要云机处理时由 Bot 显式调用 cloud_stage_file（按需唤醒、按需付费）。
       } catch {
         // 单个文件保存失败不阻塞消息：保留 dataUrl，Bot 至少能通过多模态/后续工具处理
       }
@@ -544,6 +543,23 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
+            stageFileToCloud: async (filePath, target) => {
+              const computer = this.computerFor(bot);
+              const botDir = this.store.botDirName(bot.id);
+              const workspaceDir = computer.getSettings().workspaceDir;
+              const rel = filePath.replace(/^uploads\//, '');
+              const candidates = [
+                path.join(workspaceDir, 'uploads', botDir, rel),
+                path.join(workspaceDir, 'uploads', rel),
+                path.join(workspaceDir, filePath),
+              ];
+              const abs = candidates.find((candidate) => fs.existsSync(candidate));
+              if (!abs) throw new Error(`找不到本机附件：${filePath}（确认它在附件卡片里，或已保存到本机工作区）`);
+              const bytes = fs.readFileSync(abs);
+              const targetRel = (target ?? filePath).replace(/^uploads\//, '');
+              await computer.writeBytes(`uploads/${targetRel}`, bytes, botDir);
+              return { ok: true, size: bytes.length };
+            },
             deliverFile: async (filePath, name) => {
               const computer = this.computerFor(bot);
               const botDir = this.store.botDirName(bot.id);

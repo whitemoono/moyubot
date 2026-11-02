@@ -73,7 +73,7 @@ export function messagesFor(messages: Message[], viewerBotId?: string): AgentMes
       const note = files?.length ? `\n[附件文件] ${files.map((file) => {
         const head = `${file.name}${file.size ? `（${Math.max(1, Math.round(file.size / 1024))} KB）` : ''}：路径 ${file.path ?? '（保存失败，无本地路径）'}`;
         return file.text ? `${head}，内容如下：\n<<<\n${file.text.slice(0, 8192)}\n>>>` : head;
-      }).join('\n')}\n${files.some((file) => !file.text) ? '需要非文本附件内容时用工具按路径读取（二进制格式用合适的解析方式）。' : ''}` : '';
+      }).join('\n')}\n${files.some((file) => !file.text) ? '附件默认只存在本机；用 local_read_file / local_list_files 读取不会唤醒云电脑。若必须用云电脑处理（例如需要云端命令跑这个文件），先调用 cloud_stage_file 上传，会唤醒云电脑。' : ''}` : '';
       history.push({ role: 'user', content: base + note, images: message.attachments?.filter((item) => item.kind === 'image' && item.dataUrl).map((item) => ({ mimeType: item.mimeType ?? 'image/png', dataUrl: item.dataUrl! })) });
     } else if (message.role === 'assistant' && viewerBotId && message.botId && message.botId !== viewerBotId) {
       const shared = [message.content, ...(message.toolResults ?? []).map((result) => `${result.name}: ${pruneOutput(result.detail ?? result.summary, 4000)}`)].filter(Boolean).join('\n');

@@ -316,6 +316,18 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'cloud_stage_file',
+    description: '把本机工作区里的附件上传到云电脑，供云端命令处理（会唤醒云电脑，按需调用）。路径用附件卡片里的相对路径，例如 uploads/<bot>/report.json。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '本机相对路径（附件卡片里的路径）' },
+        target: { type: 'string', description: '可选：云机上的目标相对路径，默认与来源相同' },
+      },
+      required: ['path'],
+    },
+  },
+  {
     name: 'deliver_file',
     description: '把电脑上的文件交付给用户：在对话里显示成可打开的文件卡片（图片显示缩略图）。只读取不改动文件；路径相对本 Bot 的工作目录。产出文件后用它交付，不要让用户去电脑里找路径。交付成功后正文里不要再把文件名写成行内代码（不要再写 `文件名`），卡片已经展示了文件，重复列出会让用户以为有两个文件。',
     parameters: {
@@ -371,6 +383,8 @@ export interface ToolContext {
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
   /** 用户本机执行器（云 Bot 也可用）：local_* 工具走它，不唤醒云电脑。 */
   localDevice?: ComputerHost;
+  /** 把本机附件上传到云机（会唤醒云电脑）：附件默认只存本机，云端要用时才上传。 */
+  stageFileToCloud?: (filePath: string, target?: string) => Promise<{ ok: boolean; size: number }>;
   /** 文件交付：把电脑上的文件读出来挂到当前回复上，用户在对话里直接打开。 */
   deliverFile?: (filePath: string, name?: string) => Promise<{ ok: boolean; name: string; size: number; relPath: string }>;
   /** Bot 专属工作目录（botDirName）：cloud_exec/read/write 的相对路径与 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
@@ -406,7 +420,7 @@ const EXIT_PLAN_TOOL: ToolSchema = {
 export function schemasFor(bot: Bot, mode: 'execute' | 'plan' = 'execute'): ToolSchema[] {
   const allowed = new Set(toolNamesFor(bot));
   const schemas = TOOL_SCHEMAS
-    .filter((tool) => allowed.has(tool.name) && !(mode === 'plan' && WRITE_TOOLS.has(tool.name)) && !(bot.workspaceId === 'workspace_local' && tool.name.startsWith('local_')))
+    .filter((tool) => allowed.has(tool.name) && !(mode === 'plan' && WRITE_TOOLS.has(tool.name)) && !(bot.workspaceId === 'workspace_local' && (tool.name.startsWith('local_') || tool.name === 'cloud_stage_file')))
     .map((tool) => bot.workspaceId !== 'workspace_local' || !tool.name.startsWith('cloud_') ? tool : { ...tool, description: tool.name === 'cloud_exec' ? '在本机 Windows 工作区运行 PowerShell 命令（兼容工具名），不使用云电脑。' : tool.name === 'cloud_read' ? '读取本机工作区目录内的文本文件，可使用相对路径。' : '写入本机工作区目录内的文件，可使用相对路径。' });
   return mode === 'plan' ? [...schemas, EXIT_PLAN_TOOL] : schemas;
 }
@@ -727,6 +741,13 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         }
         await ctx.localDevice.writeText(target, content, ctx.botDir);
         return finish({ ok: true, summary: `已写入本机文件 ${target}（${content.length} 字符，未唤醒云电脑）` });
+      }
+      case 'cloud_stage_file': {
+        if (!ctx.stageFileToCloud) throw new Error('当前运行时不支持上传附件到云电脑');
+        const source = requireString(args, 'path');
+        const target = typeof args.target === 'string' && args.target.trim() ? args.target.trim() : undefined;
+        const staged = await ctx.stageFileToCloud(source, target);
+        return finish({ ok: true, summary: `已上传到云电脑：${target ?? source}（${Math.max(1, Math.round(staged.size / 1024))} KB）`, detail: '云电脑上已经可以按这个相对路径读取/处理该文件。' });
       }
       case 'deliver_file': {
         if (!ctx.deliverFile) throw new Error('当前运行时不支持文件交付');

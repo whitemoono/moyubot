@@ -19,6 +19,7 @@ export const BOT_TOOLS = [
   { id: 'local_read_file', label: '读本机文件', hint: '读用户这台电脑工作区里的文件，不唤醒云电脑' },
   { id: 'local_list_files', label: '列本机目录', hint: '列出本机工作区目录，不唤醒云电脑' },
   { id: 'local_write_file', label: '写本机文件', hint: '写入本机工作区（敏感操作）' },
+  { id: 'cloud_stage_file', label: '附件上传云端', hint: '把本机附件传到云电脑供云端处理（会唤醒云机）' },
   { id: 'deliver_file', label: '交付文件', hint: '把电脑上的文件变成对话里可打开的文件卡片' },
   { id: 'install_mcp', label: '安装 MCP', hint: '对话里安装 MCP 服务并绑定（敏感操作，需确认）' },
   { id: 'install_skill', label: '安装 Skill', hint: '从工作区目录安装技能并绑定（需确认）' },
