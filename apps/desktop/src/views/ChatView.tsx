@@ -159,7 +159,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
         {turns.map((turn, index) => <div className="reply-turn" key={index}>
           {turn.reasoning ? <details className="reasoning reply-reasoning"><summary><Icon name="spark" size={14} /><span>思考过程</span><Icon name="chevron" size={13} /></summary><p>{turn.reasoning}</p></details> : null}
           {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: turnHtml[index] ?? '' }} /> : null}
-          {turn.toolCalls?.map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
+          {turn.toolCalls?.filter((call) => !(call.name === 'deliver_file' && results.get(call.id)?.ok)).map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
         </div>)}
         </div>
 
