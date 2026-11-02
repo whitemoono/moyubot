@@ -27,6 +27,7 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   set_goal: { label: '设定目标', icon: 'pin' },
   update_goal: { label: '更新目标', icon: 'pin' },
   exit_plan_mode: { label: '提交计划', icon: 'shield' },
+  deliver_file: { label: '交付文件', icon: 'download' },
   web_search: { label: '搜索网络', icon: 'globe' },
 };
 
