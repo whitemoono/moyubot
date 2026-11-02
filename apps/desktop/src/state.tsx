@@ -102,7 +102,7 @@ interface MoyuContextValue {
   logs: { level: string; text: string; ts: number }[];
   platform: string;
   version: string;
-  sendMessage: (text: string, images: { name?: string; mimeType: string; dataUrl: string }[], replyTo?: Message['replyTo']) => Promise<boolean>;
+  sendMessage: (text: string, images: { name?: string; mimeType: string; dataUrl: string; size?: number }[], replyTo?: Message['replyTo']) => Promise<boolean>;
   stop: () => void;
   saveBot: (bot: Bot, options?: { stayInSettings?: boolean }) => Promise<void>;
   updateBotMetadata: (botId: string, patch: BotMetadataPatch) => Promise<void>;
@@ -627,7 +627,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
   );
 
   const sendMessage = useCallback(
-    async (text: string, images: { name?: string; mimeType: string; dataUrl: string }[], replyTo?: Message['replyTo']) => {
+    async (text: string, images: { name?: string; mimeType: string; dataUrl: string; size?: number }[], replyTo?: Message['replyTo']) => {
       if (!bot || !conversation || (!conversation.group && conversation.botId !== bot.id)) {
         toast('先创建一个 Bot', 'warn');
         return false;
@@ -656,10 +656,12 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
             createdAt: Date.now(),
             attachments: images.map((image, index) => ({
               id: `att_tmp_${index}`,
-              kind: 'image' as const,
-              name: image.name ?? '图片',
+              // 与 core 的 attachmentsFrom 保持一致：按 mimeType 区分图片/文件，否则乐观消息会把文件渲染成图片。
+              kind: (image.mimeType.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+              name: image.name ?? (image.mimeType.startsWith('image/') ? '图片' : '附件'),
               mimeType: image.mimeType,
               dataUrl: image.dataUrl,
+              size: image.size,
             })),
           },
         ],
