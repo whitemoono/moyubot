@@ -14,7 +14,8 @@ import { execFileSync } from 'node:child_process';
 
 const REPO = 'whitemoono/moyubot';
 const root = process.cwd();
-const version = JSON.parse(fs.readFileSync(path.join(root, 'apps/desktop/package.json'), 'utf8')).version;
+// 版本号默认取 apps/desktop/package.json，可用 `pnpm release:github -- 0.1.7` 指定（重建某个版本的 release）。
+const version = (process.argv[2] ?? JSON.parse(fs.readFileSync(path.join(root, 'apps/desktop/package.json'), 'utf8')).version).replace(/^v/, '');
 const tag = `v${version}`;
 const releaseFile = path.join(root, 'apps/desktop/release');
 
