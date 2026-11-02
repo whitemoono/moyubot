@@ -18,6 +18,27 @@ const root = process.cwd();
 const version = (process.argv[2] ?? JSON.parse(fs.readFileSync(path.join(root, 'apps/desktop/package.json'), 'utf8')).version).replace(/^v/, '');
 const tag = `v${version}`;
 const releaseFile = path.join(root, 'apps/desktop/release');
+/** 手写说明文件：pnpm release:github -- 0.1.7 --notes=docs/release-0.1.7.md（可选）。 */
+const notesArg = process.argv.slice(2).find((arg) => arg.startsWith('--notes='))?.slice('--notes='.length);
+const compareUrl = `https://github.com/${REPO}/compare`;
+
+/** 生成 release 说明：优先用手写文件，否则用「上个 tag..当前 tag」的提交列表。 */
+function buildNotes() {
+  if (notesArg) {
+    const file = path.resolve(root, notesArg);
+    if (fs.existsSync(file)) console.log(`使用手写说明：${notesArg}`);
+    if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8');
+  }
+  let previous = '';
+  try { previous = execFileSync('git', ['describe', '--tags', '--abbrev=0', `${tag}^`], { encoding: 'utf8' }).trim(); } catch { /* 没有上一个 tag */ }
+  let commits = '';
+  try {
+    commits = execFileSync('git', ['log', `${previous || tag}..${tag}`, '--pretty=format:- %s'], { encoding: 'utf8' }).trim();
+  } catch { commits = ''; }
+  const lines = commits ? commits.split('\n') : [`- 版本 ${version}`];
+  const compare = previous ? `**Full Changelog**: ${compareUrl}/${previous}...${tag}` : '';
+  return ['## 更新内容', '', ...lines, '', compare].filter((line, index, all) => !(line === '' && all[index - 1] === '')).join('\n').trim();
+}
 
 function token() {
   if (process.env.GH_TOKEN) return process.env.GH_TOKEN.trim();
@@ -52,6 +73,11 @@ async function ensureRelease() {
   if (existing.ok) {
     console.log(`release ${tag} 已存在（id ${existing.data.id}）`);
     if (existing.data.draft) console.log('  注意：该 release 目前是 draft，更新器不会看到它');
+    if (!existing.data.body || existing.data.body.length < 120) {
+      const body = buildNotes();
+      await api(`/repos/${REPO}/releases/${existing.data.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+      console.log('  已补充更新说明（原说明为空或过短）');
+    }
     return existing.data;
   }
   const created = await api(`/repos/${REPO}/releases`, {
@@ -62,7 +88,7 @@ async function ensureRelease() {
       name: `MoyuBot ${version}`,
       draft: false,
       prerelease: false,
-      generate_release_notes: true,
+      body: buildNotes(),
     }),
   });
   if (!created.ok) throw new Error(`创建 release 失败：${created.status} ${JSON.stringify(created.data).slice(0, 300)}`);
