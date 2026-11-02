@@ -197,6 +197,13 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
         fs.writeFileSync(absPath, bytes);
         attachment.path = relPath;
         attachment.size = attachment.size ?? bytes.length;
+        // 小文本文件：把内容直接内联进附件通知，Bot 不依赖云端副本也能读到（云机/离线时尤其重要）。
+        const mime = (attachment.mimeType ?? '').toLowerCase();
+        const textual = mime.startsWith('text/') || /(json|xml|csv|yaml|markdown|x-sh)/.test(mime) || /\.(txt|md|csv|tsv|json|xml|ya?ml|log|ini|cfg|conf|html?|css|js|ts)$/i.test(name);
+        if (textual && bytes.length <= 8192) {
+          const text = bytes.toString('utf8');
+          if (!text.includes('\uFFFD')) attachment.text = text;
+        }
         delete attachment.dataUrl;
         if ((bot.workspaceId ?? 'workspace_cloud') !== 'workspace_local') {
           await this.computerFor(bot).writeBytes?.(`uploads/${name}`, bytes, botDir).catch(() => {});

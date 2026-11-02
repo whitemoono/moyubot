@@ -219,6 +219,8 @@ export interface Attachment {
   dataUrl?: string;
   path?: string;
   size?: number;
+  /** 小文本附件的内容内联（≤8KB）：Bot 不依赖云端/本地副本也能读到文件内容 */
+  text?: string;
 }
 
 export type MessageRole = 'user' | 'assistant' | 'tool' | 'system';
