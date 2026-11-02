@@ -106,16 +106,12 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           {message.attachments?.length ? (
             <div className="artifact-grid artifact-grid--user">
               {message.attachments.map((attachment) => attachment.kind === 'file' ? (
-                <button
+                <FileChip
                   key={attachment.id}
-                  type="button"
-                  className="artifact artifact--file"
-                  title="打开文件"
-                  onClick={() => { if (attachment.path) void moyu().openArtifact(attachment.path).catch((error: Error) => toast(error.message, 'error')); }}
-                >
-                  <Icon name="folder" size={16} />
-                  <span className="artifact__file-meta"><strong>{attachment.name}</strong><small>{humanSize(attachment.size)}</small></span>
-                </button>
+                  name={attachment.name}
+                  size={attachment.size}
+                  onOpen={attachment.path ? () => void moyu().openArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                />
               ) : (
                 <button
                   key={attachment.id}
@@ -203,6 +199,36 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 });
 
 const humanSize = (bytes?: number) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** 文件类型角标：按扩展名给短标签与配色，替代千篇一律的文件夹图标。 */
+function fileBadge(name?: string): { label: string; tone: string } {
+  const ext = (name ?? '').split('.').pop()?.toLowerCase() ?? '';
+  if (['txt', 'md', 'log', 'ini', 'cfg', 'conf'].includes(ext)) return { label: ext.slice(0, 4).toUpperCase(), tone: 'doc' };
+  if (['csv', 'tsv', 'xls', 'xlsx', 'ods'].includes(ext)) return { label: ext.slice(0, 4).toUpperCase(), tone: 'sheet' };
+  if (['pdf'].includes(ext)) return { label: 'PDF', tone: 'pdf' };
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) return { label: ext.slice(0, 4).toUpperCase(), tone: 'image' };
+  if (['json', 'js', 'ts', 'tsx', 'jsx', 'py', 'sh', 'ps1', 'go', 'rs', 'java', 'c', 'cpp', 'html', 'css', 'yml', 'yaml', 'xml'].includes(ext)) return { label: ext.slice(0, 4).toUpperCase(), tone: 'code' };
+  return { label: ext ? ext.slice(0, 4).toUpperCase() : 'FILE', tone: 'file' };
+}
+
+function FileChip({ name, size, onOpen, onRemove }: { name?: string; size?: number; onOpen?: () => void; onRemove?: () => void }) {
+  const badge = fileBadge(name);
+  const body = (
+    <>
+      <span className={`file-chip__badge file-chip__badge--${badge.tone}`}>{badge.label}</span>
+      <span className="file-chip__meta">
+        <strong title={name}>{name ?? '附件'}</strong>
+        <small>{humanSize(size) || '文件'}</small>
+      </span>
+    </>
+  );
+  return (
+    <span className="file-chip">
+      {onOpen ? <button type="button" className="file-chip__main" title={`打开 ${name ?? '附件'}`} onClick={onOpen}>{body}</button> : <span className="file-chip__main">{body}</span>}
+      {onRemove ? <button type="button" className="file-chip__close" aria-label="移除附件" onClick={onRemove}><Icon name="close" size={12} /></button> : null}
+    </span>
+  );
+}
 
 /** Codex 式提问卡：贴在输入框上方，非全屏遮罩；只处理当前会话的提问（其他会话走 App 的全局兜底）。 */
 function QuestionCard() {
@@ -430,11 +456,7 @@ function Composer({ bot, home, replyTo, onClearReply, topSlot }: { bot: Bot; hom
               </div>
             ) : (
               <div className="attachment-chip attachment-chip--file" key={`${item.name}-${index}`}>
-                <Icon name="folder" size={16} />
-                <span className="attachment-chip__meta"><strong>{item.name}</strong><small>{humanSize(item.size)}</small></span>
-                <button type="button" aria-label="移除" onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}>
-                  <Icon name="close" size={12} />
-                </button>
+                <FileChip name={item.name} size={item.size} onRemove={() => setAttachments((prev) => prev.filter((_, i) => i !== index))} />
               </div>
             ))}
           </div>

@@ -2755,3 +2755,21 @@ select {
 .computer-countdown { margin-left: 9px; color: var(--text-dim); font-size: 10px; font-variant-numeric: tabular-nums; }
 
 .head-pill__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* 文件附件 chip：类型角标 + 单行文件名 + 大小的紧凑设计 */
+.file-chip { display: inline-flex; align-items: stretch; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 2px 8px #0000000d; overflow: hidden; max-width: 300px; transition: border-color 160ms ease; }
+.file-chip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
+.file-chip__main { display: inline-flex; align-items: center; gap: 9px; padding: 8px 10px; background: none; border: 0; color: var(--text); cursor: pointer; text-align: left; min-width: 0; font: inherit; }
+.file-chip__badge { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+.file-chip__badge--doc { background: #3b82f61a; color: #3b82f6; }
+.file-chip__badge--sheet { background: #16a34a1a; color: #16a34a; }
+.file-chip__badge--pdf { background: #dc26261a; color: #dc2626; }
+.file-chip__badge--image { background: #a855f71a; color: #a855f7; }
+.file-chip__badge--code { background: #f59e0b1a; color: #d97706; }
+.file-chip__badge--file { background: #64748b1a; color: #64748b; }
+.file-chip__meta { display: grid; min-width: 0; line-height: 1.3; }
+.file-chip__meta strong { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.file-chip__meta small { color: var(--text-dim); font-size: 10px; }
+.file-chip__close { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 8px; }
+.file-chip__close:hover { color: var(--text); }
+.attachment-chip--file { padding: 0; border: 0; background: none; box-shadow: none; }
