@@ -56,6 +56,26 @@ export function ensureWritableDirectory(dir: string): boolean {
   } catch { return false; }
 }
 
+/** 读一份数据目录的"内容丰富度"：Bot 数量 + settings 写入时间，用于在两个候选之间选更完整的一份。 */
+function richness(dir: string): { bots: number; at: number } | undefined {
+  try {
+    const file = path.join(dir, 'settings.json');
+    if (!fs.existsSync(file)) return undefined;
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { bots?: unknown[] };
+    const bots = Array.isArray(raw.bots) ? raw.bots.length : 0;
+    return { bots, at: fs.statSync(file).mtimeMs };
+  } catch { return undefined; }
+}
+
+/** 两个数据目录都存在时，选更完整的那份（Bot 多者优先，其次 settings 更新者），避免升级后读到空壳目录。 */
+function pickRicher(a: string, b: string): string {
+  const left = richness(a), right = richness(b);
+  if (!left) return right ? b : a;
+  if (!right) return a;
+  if (left.bots !== right.bots) return left.bots > right.bots ? a : b;
+  return left.at >= right.at ? a : b;
+}
+
 /** 解析当前数据目录。 */
 export function resolveDataDir(): string {
   if (process.env.MOYU_DATA_DIR) return process.env.MOYU_DATA_DIR;
