@@ -22,6 +22,7 @@ import type { GeneratedImage } from './providers';
 import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
 import { newId, formatDuration, pruneOutput, summarize, truncate } from './util';
+import { buildOffice } from './office-router';
 import { runWorkflow } from './workflow';
 import { contextWindow, outputBudget, isContextOverflow, parseContextLimit, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
@@ -543,6 +544,38 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
             workspaceDir: bot.workspaceId === 'workspace_local' ? path.join(this.store.dataDir, 'local-artifacts') : this.computerFor(bot).getSettings().workspaceDir,
             imageApiKey: '',
             imageGenerator,
+            makeOffice: async (request) => {
+              const computer = this.computerFor(bot);
+              const botDir = this.store.botDirName(bot.id);
+              const isLocal = (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local';
+              // 本机 Bot 直接本机生成；云 Bot 先云机生成、失败回落本机（能力不依赖云机模板）。
+              const result = await buildOffice(
+                computer,
+                { kind: request.kind, name: request.name, directory: request.directory ?? '', spreadsheet: request.spreadsheet as never, document: request.document as never, slides: request.slides as never },
+                botDir,
+                { prefer: isLocal ? 'local' : 'cloud' },
+              );
+              if (!result.ok || !result.path) return result;
+              // 生成后自动交付为对话卡片：用户点开/预览即可，不必再调 deliver_file。
+              try {
+                const { bytes } = await computer.readBytes(result.path, botDir);
+                const fileName = path.posix.basename(result.path);
+                const mimes: Record<string, string> = { xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+                const mimeType = mimes[request.kind] ?? 'application/octet-stream';
+                const baseDir = isLocal ? path.join(this.store.dataDir, 'local-artifacts') : computer.getSettings().workspaceDir;
+                const localRel = `uploads/${botDir}/${fileName}`;
+                const absPath = path.join(baseDir, localRel);
+                fs.mkdirSync(path.dirname(absPath), { recursive: true });
+                fs.writeFileSync(absPath, bytes);
+                assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
+                  id: newId('att'), kind: 'file' as const, name: fileName, mimeType,
+                  path: isLocal ? `@workspace_local/${localRel}` : localRel,
+                  size: bytes.length, origin: isLocal ? 'local' : 'cloud',
+                }];
+                this.store.saveConversation(conversationId);
+              } catch { /* 交付失败不影响生成结果，用户仍可按路径取 */ }
+              return result;
+            },
             stageFileToCloud: async (filePath, target) => {
               const computer = this.computerFor(bot);
               const botDir = this.store.botDirName(bot.id);

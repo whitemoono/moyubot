@@ -328,6 +328,88 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'make_spreadsheet',
+    description: '生成 Excel 表格（.xlsx）并交付给用户：给定表名、表头和数据行即可，自动列宽、表头加粗、冻结首行。适合报表、清单、数据汇总。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '文件名（不含扩展名）' },
+        directory: { type: 'string', description: '保存目录（相对 Bot 工作目录，可留空）' },
+        sheets: {
+          type: 'array',
+          description: '一个或多个工作表',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: '工作表名' },
+              title: { type: 'string', description: '置顶大标题（可选）' },
+              columns: { type: 'array', items: { type: 'string' }, description: '表头，按列顺序' },
+              rows: { type: 'array', items: { type: 'array', items: {} }, description: '数据行' },
+              freezeHeader: { type: 'boolean', description: '冻结表头' },
+            },
+            required: ['rows'],
+          },
+        },
+      },
+      required: ['name', 'sheets'],
+    },
+  },
+  {
+    name: 'make_document',
+    description: '生成 Word 文档（.docx）并交付给用户：支持标题层级、段落、要点列表、表格、分页。适合报告、方案、会议纪要。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '文件名（不含扩展名）' },
+        directory: { type: 'string', description: '保存目录（相对 Bot 工作目录，可留空）' },
+        title: { type: 'string', description: '文档标题（可选）' },
+        blocks: {
+          type: 'array',
+          description: '正文块，按顺序渲染',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['heading1', 'heading2', 'heading3', 'paragraph', 'bullets', 'table', 'pageBreak'], description: '块类型' },
+              text: { type: 'string', description: 'heading/paragraph 的文本' },
+              bold: { type: 'boolean', description: '段落加粗' },
+              items: { type: 'array', items: { type: 'string' }, description: 'bullets 的条目' },
+              columns: { type: 'array', items: { type: 'string' }, description: 'table 表头' },
+              rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'table 数据行' },
+            },
+            required: ['type'],
+          },
+        },
+      },
+      required: ['name', 'blocks'],
+    },
+  },
+  {
+    name: 'make_slides',
+    description: '生成 PowerPoint 演示（.pptx）并交付给用户：封面 + 若干要点页，要点过多自动缩字号。适合汇报、路演、培训。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '文件名（不含扩展名）' },
+        directory: { type: 'string', description: '保存目录（相对 Bot 工作目录，可留空）' },
+        title: { type: 'string', description: '封面标题' },
+        slides: {
+          type: 'array',
+          description: '每页要点',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string', description: '页标题' },
+              subtitle: { type: 'string', description: '副标题（可选）' },
+              bullets: { type: 'array', items: { type: 'string' }, description: '本条列表' },
+              notes: { type: 'string', description: '讲者备注' },
+            },
+          },
+        },
+      },
+      required: ['name', 'slides'],
+    },
+  },
+  {
     name: 'deliver_file',
     description: '把电脑上的文件交付给用户：在对话里显示成可打开的文件卡片（图片显示缩略图）。只读取不改动文件；路径相对本 Bot 的工作目录。产出文件后用它交付，不要让用户去电脑里找路径。交付成功后正文里不要再把文件名写成行内代码（不要再写 `文件名`），卡片已经展示了文件，重复列出会让用户以为有两个文件。',
     parameters: {
@@ -385,6 +467,8 @@ export interface ToolContext {
   localDevice?: ComputerHost;
   /** 把本机附件上传到云机（会唤醒云电脑）：附件默认只存本机，云端要用时才上传。 */
   stageFileToCloud?: (filePath: string, target?: string) => Promise<{ ok: boolean; size: number }>;
+  /** Office 生成：按 Bot 所属机器选择执行位置，产物自动交付。 */
+  makeOffice?: (request: { kind: 'xlsx' | 'docx' | 'pptx'; name: string; directory?: string; spreadsheet?: unknown; document?: unknown; slides?: unknown }) => Promise<{ ok: boolean; path?: string; bytes?: number; machine: 'local' | 'cloud'; error?: string }>;
   /** 文件交付：把电脑上的文件读出来挂到当前回复上，用户在对话里直接打开。 */
   deliverFile?: (filePath: string, name?: string) => Promise<{ ok: boolean; name: string; size: number; relPath: string }>;
   /** Bot 专属工作目录（botDirName）：cloud_exec/read/write 的相对路径与 cwd 都锚定在这里，实现 Bot 间文件隔离。 */
@@ -748,6 +832,33 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const target = typeof args.target === 'string' && args.target.trim() ? args.target.trim() : undefined;
         const staged = await ctx.stageFileToCloud(source, target);
         return finish({ ok: true, summary: `已上传到云电脑：${target ?? source}（${Math.max(1, Math.round(staged.size / 1024))} KB）`, detail: '云电脑上已经可以按这个相对路径读取/处理该文件。' });
+      }
+      case 'make_spreadsheet':
+      case 'make_document':
+      case 'make_slides': {
+        if (!ctx.makeOffice) throw new Error('当前运行时不支持生成 Office 文件');
+        const name = requireString(args, 'name');
+        const directory = typeof args.directory === 'string' ? args.directory : '';
+        const kind = call.name === 'make_spreadsheet' ? 'xlsx' : call.name === 'make_document' ? 'docx' : 'pptx';
+        const request = { kind, name, directory } as { kind: 'xlsx' | 'docx' | 'pptx'; name: string; directory: string; spreadsheet?: unknown; document?: unknown; slides?: unknown };
+        if (kind === 'xlsx') {
+          if (!Array.isArray(args.sheets) || !args.sheets.length) throw new Error('sheets 至少需要一个工作表');
+          request.spreadsheet = args.sheets;
+        } else if (kind === 'docx') {
+          if (!Array.isArray(args.blocks) || !args.blocks.length) throw new Error('blocks 至少需要一个内容块');
+          request.document = { title: typeof args.title === 'string' ? args.title : undefined, blocks: args.blocks };
+        } else {
+          if (!Array.isArray(args.slides) || !args.slides.length) throw new Error('slides 至少需要一页');
+          request.slides = { title: typeof args.title === 'string' ? args.title : undefined, slides: args.slides };
+        }
+        const result = await ctx.makeOffice(request);
+        if (!result.ok || !result.path) return finish({ ok: false, summary: `生成失败：${result.error ?? '未知错误'}`, detail: result.error });
+        const kb = Math.max(1, Math.round((result.bytes ?? 0) / 1024));
+        return finish({
+          ok: true,
+          summary: `已生成 ${path.posix.basename(result.path)}（${kb} KB · ${result.machine === 'cloud' ? '云电脑' : '本机'}）并交付`,
+          detail: `文件：${result.path}`,
+        });
       }
       case 'deliver_file': {
         if (!ctx.deliverFile) throw new Error('当前运行时不支持文件交付');
