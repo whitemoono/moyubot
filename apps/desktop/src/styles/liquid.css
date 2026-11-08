@@ -2794,3 +2794,10 @@ select {
 .file-viewer__pre { margin: 0; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 .file-viewer__md { max-width: none; }
 .file-viewer__hint { display: flex; align-items: center; gap: 8px; padding: 18px 4px; color: var(--text-dim); font-size: 12px; }
+
+/* 内置查看器里的 Excel 表格 */
+.file-viewer__sheet h4 { margin: 14px 0 6px; font-size: 12px; color: var(--text-dim); }
+.file-viewer__sheet table { border-collapse: collapse; margin-bottom: 18px; font-size: 12px; }
+.file-viewer__sheet td, .file-viewer__sheet th { border: 1px solid var(--line-strong); padding: 5px 10px; white-space: pre-wrap; }
+.file-viewer__sheet tr:first-child td { background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 600; }
+.file-viewer__sheet td { color: var(--text); }

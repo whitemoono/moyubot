@@ -701,6 +701,13 @@ export class MoyuApp {
       return true;
     });
 
+    // 内置查看器读原始字节（docx/xlsx 由渲染端解析，不能按文本读）。
+    handle('moyu:artifact:read-bytes', (_event, relPath: string) => {
+      const file = this.resolveWorkspaceArtifact(relPath);
+      if (!file || !fs.existsSync(file)) throw new Error('文件不存在或已被移动');
+      return new Uint8Array(fs.readFileSync(file));
+    });
+
     // 内置查看器读文本：只允许工作区内的产物，最多 256KB。
     handle('moyu:artifact:read-text', (_event, relPath: string) => {
       const file = this.resolveWorkspaceArtifact(relPath);

@@ -136,6 +136,7 @@ const api = {
   saveArtifact: (relPath: string) => invoke<boolean>('moyu:artifact:save-as', relPath),
   revealArtifact: (relPath: string) => invoke<boolean>('moyu:artifact:reveal', relPath),
   readArtifactText: (relPath: string) => invoke<{ text: string; truncated: boolean }>('moyu:artifact:read-text', relPath),
+  readArtifactBytes: (relPath: string) => invoke<Uint8Array>('moyu:artifact:read-bytes', relPath),
   openExternal: (url: string) => invoke<void>('moyu:open-external', url),
   win: (action: 'minimize' | 'maximize' | 'close') => invoke<void>('moyu:win', action),
 

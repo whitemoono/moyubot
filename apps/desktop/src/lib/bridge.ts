@@ -140,6 +140,7 @@ export interface MoyuBridge {
   saveArtifact(relPath: string): Promise<boolean>;
   revealArtifact(relPath: string): Promise<boolean>;
   readArtifactText(relPath: string): Promise<{ text: string; truncated: boolean }>;
+  readArtifactBytes(relPath: string): Promise<Uint8Array>;
   openExternal(url: string): Promise<void>;
   win(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   onEvent(listener: (event: AgentEvent) => void): () => void;

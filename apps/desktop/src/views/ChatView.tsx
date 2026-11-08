@@ -110,8 +110,8 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   key={attachment.id}
                   name={attachment.name}
                   size={attachment.size}
-                  origin={attachment.origin}
-                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size, origin: attachment.origin }) : undefined}
+                  origin={attachmentOrigin(attachment)}
+                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size, origin: attachmentOrigin(attachment) }) : undefined}
                   onSave={attachment.path && attachment.origin !== 'local' ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
                   onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
@@ -231,6 +231,12 @@ function fileBadge(name?: string): { label: string; tone: string } {
   return { label: ext ? ext.slice(0, 4).toUpperCase() : 'FILE', tone: 'file' };
 }
 
+/** 附件来源：显式 origin 优先；历史消息没有该字段时按路径前缀推断。 */
+function attachmentOrigin(attachment: { origin?: 'cloud' | 'local'; path?: string }): 'cloud' | 'local' {
+  if (attachment.origin) return attachment.origin;
+  return attachment.path?.startsWith('@workspace_local/') ? 'local' : 'cloud';
+}
+
 function FileChip({ name, size, origin, onOpen, onRemove, onSave, onReveal }: { name?: string; size?: number; origin?: 'cloud' | 'local'; onOpen?: () => void; onRemove?: () => void; onSave?: () => void; onReveal?: () => void }) {
   const badge = fileBadge(name);
   const body = (
@@ -256,22 +262,49 @@ function FileChip({ name, size, origin, onOpen, onRemove, onSave, onReveal }: { 
   );
 }
 
-/** 内置文件查看器：文本/Markdown/CSV/JSON 直接看，图片和 PDF 走 Chromium 渲染，Office 提示下载。 */
+/** 内置文件查看器：文本/Markdown/CSV/JSON 直接看，图片/PDF 走 Chromium，docx/xlsx 本地解析，其余提示下载。 */
 function FileViewer({ file, onClose }: { file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }; onClose: () => void }) {
   const { toast } = useMoyu();
   const badge = fileBadge(file.name ?? file.path);
   const ext = (file.name ?? file.path).split('.').pop()?.toLowerCase() ?? '';
   const isImage = badge.tone === 'image';
   const isPdf = badge.tone === 'pdf';
-  const [state, setState] = useState<{ loading: boolean; text?: string; truncated?: boolean; error?: string }>({ loading: !isImage && !isPdf });
+  const isDocx = ext === 'docx';
+  const isXlsx = ext === 'xlsx' || ext === 'xls';
+  // 二进制容器（zip 系）绝不能按文本读：否则就是一堆 PK 乱码。
+  const binaryOnly = ['pptx', 'doc', 'ppt', 'zip', 'exe', 'dll', 'bin', '7z', 'rar', 'gz'].includes(ext);
+  const needsParse = isDocx || isXlsx;
+  const [state, setState] = useState<{ loading: boolean; text?: string; html?: string; truncated?: boolean; error?: string }>({ loading: !isImage && !isPdf && !binaryOnly });
   useEffect(() => {
-    if (isImage || isPdf) return;
+    if (isImage || isPdf || binaryOnly) return;
     let active = true;
-    void moyu().readArtifactText(file.path)
-      .then((result) => { if (active) setState({ loading: false, text: result.text, truncated: result.truncated }); })
-      .catch((error: Error) => { if (active) setState({ loading: false, error: error.message }); });
+    void (async () => {
+      try {
+        const bytes = await moyu().readArtifactBytes(file.path);
+        if (isDocx) {
+          const mammoth = await import('mammoth');
+          const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer });
+          if (active) setState({ loading: false, html: result.value });
+          return;
+        }
+        if (isXlsx) {
+          const XLSX = await import('xlsx');
+          const workbook = XLSX.read(bytes, { type: 'array' });
+          const parts = workbook.SheetNames.map((name) => {
+            const sheet = workbook.Sheets[name]!;
+            return `<h4>${name}</h4>${XLSX.utils.sheet_to_html(sheet, { editable: false })}`;
+          });
+          if (active) setState({ loading: false, html: parts.join('') });
+          return;
+        }
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        if (active) setState({ loading: false, text, truncated: bytes.length >= 256 * 1024 });
+      } catch (error) {
+        if (active) setState({ loading: false, error: (error as Error).message });
+      }
+    })();
     return () => { active = false; };
-  }, [file.path, isImage, isPdf]);
+  }, [file.path, isImage, isPdf, binaryOnly, isDocx, isXlsx]);
   const download = async () => { if (await moyu().saveArtifact(file.path)) toast('已下载文件'); };
   return (
     <div className="file-viewer" role="dialog" aria-modal="true" aria-label={`预览 ${file.name ?? ''}`} onClick={onClose}>
@@ -280,7 +313,7 @@ function FileViewer({ file, onClose }: { file: { path: string; name?: string; si
           <span className={`file-chip__badge file-chip__badge--${badge.tone}`}>{badge.label}</span>
           <div className="file-viewer__title"><strong>{file.name ?? file.path.split('/').pop()}</strong><small>{humanSize(file.size) || ''}</small></div>
           <span className="spacer" />
-          {file.origin === 'local'
+          {(file.origin ?? (file.path.startsWith('@workspace_local/') ? 'local' : 'cloud')) === 'local'
             ? <Button size="sm" icon="folder" onClick={() => void moyu().revealArtifact(file.path).catch((error: Error) => toast(error.message, 'error'))}>打开所在目录</Button>
             : <Button size="sm" icon="download" onClick={() => void download()}>下载</Button>}
           <Button size="sm" variant="ghost" icon="external" onClick={() => void moyu().openArtifact(file.path).catch((error: Error) => toast(error.message, 'error'))}>系统程序</Button>
@@ -289,11 +322,13 @@ function FileViewer({ file, onClose }: { file: { path: string; name?: string; si
         <div className="file-viewer__body">
           {isImage ? <img src={assetUrl(file.path)} alt={file.name} />
             : isPdf ? <iframe title={file.name ?? 'pdf'} src={assetUrl(file.path)} />
-            : state.loading ? <div className="file-viewer__hint"><Spinner /> 正在读取…</div>
-            : state.error ? <div className="file-viewer__hint">{state.error}</div>
+            : binaryOnly ? <div className="file-viewer__hint">该格式（{ext.toUpperCase()}）无法在应用内预览，请点“系统程序”或用 Office 打开<Button size="sm" icon="download" onClick={() => void download()}>下载</Button></div>
+            : state.loading ? <div className="file-viewer__hint"><Spinner /> 正在解析…</div>
+            : state.error ? <div className="file-viewer__hint">无法解析：{state.error}</div>
+            : state.html ? <div className={`prose file-viewer__md ${isXlsx ? 'file-viewer__sheet' : ''}`} dangerouslySetInnerHTML={{ __html: state.html }} />
             : ext === 'md' ? <div className="prose file-viewer__md" dangerouslySetInnerHTML={{ __html: renderMarkdown(state.text ?? '') }} />
             : state.text ? <pre className="file-viewer__pre">{state.text}</pre>
-            : <div className="file-viewer__hint">该格式无法内置预览，请点“下载”后用系统程序打开。</div>}
+            : <div className="file-viewer__hint">该格式无法内置预览，请点“系统程序”打开。</div>}
           {state.truncated ? <p className="file-viewer__hint">文件较大，只显示了前 256KB，完整内容请下载。</p> : null}
         </div>
       </div>

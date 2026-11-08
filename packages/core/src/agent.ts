@@ -556,20 +556,18 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                 { prefer: isLocal ? 'local' : 'cloud' },
               );
               if (!result.ok || !result.path) return result;
-              // 生成后自动交付为对话卡片：用户点开/预览即可，不必再调 deliver_file。
+              // 生成后自动交付为对话卡片。文件已经在 Bot 工作目录里（result.path 相对 botDir），
+              // 不能再复制到 uploads/<botDir>/ 下——那会让附件的路径与实际落点不一致，预览时报“文件不存在”。
               try {
                 const { bytes } = await computer.readBytes(result.path, botDir);
                 const fileName = path.posix.basename(result.path);
                 const mimes: Record<string, string> = { xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
                 const mimeType = mimes[request.kind] ?? 'application/octet-stream';
-                const baseDir = isLocal ? path.join(this.store.dataDir, 'local-artifacts') : computer.getSettings().workspaceDir;
-                const localRel = `uploads/${botDir}/${fileName}`;
-                const absPath = path.join(baseDir, localRel);
-                fs.mkdirSync(path.dirname(absPath), { recursive: true });
-                fs.writeFileSync(absPath, bytes);
+                // 本地 Bot 的 local-artifacts 根与 cloud.workspaceDir 根之间只差一层 botDir。
+                const relPath = isLocal ? `@workspace_local/${botDir}/${result.path}` : result.path;
                 assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
                   id: newId('att'), kind: 'file' as const, name: fileName, mimeType,
-                  path: isLocal ? `@workspace_local/${localRel}` : localRel,
+                  path: relPath,
                   size: bytes.length, origin: isLocal ? 'local' : 'cloud',
                 }];
                 this.store.saveConversation(conversationId);
