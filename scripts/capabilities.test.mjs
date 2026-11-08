@@ -280,15 +280,16 @@ test('云端盘点分两档（自有/共享），探针不读 ~/.claude，Bot �
   assert.ok(probeCmd && !probeCmd.includes('.claude'), '盘点探针不得出现 .claude');
   // Bot 在对话里安装 MCP → 写它自己的 .moyu/mcp.json（并先创建目录）
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { command: 'node' } } }), { botDirName: dirName });
-  const perBot = execs.find(c => c.includes('python3') && c.includes(dirName) && c.includes('mcp.json'));
+  const perBot = execs.find(c => c.includes('python3') && c.includes(dirName) && c.includes('mcp.json') && /makedirs|mkdirSync/.test(c));
   assert.ok(perBot, '部署脚本必须指向该 Bot 家目录的 .moyu/mcp.json');
-  assert.ok(perBot.includes('".moyu"') && perBot.includes('"mcp.json"'));
+  // 部署实现可能是 node 或 python（云机模板不同），只要求落在 .moyu/mcp.json 且不在 ~/.claude。
+  assert.ok(perBot.includes('.moyu') && perBot.includes('mcp.json'), '部署必须写 .moyu/mcp.json');
   assert.ok(/makedirs|mkdirSync|mkdir -p/.test(perBot), '家目录可能不存在，部署前要先创建');
   assert.ok(!perBot.includes('.claude'), 'moyubot 不得写入 ~/.claude');
   // 设置页导入（不带 bot）→ 写 .moyu/shared/mcp.json，同样不碰 ~/.claude
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo2: { command: 'node' } } }));
-  const shared = execs.find(c => c.includes('python3') && c.includes('/.moyu/shared'));
-  assert.ok(shared && shared.includes('".moyu"'), '共享部署写 .moyu/shared/mcp.json');
+  const shared = execs.find(c => c.includes('python3') && c.includes('/.moyu/shared') && /makedirs|mkdirSync/.test(c));
+  assert.ok(shared && shared.includes('.moyu') && shared.includes('shared') && shared.includes('mcp.json'), '共享部署写 .moyu/shared/mcp.json');
   assert.ok(!shared.includes('.claude'), '共享部署不得写 ~/.claude');
   await manager.dispose();
 });
