@@ -623,6 +623,15 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               const absPath = path.join(baseDir, relName);
               fs.mkdirSync(path.dirname(absPath), { recursive: true });
               fs.writeFileSync(absPath, bytes);
+              // 去重：make_* 生成时已自动交付同名文件，模型再显式调 deliver_file 不该出现第二张卡片。
+              const existing = (assistantMessage.attachments ?? []).find((item) => item.name === fileName && item.kind === 'file');
+              if (existing) {
+                // 命中已有附件时只补正路径（老记录可能指向 uploads/ 下不存在的副本）。
+                existing.path = relPath;
+                existing.size = bytes.length;
+                this.store.saveConversation(conversationId);
+                return { ok: true, name: fileName, size: bytes.length, relPath };
+              }
               assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
                 id: newId('att'), kind, name: fileName, mimeType, path: relPath, size: bytes.length, origin: (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local' ? 'local' : 'cloud',
                 ...(kind === 'image' ? { dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}` } : {}),

@@ -112,7 +112,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   size={attachment.size}
                   origin={attachmentOrigin(attachment)}
                   onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size, origin: attachmentOrigin(attachment) }) : undefined}
-                  onSave={attachment.path && attachment.origin !== 'local' ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onSave={attachment.path && attachmentOrigin(attachment) !== 'local' ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
                   onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
               ) : (
@@ -197,8 +197,8 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   name={attachment.name}
                   size={attachment.size}
                   origin={attachment.origin}
-                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size }) : undefined}
-                  onSave={attachment.path ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size, origin: attachmentOrigin(attachment) }) : undefined}
+                  onSave={attachment.path && attachmentOrigin(attachment) !== 'local' ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
                   onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
               ))}
