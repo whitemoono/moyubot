@@ -196,7 +196,7 @@ test('fork：分身带着父对话最近的上下文出发，只读且自成一 
   try {
     await f.runtime.runUnattended(f.bot.id, '帮我调研一下');
     const parent = f.store.botConversation(f.bot.id).id;
-    const result = await f.runtime.forkSubagent(parent, '顺着结论查边界情况');
+    const result = await f.runtime.forkSubagent(parent, 'call-fork-1', '顺着结论查边界情况');
     assert.equal(result.ok, true, result.error);
     assert.match(result.text, /只读调研完成/);
     const forked = f.store.getConversation(result.conversationId);

@@ -262,7 +262,7 @@ test('云端盘点分两档（自有/共享），探针不读 ~/.claude，Bot �
     writeText: async () => {},
     exec: async (cmd) => {
       execs.push(cmd);
-      const body = cmd.includes('const out={shared') ? JSON.stringify(probe) : 'migrated:0,0';
+      const body = /python3|node -e/.test(cmd) && !cmd.includes('.migrated-from-claude') ? JSON.stringify(probe) : 'migrated:0,0';
       return { stdout: body + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
     },
   };
@@ -276,7 +276,7 @@ test('云端盘点分两档（自有/共享），探针不读 ~/.claude，Bot �
   const ownSkill = inventory.skills.find(s => s.name === 'bot-skill');
   assert.equal(ownSkill.botId, bot.id);
   // 探针不得读 ~/.claude
-  const probeCmd = execs.find(c => c.includes('const out={shared'));
+  const probeCmd = execs.find(c => (c.includes('python3') || c.includes('node -e')) && !c.includes('.migrated-from-claude'));
   assert.ok(probeCmd && !probeCmd.includes('.claude'), '盘点探针不得出现 .claude');
   // Bot 在对话里安装 MCP → 写它自己的 .moyu/mcp.json（并先创建目录）
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { command: 'node' } } }), { botDirName: dirName });
@@ -304,7 +304,7 @@ test('一次性迁移：云机 claude 的 MCP/技能复制进 .moyu/shared，之
     writeText: async () => {},
     exec: async (cmd) => {
       execs.push(cmd);
-      const body = cmd.includes('const out={shared') ? JSON.stringify({ shared: { mcp: [{ name: 'migrated-mcp', transport: 'http', url: 'https://m.example/mcp' }], skills: [] }, bots: {} } ) : 'migrated:2,26';
+      const body = (cmd.includes('python3') || cmd.includes('node -e')) && !cmd.includes('.migrated-from-claude') ? JSON.stringify({ shared: { mcp: [{ name: 'migrated-mcp', transport: 'http', url: 'https://m.example/mcp' }], skills: [] }, bots: {} }) : 'migrated:2,26';
       return { stdout: body + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
     },
   };
