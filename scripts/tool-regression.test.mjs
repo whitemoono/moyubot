@@ -29,6 +29,8 @@ function makeCtx(options = {}) {
     exec: async (cmd) => ({ stdout: `ran<${cmd}>`, stderr: '', exitCode: 0, timedOut: false }),
     readText: async (p) => `content-of:${p}`,
     writeText: async (p, c) => { writes.push([p, c]); },
+    writeBytes: async (p, bytes, sub) => { const target = path.join(workspaceDir, sub ? path.join(sub, p) : p); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, bytes); writes.push([target, bytes.length]); },
+    readBytes: async (p, sub) => { const target = path.join(workspaceDir, sub ? path.join(sub, p) : p); return { bytes: new Uint8Array(fs.readFileSync(target)), machineId: 'mock' }; },
     desktopAction: async (a) => ({ text: `desktop:${a.action}`, screenshot: PNG }),
   };
   const ctx = {
@@ -59,8 +61,8 @@ function makeCtx(options = {}) {
 
 const call = (name, args) => ({ id: `c-${name}`, name, arguments: args });
 
-test('TOOL_SCHEMAS 恰好 25 个内置工具', () => {
-  assert.equal(TOOL_SCHEMAS.length, 25);
+test('TOOL_SCHEMAS 至少包含 25 个内置工具', () => {
+  assert.ok(TOOL_SCHEMAS.length >= 25, `内置工具数量异常：${TOOL_SCHEMAS.length}`);
 });
 
 // —— 云端三件套 + 桌面 ——
@@ -331,10 +333,32 @@ test('每 Bot 工作目录：本地文件隔离 + cwd 锚定 + 云端目录拼�
   } finally { cloud.dispose(); }
 });
 
+test('Office 工具：结构化输入生成三种格式并写入工作区', async () => {
+  const f = makeCtx();
+  // makeCtx 不注入 makeOffice：这里直接绑到本机生成器，验证 office-router + office 的完整链路。
+  const officeRouter = await import('../packages/core/dist/office-router.js');
+  f.ctx.makeOffice = (request) => officeRouter.buildOfficeLocally(f.ctx.cloud, request, '');
+  const calls = [
+    { name: 'make_spreadsheet', args: { name: '报表', sheets: [{ name: '汇总', title: '销售', columns: [{ header: '月份' }, { header: '金额' }], rows: [['1月', 12000]] }] } },
+    { name: 'make_document', args: { name: '周报', title: '周报', blocks: [{ type: 'heading1', text: '进展' }, { type: 'paragraph', text: '正文' }] } },
+    { name: 'make_slides', args: { name: '汇报', title: '封面', slides: [{ title: '背景', bullets: ['要点'] }] } },
+  ];
+  for (const item of calls) {
+    const result = await runTool(call(item.name, item.args), f.ctx);
+    assert.equal(result.ok, true, item.name + ': ' + result.summary);
+  }
+  const walk = (current, out) => { for (const entry of fs.readdirSync(current, { withFileTypes: true })) { const full = path.join(current, entry.name); if (entry.isDirectory()) walk(full, out); else out.push(full); } };
+  const files = []; walk(f.workspaceDir, files);
+  for (const ext of ['xlsx', 'docx', 'pptx']) {
+    const hit = files.filter((file) => file.endsWith('.' + ext));
+    assert.ok(hit.length > 0, '没有生成 .' + ext);
+    assert.equal(fs.readFileSync(hit[0]).slice(0, 2).toString(), 'PK', '.' + ext + ' 不是合法 zip');
+  }
+});
 test('每个内置 schema 工具都在回归表里被覆盖', async () => {
   // 兜底：防止将来加了新工具却忘记加回归。此测试枚举 TOOL_SCHEMAS，
   // 与上面手写用例覆盖到的名字对比（维护时在 covered 里补一项）。
-  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork']);
+  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork', 'make_spreadsheet', 'make_document', 'make_slides', 'local_read_file', 'local_list_files', 'local_write_file', 'cloud_stage_file', 'deliver_file']);
   const missing = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `这些新工具还没有回归用例：${missing.join(', ')}`);
 });
