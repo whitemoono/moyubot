@@ -580,16 +580,24 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               const mimes: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', pdf: 'application/pdf', md: 'text/markdown', txt: 'text/plain', csv: 'text/csv', tsv: 'text/tab-separated-values', json: 'application/json', html: 'text/html', xml: 'application/xml', yml: 'text/yaml', yaml: 'text/yaml', zip: 'application/zip', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
               const mimeType = mimes[ext] ?? 'application/octet-stream';
               const kind: 'image' | 'file' = mimeType.startsWith('image/') ? 'image' : 'file';
-              const relPath = `uploads/${botDir}/${safe}`;
-              const absPath = path.join(computer.getSettings().workspaceDir, relPath);
+              // 交付物必须落在"能解析回"的位置：本地 Bot 用 local-artifacts（与 @workspace_local/ 前缀对应），
+              // 云 Bot 用 cloud.workspaceDir。否则点开/预览会报"文件不存在"。
+              const isLocal = (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local';
+              const baseDir = isLocal ? path.join(this.store.dataDir, 'local-artifacts') : computer.getSettings().workspaceDir;
+              // 无扩展名时按 mimeType 补一个，否则徽标与查看器都认不出格式。
+              const defaultExt: Record<string, string> = { 'text/markdown': 'md', 'text/plain': 'txt', 'text/csv': 'csv', 'application/json': 'json', 'text/html': 'html', 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg' };
+              const fileName = path.extname(safe) ? safe : `${safe}.${defaultExt[mimeType] ?? 'txt'}`;
+              const relName = `uploads/${botDir}/${fileName}`;
+              const relPath = isLocal ? `@workspace_local/${relName}` : relName;
+              const absPath = path.join(baseDir, relName);
               fs.mkdirSync(path.dirname(absPath), { recursive: true });
               fs.writeFileSync(absPath, bytes);
               assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
-                id: newId('att'), kind, name: safe, mimeType, path: relPath, size: bytes.length, origin: (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local' ? 'local' : 'cloud',
+                id: newId('att'), kind, name: fileName, mimeType, path: relPath, size: bytes.length, origin: (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local' ? 'local' : 'cloud',
                 ...(kind === 'image' ? { dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}` } : {}),
               }];
               this.store.saveConversation(conversationId);
-              return { ok: true, name: safe, size: bytes.length, relPath };
+              return { ok: true, name: fileName, size: bytes.length, relPath };
             },
             requestApproval:
               bot.approvalPolicy === 'ask'

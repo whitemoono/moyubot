@@ -73,7 +73,7 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
   </div>;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onPreviewFile, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onPreviewFile: (file: { path: string; name?: string; size?: number }) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
+const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onPreviewFile, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onPreviewFile: (file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
   const { botActivities, setView, settings, toast } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -111,8 +111,8 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
                   name={attachment.name}
                   size={attachment.size}
                   origin={attachment.origin}
-                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size }) : undefined}
-                  onSave={attachment.path ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
+                  onOpen={attachment.path ? () => onPreviewFile({ path: attachment.path!, name: attachment.name, size: attachment.size, origin: attachment.origin }) : undefined}
+                  onSave={attachment.path && attachment.origin !== 'local' ? () => void moyu().saveArtifact(attachment.path!).then((saved) => { if (saved) toast('已下载文件'); }).catch((error: Error) => toast(error.message, 'error')) : undefined}
                   onReveal={attachment.path ? () => void moyu().revealArtifact(attachment.path!).catch((error: Error) => toast(error.message, 'error')) : undefined}
                 />
               ) : (
@@ -257,7 +257,7 @@ function FileChip({ name, size, origin, onOpen, onRemove, onSave, onReveal }: { 
 }
 
 /** 内置文件查看器：文本/Markdown/CSV/JSON 直接看，图片和 PDF 走 Chromium 渲染，Office 提示下载。 */
-function FileViewer({ file, onClose }: { file: { path: string; name?: string; size?: number }; onClose: () => void }) {
+function FileViewer({ file, onClose }: { file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }; onClose: () => void }) {
   const { toast } = useMoyu();
   const badge = fileBadge(file.name ?? file.path);
   const ext = (file.name ?? file.path).split('.').pop()?.toLowerCase() ?? '';
@@ -280,7 +280,9 @@ function FileViewer({ file, onClose }: { file: { path: string; name?: string; si
           <span className={`file-chip__badge file-chip__badge--${badge.tone}`}>{badge.label}</span>
           <div className="file-viewer__title"><strong>{file.name ?? file.path.split('/').pop()}</strong><small>{humanSize(file.size) || ''}</small></div>
           <span className="spacer" />
-          <Button size="sm" icon="download" onClick={() => void download()}>下载</Button>
+          {file.origin === 'local'
+            ? <Button size="sm" icon="folder" onClick={() => void moyu().revealArtifact(file.path).catch((error: Error) => toast(error.message, 'error'))}>打开所在目录</Button>
+            : <Button size="sm" icon="download" onClick={() => void download()}>下载</Button>}
           <Button size="sm" variant="ghost" icon="external" onClick={() => void moyu().openArtifact(file.path).catch((error: Error) => toast(error.message, 'error'))}>系统程序</Button>
           <IconButton name="close" label="关闭预览" onClick={onClose} />
         </header>
@@ -661,7 +663,7 @@ function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: Reac
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
   const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, blockedGoal, reopenGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents } = useMoyu();
-  const [viewerFile, setViewerFile] = useState<{ path: string; name?: string; size?: number } | null>(null);
+  const [viewerFile, setViewerFile] = useState<{ path: string; name?: string; size?: number; origin?: 'cloud' | 'local' } | null>(null);
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
   const [msgMenu, setMsgMenu] = useState<MessageSelectionMenuState | null>(null);
