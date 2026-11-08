@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { Store, ScheduleRunner, parseCron, nextCronTime, AgentRuntime, CloudHost, toolNamesFor } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 
 const root = path.resolve('.work', 'schedule-tests', String(Date.now()));
 let serial = 0;
@@ -104,7 +105,7 @@ test('chat tools create, list, modify, pause, resume and close only the speaking
     res.write(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }] })}\n\n`); res.end('data: [DONE]\n\n');
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
-  store.updateSettings({ providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }] });
+  store.updateSettings({ providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1` }) }] });
   const cloud = new CloudHost({ settings: store.settings.cloud, apiKey: () => '', onStatus() {} });
   const runtime = new AgentRuntime({ store, cloud, emit() {}, requestApproval: async () => true });
   const send = async (text) => { await runtime.runUnattended(first.id, text); return store.listSchedules().find((task) => task.botId === first.id); };
@@ -123,6 +124,8 @@ test('chat tools create, list, modify, pause, resume and close only the speaking
 
 test('unattended runtime reports failure after the final reply rather than on submission', async () => {
   const { store, first } = fixture();
+  // 出厂不再预置供应商；这里补一个"有供应商但没填密钥"的远端槽位，正好命中缺 Key 分支。
+  store.updateSettings({ providers: [{ ...testProvider({ baseUrl: 'https://relay.example.invalid/v1' }) }] });
   const cloud = new CloudHost({ settings: store.settings.cloud, apiKey: () => '', onStatus() {} });
   const runtime = new AgentRuntime({ store, cloud, emit() {}, requestApproval: async () => true });
   try { await assert.rejects(runtime.runUnattended(first.id, 'scheduled task'), /API Key/); }

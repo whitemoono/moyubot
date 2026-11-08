@@ -7,19 +7,23 @@
   "description": "MoyuBot core: provider adapters, InstaBox cloud-host orchestrator, agent loop",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/bundle-office.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
     "@e2b/desktop": "^2.5.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "docx": "^9.15.3",
     "e2b": "2.62.0",
+    "exceljs": "^4.4.0",
+    "pptxgenjs": "^4.0.1",
     "yaml": "^2.9.1",
     "zod": "4.4.1"
   }

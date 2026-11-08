@@ -51,14 +51,6 @@ export function editorToolCatalog(builtin: ReadonlyArray<{ name: string; descrip
   }));
 }
 
-export function deepSeekProvider(providers: ProviderConfig[]): ProviderConfig {
-  const existing = providers.find((provider) => {
-    try { return provider.kind === 'openai' && new URL(provider.baseUrl).hostname === 'api.deepseek.com'; }
-    catch { return false; }
-  });
-  return existing ?? { id: `deepseek${providers.some((item) => item.id === 'deepseek') ? `-${crypto.randomUUID()}` : ''}`, name: 'DeepSeek', kind: 'openai', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat', models: ['deepseek-chat', 'deepseek-reasoner'], createdAt: Date.now() };
-}
-
 export function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
   const now = Date.now();
   if (seed) return { ...seed, sidebar: undefined, avatar: { ...seed.avatar }, id: crypto.randomUUID(), name: `${seed.name} 副本`, handle: `${seed.handle}-copy`, createdAt: now, updatedAt: now };

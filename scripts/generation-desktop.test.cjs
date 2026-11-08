@@ -41,7 +41,7 @@ app.whenReady().then(async () => {
   const { MoyuApp } = require('../apps/desktop/dist-electron/app.js');
   const { Store } = require('../packages/core/dist/index.js');
   backend = new MoyuApp(path.join(output, 'data'), '0.1.1');
-  const provider = { ...backend.store.settings.providers[0], defaultModel: 'model-a', models: ['model-a', 'model-b'] };
+  const provider = { id: 'test-provider', name: 'Test provider', kind: 'openai', baseUrl: 'http://127.0.0.1:1/v1', defaultModel: 'model-a', models: ['model-a', 'model-b'], createdAt: 0 };
   const bot = { ...backend.store.settings.bots[0], providerId: provider.id, model: 'model-a' };
   backend.store.updateSettings({ providers: [provider], bots: [bot], onboarding: { step: 2, completedAt: Date.now() }, cloud: { driver: 'mock' }, activeBotId: bot.id, activeView: 'chat' });
   backend.start();

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { Store, CapabilityManager, AgentRuntime, CloudHost } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 
 const root = path.resolve('.work', 'capabilities-tests', String(Date.now()));
 let serial = 0;
@@ -140,7 +141,7 @@ test('agent exposes enabled skill metadata and returns loaded manifest through t
   await new Promise(resolve => server.listen(0, 'localhost', resolve));
   const cloud = new CloudHost({ settings: { ...store.settings.cloud, driver: 'mock' }, apiKey: () => '' });
   try {
-    store.updateSettings({ providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }] });
+    store.updateSettings({ providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1` }) }] });
     const runtime = new AgentRuntime({ store, cloud, capabilities: manager, emit: () => {}, requestApproval: async () => false });
     const sent = await runtime.runUnattended(enabled.id, '使用周报技能');
     const message = store.getConversation(sent.conversationId).messages.at(-1);
@@ -234,7 +235,7 @@ test('agent asks before MCP calls and honors a declined approval', async () => {
     res.end('data: ' + JSON.stringify({ choices: [{ delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }] }) + '\n\ndata: [DONE]\n\n');
   });
   await new Promise(resolve => server.listen(0, 'localhost', resolve));
-  store.updateSettings({ providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }] });
+  store.updateSettings({ providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1` }) }] });
   store.upsertBot({ ...bot, approvalPolicy: 'ask' });
   const cloud = new CloudHost({ settings: { ...store.settings.cloud, driver: 'mock' }, apiKey: () => '' });
   const capabilities = { catalog: () => '', schemas: async () => [{ name: 'mcp_fixture_0', description: 'Test external tool', parameters: { type: 'object' } }], call: async () => { calls++; throw new Error('Declined calls must never execute'); } };

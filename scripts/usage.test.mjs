@@ -5,6 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { Store, UsageLedger, normalizeUsage, trackedChat, modelUsageKey, CloudHost, AgentRuntime, createChatProvider } from '../packages/core/dist/index.js';
 import { prepareContext } from '../packages/core/dist/context.js';
+import { testProvider } from './test-provider.mjs';
 
 const root = path.resolve('.work', 'usage-tests', String(Date.now()));
 let serial = 0;
@@ -122,7 +123,7 @@ test('tool rounds, group participants and automatic compaction all reach the dur
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
   const first = { ...bot, model: 'm1', tools: ['remember'] }, second = { ...first, id: 'b2', name: 'Nova', model: 'm2' };
-  store.updateSettings({ bots: [first, second], providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1`, contextWindowTokens: 4096 }], cloud: { ...store.settings.cloud, driver: 'mock' } });
+  store.updateSettings({ bots: [first, second], providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1`, contextWindowTokens: 4096 }) }], cloud: { ...store.settings.cloud, driver: 'mock' } });
   const cloud = new CloudHost({ settings: store.settings.cloud, apiKey: () => '', onStatus: () => {} });
   const runtime = new AgentRuntime({ store, cloud, emit() {}, requestApproval: async () => true });
   const wait = async (id) => { const end = Date.now() + 5000; while (runtime.isRunning(id) && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 10)); assert.equal(runtime.isRunning(id), false); };

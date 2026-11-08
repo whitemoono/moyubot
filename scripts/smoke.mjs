@@ -107,9 +107,10 @@ const store = new core.Store(dataDir);
 store.updateSettings({
   cloud: { ...store.getSettings().cloud, driver: 'mock', workspaceDir: path.join(dataDir, 'workspace') },
 });
-const provider = store.getSettings().providers[0];
+const { testProvider } = await import('./test-provider.mjs');
+const provider = testProvider({ baseUrl: `http://127.0.0.1:${port}/v1`, defaultModel: 'moyu-demo', models: ['moyu-demo'] });
 store.updateSettings({
-  providers: [{ ...provider, baseUrl: `http://127.0.0.1:${port}/v1`, defaultModel: 'moyu-demo' }],
+  providers: [provider],
   bots: store.getSettings().bots.map((bot) => ({
     ...bot,
     model: 'moyu-demo',

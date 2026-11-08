@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentRuntime, CloudHost, Store, schemasFor, toolNamesFor } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'plan-mode-tests', String(Date.now()));
 let serial = 0;
@@ -37,7 +38,7 @@ async function fixture(script, options = {}) {
   const bot = { ...settings.bots[0], model: 'test-model', tools: ['cloud_exec', 'cloud_read', 'remember', 'spawn_agent'] };
   store.updateSettings({
     bots: [bot],
-    providers: [{ ...settings.providers[0], baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }],
+    providers: [{ ...testProvider({ baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }) }],
     cloud: { ...settings.cloud, driver: 'mock' },
   });
   const conversation = store.botConversation(bot.id);

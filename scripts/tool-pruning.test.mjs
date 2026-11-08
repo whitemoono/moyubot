@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, pruneOutput } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 import { prepareContext, pruneToolMessages } from '../packages/core/dist/context.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'tool-pruning-tests', String(Date.now()));
@@ -13,7 +14,7 @@ function fixture() {
   const store = new Store(dataDir);
   const settings = store.getSettings();
   const bot = { ...settings.bots[0], tools: [], model: 'test-model' };
-  store.updateSettings({ bots: [bot], providers: [{ ...settings.providers[0], contextWindowTokens: 4096 }], cloud: { ...settings.cloud, driver: 'mock' } });
+  store.updateSettings({ bots: [bot], providers: [{ ...testProvider({ contextWindowTokens: 4096 }) }], cloud: { ...settings.cloud, driver: 'mock' } });
   return { dataDir, store, bot, conversation: store.botConversation(bot.id) };
 }
 

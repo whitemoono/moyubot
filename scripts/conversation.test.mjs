@@ -5,6 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { Store, CloudHost, AgentRuntime } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 import { messagesFor, prepareContext } from '../packages/core/dist/context.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'conversation-tests', String(Date.now()));
@@ -14,7 +15,7 @@ function fixture() {
   const store = new Store(dataDir);
   const settings = store.getSettings();
   const bot = { ...settings.bots[0], tools: [], model: 'test-model' };
-  store.updateSettings({ bots: [bot], providers: [{ ...settings.providers[0], contextWindowTokens: 4096 }], cloud: { ...settings.cloud, driver: 'mock' } });
+  store.updateSettings({ bots: [bot], providers: [{ ...testProvider({ contextWindowTokens: 4096 }) }], cloud: { ...settings.cloud, driver: 'mock' } });
   return { dataDir, store, bot, conversation: store.botConversation(bot.id) };
 }
 function addTurn(store, conv, n, long = false) {
@@ -229,7 +230,7 @@ test('group replies preserve speaker identity, shared context, private memory is
     res.end('data: [DONE]\n\n');
   });
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
-  f.store.updateSettings({ providers: [{ ...f.store.getSettings().providers[0], baseUrl: `http://localhost:${server.address().port}/v1`, contextWindowTokens: 8192 }] });
+  f.store.updateSettings({ providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1`, contextWindowTokens: 8192 }) }] });
   const cloud = new CloudHost({ settings: f.store.getSettings().cloud, apiKey: () => '', onStatus: () => {} });
   const events = [];
   const runtime = new AgentRuntime({ store: f.store, cloud, emit: (event) => events.push(event), requestApproval: async () => true });
@@ -265,7 +266,7 @@ test('group replies preserve speaker identity, shared context, private memory is
 
 test('replies validate the source, persist selected quotes and reach the model in private and group chats', async () => {
   const f = fixture();
-  f.store.updateSettings({ providers: [{ ...f.store.getSettings().providers[0], contextWindowTokens: 32768 }] });
+  f.store.updateSettings({ providers: [{ ...testProvider({ contextWindowTokens: 32768 }) }] });
   const peer = { ...f.bot, id: 'reply-peer', name: 'Peer' };
   f.store.upsertBot(peer);
   addTurn(f.store, f.conversation, 1);
@@ -485,7 +486,7 @@ test('runtime reuses the same thread, recovers from a real context rejection, an
   await new Promise((resolve) => server.listen(0, 'localhost', resolve));
   const settings = f.store.getSettings();
   const second = { ...f.bot, id: 'second-bot', name: 'Second' };
-  f.store.updateSettings({ bots: [f.bot, second], providers: [{ ...settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }] });
+  f.store.updateSettings({ bots: [f.bot, second], providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1` }) }] });
   for (let n = 0; n < 6; n++) addTurn(f.store, f.conversation, n);
   const cloud = new CloudHost({ settings: f.store.getSettings().cloud, apiKey: () => '', onStatus: () => {} });
   const events = [];

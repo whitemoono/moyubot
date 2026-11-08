@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentRuntime, CloudHost, Store } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 import { forceCompact } from '../packages/core/dist/context.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'small-capabilities-tests', String(Date.now()));
@@ -42,7 +43,7 @@ async function fixture(script, options = {}) {
   const bot = { ...settings.bots[0], model: 'test-model', tools: ['todo_write', 'ask_user', 'cloud_read'] };
   store.updateSettings({
     bots: [bot],
-    providers: [{ ...settings.providers[0], baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }],
+    providers: [{ ...testProvider({ baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }) }],
     cloud: { ...settings.cloud, driver: 'mock', workspaceDir },
   });
   const conversation = store.botConversation(bot.id);
@@ -76,7 +77,7 @@ test('小窗口 + 全部工具：工具描述会按阶梯瘦身，绝不因工�
   const f = await fixture(() => say('好'));
   try {
     assert.ok(TOOL_SCHEMAS.length >= 18, '本用例依赖工具数量足够多来撑小窗口');
-    f.store.updateSettings({ providers: [{ ...f.store.getSettings().providers[0], contextWindowTokens: 8192 }] });
+    f.store.updateSettings({ providers: [{ ...testProvider({ contextWindowTokens: 8192 }) }] });
     for (let n = 0; n < 14; n++) {
       f.store.appendMessage(f.conversation.id, { id: `u-${n}`, role: 'user', content: `历史问题${n} ${'这是一段较长的中文用来占据上下文窗口。'.repeat(6)}`, createdAt: Date.now() - 1000 + n });
       f.store.appendMessage(f.conversation.id, { id: `a-${n}`, role: 'assistant', content: `回答${n} ${'助手也输出了同样长度的一段内容来填充窗口。'.repeat(6)}`, createdAt: Date.now() - 1000 + n + 0.1 });

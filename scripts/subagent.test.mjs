@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentRuntime, CloudHost, Store } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.work', 'subagent-tests', String(Date.now()));
 let serial = 0;
@@ -52,7 +53,7 @@ async function fixture(options = {}) {
   const bot = { ...settings.bots[0], model: 'test-model', tools: ['spawn_agent', 'cloud_read', 'cloud_exec', 'cloud_write', 'remember', 'schedule_task', 'generate_image'] };
   store.updateSettings({
     bots: [bot],
-    providers: [{ ...settings.providers[0], baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }],
+    providers: [{ ...testProvider({ baseUrl: `http://localhost:${port}/v1`, contextWindowTokens: 128000 }) }],
     cloud: { ...settings.cloud, driver: 'mock' },
   });
   const events = [];

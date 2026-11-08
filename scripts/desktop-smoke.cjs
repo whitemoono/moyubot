@@ -152,7 +152,7 @@ app.whenReady().then(async () => {
   const seed = new Store(dataDir);
   const original = seed.getSettings();
   const first = original.bots[0];
-  const provider = { ...original.providers[0], id: 'ui-test', name: 'OpenAI 兼容', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, defaultModel: 'grok-4', models: ['grok-4', 'grok-4-fast'] };
+  const provider = { id: 'ui-test', name: 'OpenAI 兼容', kind: 'openai', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, defaultModel: 'grok-4', models: ['grok-4', 'grok-4-fast'], createdAt: 0 };
   provider.contextWindowTokens = 8192;
   const bots = [
     { ...first, avatar: { ...first.avatar, from: '#ff3150' }, providerId: provider.id, model: 'grok-4', name: 'Atlas', handle: 'atlas' },

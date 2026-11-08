@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { AgentRuntime, CloudHost, Store } from '../packages/core/dist/index.js';
+import { testProvider } from './test-provider.mjs';
 import { outputBudget, contextWindow, prepareContext, messagesFor } from '../packages/core/dist/context.js';
 import { TaskOutputBudget, validateModelSettings, validateGeneration } from '../packages/core/dist/generation.js';
 import { trackedChat, createChatProvider } from '../packages/core/dist/index.js';
@@ -22,7 +23,7 @@ async function fixture(respond, maxSteps) {
     res.end('data: [DONE]\n\n');
   });
   await new Promise(resolve => server.listen(0, 'localhost', resolve));
-  store.updateSettings({ providers: [{ ...store.settings.providers[0], baseUrl: `http://localhost:${server.address().port}/v1` }], cloud: { driver: 'mock' } });
+  store.updateSettings({ providers: [{ ...testProvider({ baseUrl: `http://localhost:${server.address().port}/v1` }) }], cloud: { driver: 'mock' } });
   const bot = store.upsertBot({ ...store.settings.bots[0], tools: ['remember'] });
   const cloud = new CloudHost({ settings: store.settings.cloud, apiKey: () => '' });
   const runtime = new AgentRuntime({ store, cloud, emit: event => events.push(event), requestApproval: async () => true, maxSteps });
@@ -87,7 +88,7 @@ test('tool-step exhaustion reports unfinished work and retains successful result
 
 test('model-specific limits persist independently; Bot overrides are capped by model output', () => {
   const store = new Store(path.join(root, String(++serial)));
-  const provider = { ...store.settings.providers[0], modelSettings: {
+  const provider = { ...testProvider(), modelSettings: {
     'large-model': { contextWindowTokens: 262144, maxOutputTokens: 65536, reasoningControl: 'openai-effort', reasoningEffort: 'high' },
     'small-model': { contextWindowTokens: 16384, maxOutputTokens: 2048 },
   } };
@@ -183,7 +184,7 @@ test('compaction honors model output ceiling and output parameter without enabli
   const store = new Store(path.join(root, String(++serial)));
   const bot = store.settings.bots[0];
   const settings = Object.fromEntries([['contextWindowTokens', 4096], ['maxOutputTokens', 512], ['outputTokenParameter', 'max_completion_tokens']]);
-  store.updateSettings({ providers: [{ ...store.settings.providers[0], modelSettings: { [bot.model]: settings } }] });
+  store.updateSettings({ providers: [{ ...testProvider(), modelSettings: { [bot.model]: settings } }] });
   const conversation = store.botConversation(bot.id);
   store.appendMessage(conversation.id, { id: 'old', role: 'user', content: '项目历史。'.repeat(900), createdAt: 1 });
   store.appendMessage(conversation.id, { id: 'current', role: 'user', content: '继续', createdAt: 2 });
@@ -203,7 +204,7 @@ test('compaction honors model output ceiling and output parameter without enabli
 test('reasoning-heavy compaction grows its budget and commits only the complete replacement summary', async () => {
   const store = new Store(path.join(root, String(++serial)));
   const bot = { ...store.settings.bots[0], model: 'vendor/reasoning-model' };
-  store.updateSettings({ bots: [bot], providers: [{ ...store.settings.providers[0], contextWindowTokens: 32768 }] });
+  store.updateSettings({ bots: [bot], providers: [{ ...testProvider(), contextWindowTokens: 32768 }] });
   const conversation = store.botConversation(bot.id);
   store.appendMessage(conversation.id, { id: 'long-history', role: 'user', content: '历史资料'.repeat(5000), createdAt: 1 });
   store.appendMessage(conversation.id, { id: 'hello-now', role: 'user', content: '你好', createdAt: 2 });
@@ -237,7 +238,7 @@ test('reasoning-heavy compaction grows its budget and commits only the complete 
 test('compaction respects manual caps and reports its own failure without advancing history', async () => {
   const store = new Store(path.join(root, String(++serial)));
   const bot = { ...store.settings.bots[0], generation: { maxOutputTokens: 2048 } };
-  store.updateSettings({ bots: [bot], providers: [{ ...store.settings.providers[0], contextWindowTokens: 32768 }] });
+  store.updateSettings({ bots: [bot], providers: [{ ...testProvider(), contextWindowTokens: 32768 }] });
   const conversation = store.botConversation(bot.id);
   store.appendMessage(conversation.id, { id: 'long', role: 'user', content: '旧资料'.repeat(6000), createdAt: 1 });
   store.appendMessage(conversation.id, { id: 'current', role: 'user', content: '你好', createdAt: 2 });
@@ -256,7 +257,7 @@ test('runtime continues a long tool task after compaction without repeating succ
   const f = await fixture(() => []);
   let steps = 0, summaries = 0;
   try {
-    f.store.updateSettings({ providers: [{ ...f.store.settings.providers[0], contextWindowTokens: 8192 }] });
+    f.store.updateSettings({ providers: [{ ...testProvider(), contextWindowTokens: 8192 }] });
     const original = f.runtime.providerFor.bind(f.runtime);
     f.runtime.providerFor = bot => {
       const result = original(bot);

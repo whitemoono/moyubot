@@ -89,23 +89,14 @@ function writeJsonAtomic(file: string, value: unknown): void {
 
 export function defaultSettings(dataDir: string, localDirectory = path.join(dataDir, 'local-workspace')): AppSettings {
   const now = Date.now();
-  const providerId = 'openai-compatible';
+  // 出厂不预置任何模型供应商：默认指向某个厂商（或本机网关）时，没有密钥或服务没起来，
+  // 首次发言必定报错。用户首次进入「设置 → 供应商」自行连接。
+  const providerId = '';
   return {
     version: 1,
     userName: '',
     onboarding: { step: 0 },
-    providers: [
-      {
-        id: providerId,
-        name: 'OpenAI 兼容',
-        kind: 'openai',
-        baseUrl: 'https://api.x.ai/v1',
-        defaultModel: 'grok-4',
-        models: ['grok-4', 'grok-4-fast', 'gpt-4.1', 'deepseek-chat'],
-        imageModel: 'grok-2-image',
-        createdAt: now,
-      },
-    ],
+    providers: [],
     bots: [
       {
         id: 'bot_default',
@@ -113,7 +104,7 @@ export function defaultSettings(dataDir: string, localDirectory = path.join(data
         handle: 'dafeiyu',
         avatar: { from: '#7aa2ff', to: '#c084fc', glyph: '鱼' },
         providerId,
-        model: 'grok-4',
+        model: '',
         temperature: 0.7,
         systemPrompt: DEFAULT_SYSTEM_PROMPT,
         approvalPolicy: 'never',
@@ -226,7 +217,8 @@ export class Store {
         cloud: { ...base.cloud, ...parsed.cloud, workspaceDir: parsed.cloud?.workspaceDir || base.cloud.workspaceDir },
         ui: { ...base.ui, ...parsed.ui },
         telegram: { ...base.telegram, ...parsed.telegram },
-        providers: parsed.providers?.length ? parsed.providers : base.providers,
+        // 显式保存的空数组表示"用户删光了供应商"，不要用出厂默认覆盖回去。
+        providers: parsed.providers ?? base.providers,
         bots: parsed.bots?.length ? parsed.bots : base.bots,
         workspaces: parsed.workspaces?.length ? parsed.workspaces : base.workspaces,
         activeWorkspaceId: parsed.activeWorkspaceId ?? base.activeWorkspaceId,
