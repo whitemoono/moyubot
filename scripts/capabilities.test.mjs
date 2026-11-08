@@ -280,14 +280,14 @@ test('云端盘点分两档（自有/共享），探针不读 ~/.claude，Bot �
   assert.ok(probeCmd && !probeCmd.includes('.claude'), '盘点探针不得出现 .claude');
   // Bot 在对话里安装 MCP → 写它自己的 .moyu/mcp.json（并先创建目录）
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo: { command: 'node' } } }), { botDirName: dirName });
-  const perBot = execs.find(c => c.includes('deployed:') && c.includes(dirName));
+  const perBot = execs.find(c => c.includes('python3') && c.includes(dirName) && c.includes('mcp.json'));
   assert.ok(perBot, '部署脚本必须指向该 Bot 家目录的 .moyu/mcp.json');
   assert.ok(perBot.includes('".moyu"') && perBot.includes('"mcp.json"'));
-  assert.ok(perBot.includes('mkdirSync'), '家目录可能不存在，部署前要先创建');
+  assert.ok(/makedirs|mkdirSync|mkdir -p/.test(perBot), '家目录可能不存在，部署前要先创建');
   assert.ok(!perBot.includes('.claude'), 'moyubot 不得写入 ~/.claude');
   // 设置页导入（不带 bot）→ 写 .moyu/shared/mcp.json，同样不碰 ~/.claude
   await manager.importMcp('workspace_cloud', JSON.stringify({ mcpServers: { demo2: { command: 'node' } } }));
-  const shared = execs.find(c => c.includes('deployed:') && c.includes('"shared"'));
+  const shared = execs.find(c => c.includes('python3') && c.includes('/.moyu/shared'));
   assert.ok(shared && shared.includes('".moyu"'), '共享部署写 .moyu/shared/mcp.json');
   assert.ok(!shared.includes('.claude'), '共享部署不得写 ~/.claude');
   await manager.dispose();
@@ -317,7 +317,7 @@ test('一次性迁移：云机 claude 的 MCP/技能复制进 .moyu/shared，之
   assert.ok(migration.includes('...(conf.mcpServers||{})'), '已有 .moyu 条目优先，不被 claude 覆盖');
   // 迁移成功后：清单里是 .moyu/shared 的内容，探针脚本不再含 .claude
   assert.ok(inventory.servers.some(s => s.name === 'migrated-mcp' && s.source.includes('共享')));
-  const probeCmd = execs.find(c => c.includes('const out={shared'));
+  const probeCmd = execs.find(c => (c.includes('python3') || c.includes('node -e')) && !c.includes('.migrated-from-claude'));
   assert.ok(probeCmd && !probeCmd.includes('.claude'), '迁移后的探针不读 ~/.claude');
   await manager.dispose();
 });
