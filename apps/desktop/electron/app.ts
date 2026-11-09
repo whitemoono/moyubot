@@ -785,6 +785,8 @@ export class MoyuApp {
     this.cloud.dispose();
     this.pty.dispose();
     this.local.dispose();
+    // SQLite 句柄不释放，Windows 上后续切换数据目录/卸载都会遇到文件占用。
+    this.store.close();
     for (const pending of this.approvals.values()) {
       clearTimeout(pending.timer);
       pending.resolve(false);

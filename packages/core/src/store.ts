@@ -181,6 +181,10 @@ export class Store {
   /** 串行化的向量回填队列：避免并发打爆向量服务。 */
   private embedChain: Promise<void> = Promise.resolve();
   private embedCooldownUntil = 0;
+  /** 向量回填的延后计时器；close() 时清掉，避免测试结束时还挂着定时器。 */
+  private embedBackfillTimer?: ReturnType<typeof setTimeout>;
+  /** close() 之后不再做任何落盘动作。 */
+  private closed = false;
   private queryVectorCache = new Map<string, Float32Array>();
   private scheduleList: Schedule[] = [];
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
@@ -927,8 +931,21 @@ export class Store {
   }
 
   private scheduleEmbeddingBackfill(): void {
-    const timer = setTimeout(() => this.beginEmbeddingBackfill(), 3000);
-    timer.unref?.();
+    this.embedBackfillTimer = setTimeout(() => { this.embedBackfillTimer = undefined; this.beginEmbeddingBackfill(); }, 3000);
+    this.embedBackfillTimer.unref?.();
+  }
+
+  /**
+   * 释放资源：关闭 SQLite 句柄、停掉后台计时器。
+   * Windows 不允许删除仍被打开的 memories.db，所以测试/切换数据目录前必须先 close()。
+   * 可重复调用。
+   */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.embedBackfillTimer) { clearTimeout(this.embedBackfillTimer); this.embedBackfillTimer = undefined; }
+    this.scheduleListeners.clear();
+    try { this.memoryDb?.close(); } catch { /* 已经关闭过：忽略 */ }
   }
 
   private async embedQuery(query: string): Promise<Float32Array | null> {

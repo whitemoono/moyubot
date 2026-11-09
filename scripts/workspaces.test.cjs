@@ -4,27 +4,37 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { Store, LocalHost, CloudHost, AgentRuntime, runTool } = require('../packages/core/dist/index.js');
-const temporary = (t) => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-workspaces-')); t.after(() => fs.rmSync(directory, { recursive: true, force: true })); return directory; };
+const opened = [];
+const openStore = (...args) => { const store = new Store(...args); opened.push(store); return store; };
+const temporary = (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-workspaces-'));
+  t.after(() => {
+    // Windows：memories.db 句柄不关就删不掉，先 close 再删。
+    for (const store of opened.splice(0)) { try { store.close(); } catch { /* 忽略 */ } }
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  return directory;
+};
 
 test('legacy migration backs up original data and keeps conversation identities', (t) => {
-  const directory = temporary(t), original = new Store(directory);
+  const directory = temporary(t), original = openStore(directory);
   const bot = original.getSettings().bots[0], conversation = original.botConversation(bot.id);
   original.appendMessage(conversation.id, { id: 'history', role: 'user', content: '原始聊天', createdAt: Date.now() });
   original.addMemory(bot.id, '独立记忆');
   const legacy = JSON.parse(fs.readFileSync(path.join(directory, 'settings.json')));
   delete legacy.workspaces; delete legacy.activeWorkspaceId; legacy.bots.forEach((item) => delete item.workspaceId);
   fs.writeFileSync(path.join(directory, 'settings.json'), JSON.stringify(legacy));
-  const migrated = new Store(directory);
+  const migrated = openStore(directory);
   assert.equal(migrated.getBot(bot.id).workspaceId, 'workspace_cloud');
   assert.equal(migrated.botConversation(bot.id).id, conversation.id);
   assert.equal(migrated.botConversation(bot.id).messages[0].content, '原始聊天');
   assert.ok(fs.existsSync(path.join(directory, 'backup-before-workspaces', 'conversations', conversation.id + '.json')));
   assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'backup-before-workspaces', 'settings.json'))).workspaces, undefined);
-  assert.equal(new Store(directory).getSettings().workspaces.length, 2);
+  assert.equal(openStore(directory).getSettings().workspaces.length, 2);
 });
 
 test('legacy cloud image settings migrate to API while preserving Bot data and ratio', (t) => {
-  const directory = temporary(t), original = new Store(directory);
+  const directory = temporary(t), original = openStore(directory);
   const bot = original.getSettings().bots[0], conversation = original.botConversation(bot.id);
   original.appendMessage(conversation.id, { id: 'image-history', role: 'user', content: '保留历史', createdAt: Date.now() });
   original.addMemory(bot.id, '喜欢宽幅图片');
@@ -34,7 +44,7 @@ test('legacy cloud image settings migrate to API while preserving Bot data and r
   legacy.bots[0].image = legacyImage;
   fs.writeFileSync(settingsFile, JSON.stringify(legacy));
 
-  const migrated = new Store(directory);
+  const migrated = openStore(directory);
   assert.deepEqual(migrated.getBot(bot.id).image, { aspect: '16:9' });
   assert.equal(migrated.botConversation(bot.id).id, conversation.id);
   assert.equal(migrated.botConversation(bot.id).messages[0].content, '保留历史');
@@ -44,11 +54,11 @@ test('legacy cloud image settings migrate to API while preserving Bot data and r
   migrated.upsertBot({ ...migrated.getBot(bot.id), image: legacyImage });
   assert.deepEqual(migrated.getBot(bot.id).image, { aspect: '16:9' });
   migrated.updateSettings({ bots: [{ ...migrated.getBot(bot.id), image: legacyImage }] });
-  assert.deepEqual(new Store(directory).getBot(bot.id).image, { aspect: '16:9' });
+  assert.deepEqual(openStore(directory).getBot(bot.id).image, { aspect: '16:9' });
 });
 
 test('cloud Bot images use API despite legacy script settings and report API failures without placeholders', async (t) => {
-  const directory = temporary(t), store = new Store(directory);
+  const directory = temporary(t), store = openStore(directory);
   const bot = { ...store.getSettings().bots[0], image: { aspect: '16:9', backend: 'cloud', wakeHost: true, cloudCommand: 'old-draw-command' } };
   const cloud = new Proxy({}, { get() { throw new Error('API image generation must not access the cloud computer'); } });
   const bytes = Buffer.from('provider-image-bytes');
@@ -73,14 +83,14 @@ test('cloud Bot images use API despite legacy script settings and report API fai
 });
 
 test('Bot groups, conversations, usage and memberships stay in their workspace', (t) => {
-  const store = new Store(temporary(t)), cloud = store.getSettings().bots[0];
+  const store = openStore(temporary(t)), cloud = store.getSettings().bots[0];
   const local = store.upsertBot({ ...cloud, id: 'local', workspaceId: 'workspace_local', name: '本地', sidebar: { group: '项目' } });
   store.updateBotMetadata(cloud.id, { sidebar: { group: '项目' } });
   store.updateBotGroup('项目', { type: 'rename', name: '本地项目' }, 'workspace_local');
   assert.equal(store.getBot(cloud.id).sidebar.group, '项目');
   assert.equal(store.getBot(local.id).sidebar.group, '本地项目');
   store.updateBotGroup('本地项目', { type: 'collapse', collapsed: true }, 'workspace_local');
-  const reopened = new Store(store.dataDir);
+  const reopened = openStore(store.dataDir);
   assert.deepEqual(reopened.listBotGroups('workspace_local'), [{ name: '本地项目', collapsed: true }]);
   assert.deepEqual(reopened.listBotGroups('workspace_cloud'), [{ name: '项目', collapsed: false }]);
   assert.throws(() => store.createGroup('不能混用', [cloud.id, local.id]), /跨工作区/);
@@ -93,12 +103,14 @@ test('Bot groups, conversations, usage and memberships stay in their workspace',
 });
 
 test('local execution uses the local folder, supports UTF-8, timeout and cancellation', async (t) => {
-  const store = new Store(temporary(t)), folder = path.join(store.dataDir, 'local');
+  const store = openStore(temporary(t)), folder = path.join(store.dataDir, 'local');
   fs.mkdirSync(folder);
   const host = new LocalHost({ ...store.getSettings().cloud, workspaceDir: folder });
   t.after(() => host.dispose());
   const result = await host.exec(process.platform === 'win32' ? 'Write-Output "本机输出"; (Get-Location).Path' : 'printf "本机输出\\n"; pwd');
-  assert.equal(result.exitCode, 0); assert.match(result.stdout, /本机输出/); assert.ok(result.stdout.includes(folder));
+  assert.equal(result.exitCode, 0); assert.match(result.stdout, /本机输出/);
+  // Windows：os.tmpdir() 给的是 8.3 短名（ADMINI~1），PowerShell 打印的是长名，比较前先展开。
+  assert.ok(result.stdout.includes(fs.realpathSync.native(folder)), 'stdout 应包含工作目录：' + result.stdout.trim());
   const failure = await host.exec(process.platform === 'win32' ? 'exit 7' : 'exit 7');
   assert.equal(failure.exitCode, 7);
   const command = process.platform === 'win32' ? 'Start-Sleep -Seconds 10' : 'sleep 10';
@@ -116,7 +128,7 @@ test('local execution uses the local folder, supports UTF-8, timeout and cancell
 });
 
 test('a local Bot keeps its executor and memories while the active workspace changes', async (t) => {
-  const store = new Store(temporary(t)), folder = path.join(store.dataDir, 'local'); fs.mkdirSync(folder);
+  const store = openStore(temporary(t)), folder = path.join(store.dataDir, 'local'); fs.mkdirSync(folder);
   const cloudBot = store.getSettings().bots[0];
   const bot = store.upsertBot({ ...cloudBot, id: 'local-runtime', workspaceId: 'workspace_local', tools: ['cloud_exec'], approvalPolicy: 'ask' });
   store.addMemory(bot.id, '本地独立记忆'); store.addMemory(cloudBot.id, '云端私有记忆');
@@ -150,7 +162,7 @@ test('a local Bot keeps its executor and memories while the active workspace cha
 });
 
 test('local file tools reject directory traversal and junction escapes', async (t) => {
-  const directory = temporary(t), store = new Store(directory), folder = path.join(directory, 'local'), outside = path.join(directory, 'outside');
+  const directory = temporary(t), store = openStore(directory), folder = path.join(directory, 'local'), outside = path.join(directory, 'outside');
   fs.mkdirSync(folder); fs.mkdirSync(outside);
   const host = new LocalHost({ ...store.getSettings().cloud, workspaceDir: folder });
   await host.writeText('notes/a.txt', '本地文件');
@@ -162,7 +174,7 @@ test('local file tools reject directory traversal and junction escapes', async (
 });
 
 test('local API image generation never wakes the cloud, and commands respect approval', async (t) => {
-  const store = new Store(temporary(t)), folder = path.join(store.dataDir, 'local'); fs.mkdirSync(folder);
+  const store = openStore(temporary(t)), folder = path.join(store.dataDir, 'local'); fs.mkdirSync(folder);
   const bot = { ...store.getSettings().bots[0], workspaceId: 'workspace_local' };
   const host = new LocalHost({ ...store.getSettings().cloud, workspaceDir: folder });
   host.ensureAwake = () => { throw new Error('should not wake'); };
@@ -174,11 +186,11 @@ test('local API image generation never wakes the cloud, and commands respect app
 });
 
 test('remote directory settings persist without changing local artifact or workspace folders', (t) => {
-  const store = new Store(temporary(t));
+  const store = openStore(temporary(t));
   const original = store.getSettings();
   const artifacts = original.cloud.workspaceDir, local = original.workspaces.find((item) => item.kind === 'local').directory;
   store.updateSettings({ cloud: { remoteWorkspaceDir: '/data/team files/project/../current/' } });
-  const saved = new Store(store.dataDir).getSettings();
+  const saved = openStore(store.dataDir).getSettings();
   assert.equal(saved.cloud.remoteWorkspaceDir, '/data/team files/current');
   assert.equal(saved.cloud.workspaceDir, artifacts);
   assert.equal(saved.workspaces.find((item) => item.kind === 'local').directory, local);
@@ -187,7 +199,7 @@ test('remote directory settings persist without changing local artifact or works
 });
 
 test('cloud commands and relative file tools use the selected remote directory and preserve failures', async (t) => {
-  const store = new Store(temporary(t)), requests = [], reads = [], writes = [];
+  const store = openStore(temporary(t)), requests = [], reads = [], writes = [];
   const directory = "/data/client's work";
   const cloud = new CloudHost({ settings: { ...store.getSettings().cloud, driver: 'mock', remoteWorkspaceDir: directory }, apiKey: () => '' });
   t.after(() => cloud.dispose());

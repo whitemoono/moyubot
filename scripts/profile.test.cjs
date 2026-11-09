@@ -2,16 +2,26 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
 const { Store, CloudHost, LocalHost, AgentRuntime } = require('../packages/core/dist');
-const temporary = (t) => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-profile-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
+const opened = [];
+const openStore = (...args) => { const store = new Store(...args); opened.push(store); return store; };
+const temporary = (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-profile-'));
+  t.after(() => {
+    // Windows：memories.db 句柄不关就删不掉，先 close 再删。
+    for (const store of opened.splice(0)) { try { store.close(); } catch { /* 忽略 */ } }
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+  return dir;
+};
 const completed = async (runtime, result) => { const end = Date.now() + 5000; while (runtime.isRunning(result.conversationId) && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 10)); assert.equal(runtime.isRunning(result.conversationId), false); };
 
 test('fresh setup uses requested installation workspace; partial setup survives restart and names are validated', (t) => {
   const dir = temporary(t), localDirectory = path.join(dir, 'install', 'workspace');
-  const store = new Store(path.join(dir, 'data'), undefined, { localDirectory });
+  const store = openStore(path.join(dir, 'data'), undefined, { localDirectory });
   assert.equal(store.getSettings().onboarding.completedAt, undefined);
   assert.equal(store.getSettings().workspaces.find((workspace) => workspace.kind === 'local').directory, localDirectory);
   store.updateSettings({ userName: '  白月  ', onboarding: { step: 2, cloudSkipped: true } });
-  const next = new Store(store.dataDir);
+  const next = openStore(store.dataDir);
   assert.equal(next.getSettings().userName, '白月');
   assert.deepEqual(next.getSettings().onboarding, { step: 2, cloudSkipped: true });
   for (const value of ['', '   ', 'line\nbreak', 'x'.repeat(41)]) assert.throws(() => next.updateSettings({ userName: value }), /用户名/);
@@ -19,21 +29,21 @@ test('fresh setup uses requested installation workspace; partial setup survives 
 });
 
 test('existing users retain their chosen directories, history and completed setup', (t) => {
-  const dir = temporary(t), store = new Store(dir);
+  const dir = temporary(t), store = openStore(dir);
   const bot = store.getSettings().bots[0], conversation = store.botConversation(bot.id);
   store.appendMessage(conversation.id, { id: 'history', role: 'user', content: '旧对话保留', createdAt: Date.now() });
   const settings = store.getSettings(), localDirectory = path.join(dir, 'chosen');
   settings.workspaces.find((workspace) => workspace.kind === 'local').directory = localDirectory;
   delete settings.onboarding; delete settings.userName;
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(settings));
-  const upgraded = new Store(dir, undefined, { localDirectory: path.join(dir, 'install', 'workspace') });
+  const upgraded = openStore(dir, undefined, { localDirectory: path.join(dir, 'install', 'workspace') });
   assert.ok(upgraded.getSettings().onboarding.completedAt);
   assert.equal(upgraded.getSettings().workspaces.find((workspace) => workspace.kind === 'local').directory, localDirectory);
   assert.equal(upgraded.botConversation(bot.id).messages[0].content, '旧对话保留');
 });
 
 test('all cloud, local and group participants receive current shared name on each request', async (t) => {
-  const store = new Store(temporary(t)); store.updateSettings({ userName: '白月' });
+  const store = openStore(temporary(t)); store.updateSettings({ userName: '白月' });
   const base = store.getSettings().bots[0];
   const other = store.upsertBot({ ...base, id: 'second-cloud' });
   const localBot = store.upsertBot({ ...base, id: 'local-bot', workspaceId: 'workspace_local' });
