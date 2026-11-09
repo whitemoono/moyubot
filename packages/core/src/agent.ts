@@ -22,8 +22,9 @@ import type {
 import type { GeneratedImage } from './providers';
 import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
-import { newId, formatDuration, pruneOutput, summarize, truncate } from './util';
+import { newId, formatDuration, pruneOutput, summarize, truncate, shellQuote } from './util';
 import { buildOffice } from './office-router';
+import { applyHunk, parsePatch } from './patch';
 import { runWorkflow } from './workflow';
 import { contextWindow, outputBudget, isContextOverflow, parseContextLimit, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
@@ -581,6 +582,52 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                 this.store.saveConversation(conversationId);
               } catch { /* 交付失败不影响生成结果，用户仍可按路径取 */ }
               return result;
+            },
+            applyPatch: async (patchText) => {
+              const computer = this.computerFor(bot);
+              const botDir = this.store.botDirName(bot.id);
+              const parsed = parsePatch(patchText);
+              if (parsed.error) return { ok: false, applied: [], error: parsed.error };
+              const applied: { kind: string; path: string; moveTo?: string }[] = [];
+              for (const change of parsed.changes) {
+                try {
+                  if (change.kind === 'add') {
+                    await computer.writeText(change.path, (change.addLines ?? []).join('\n') + '\n', botDir);
+                  } else if (change.kind === 'delete') {
+                    await computer.exec(`rm -f ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
+                  } else {
+                    const { bytes } = await computer.readBytes(change.path, botDir);
+                    let text = Buffer.from(bytes).toString('utf8');
+                    for (const hunk of change.hunks) {
+                      const next = applyHunk(text, hunk);
+                      if (next.error) return { ok: false, applied, error: `${change.path}：${next.error}` };
+                      text = next.text!;
+                    }
+                    if (!text.endsWith('\n')) text += '\n';
+                    await computer.writeText(change.moveTo ?? change.path, text, botDir);
+                    if (change.moveTo) await computer.exec(`rm -f ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
+                  }
+                  applied.push({ kind: change.kind, path: change.path, ...(change.moveTo ? { moveTo: change.moveTo } : {}) });
+                } catch (error) {
+                  return { ok: false, applied, error: `${change.path}：${(error as Error).message}` };
+                }
+              }
+              return { ok: true, applied };
+            },
+            readFiles: async (paths) => {
+              const computer = this.computerFor(bot);
+              const botDir = this.store.botDirName(bot.id);
+              const out: { path: string; text?: string; error?: string }[] = [];
+              for (const filePath of paths) {
+                try {
+                  const { bytes } = await computer.readBytes(filePath, botDir);
+                  if (bytes.length > 256 * 1024) { out.push({ path: filePath, error: '文件超过 256KB，用 cloud_read 单独读' }); continue; }
+                  out.push({ path: filePath, text: Buffer.from(bytes).toString('utf8') });
+                } catch (error) {
+                  out.push({ path: filePath, error: (error as Error).message });
+                }
+              }
+              return out;
             },
             stageFileToCloud: async (filePath, target) => {
               const computer = this.computerFor(bot);

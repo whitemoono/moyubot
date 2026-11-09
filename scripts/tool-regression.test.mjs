@@ -355,10 +355,49 @@ test('Office 工具：结构化输入生成三种格式并写入工作区', asyn
     assert.equal(fs.readFileSync(hit[0]).slice(0, 2).toString(), 'PK', '.' + ext + ' 不是合法 zip');
   }
 });
+test('apply_patch 一条补丁改多个文件，read_files 批量读回', async () => {
+  const f = makeCtx();
+  const router = await import('../packages/core/dist/patch.js');
+  f.ctx.applyPatch = async (patchText) => {
+    const parsed = router.parsePatch(patchText);
+    if (parsed.error) return { ok: false, applied: [], error: parsed.error };
+    const applied = [];
+    for (const change of parsed.changes) {
+      const target = path.join(f.workspaceDir, change.path);
+      if (change.kind === 'add') { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, (change.addLines ?? []).join('\n') + '\n'); }
+      else if (change.kind === 'delete') fs.rmSync(target, { force: true });
+      else {
+        let text = fs.readFileSync(target, 'utf8');
+        for (const hunk of change.hunks) { const next = router.applyHunk(text, hunk); if (next.error) return { ok: false, applied, error: next.error }; text = next.text; }
+        fs.writeFileSync(target, text);
+      }
+      applied.push({ kind: change.kind, path: change.path });
+    }
+    return { ok: true, applied };
+  };
+  f.ctx.readFiles = async (paths) => paths.map((p) => ({ path: p, text: fs.readFileSync(path.join(f.workspaceDir, p), 'utf8') }));
+  fs.writeFileSync(path.join(f.workspaceDir, 'a.ts'), 'export const a = 1\nexport const b = 2\n');
+  const patch = ['*** Begin Patch', '*** Update File: a.ts', '@@', ' export const a = 1', '-export const b = 2', '+export const b = 20', '*** Add File: c.ts', '+export const c = 3', '*** End Patch'].join('\n');
+  const applied = await runTool(call('apply_patch', { input: patch }), f.ctx);
+  assert.equal(applied.ok, true, applied.summary);
+  assert.match(applied.summary, /2 个文件/);
+  const read = await runTool(call('read_files', { paths: ['a.ts', 'c.ts'] }), f.ctx);
+  assert.equal(read.ok, true, read.summary);
+  assert.match(read.detail, /export const b = 20/);
+  assert.match(read.detail, /export const c = 3/);
+});
+
+test('apply_patch 匹配失败时不静默写入', async () => {
+  const f = makeCtx();
+  const router = await import('../packages/core/dist/patch.js');
+  const next = router.applyHunk('only line\n', { raw: ['-missing line', '+replacement'], context: undefined, remove: ['missing line'], add: ['replacement'] });
+  assert.ok(next.error, '找不到原文必须报错');
+  assert.match(next.error, /没匹配上/);
+});
 test('每个内置 schema 工具都在回归表里被覆盖', async () => {
   // 兜底：防止将来加了新工具却忘记加回归。此测试枚举 TOOL_SCHEMAS，
   // 与上面手写用例覆盖到的名字对比（维护时在 covered 里补一项）。
-  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork', 'make_spreadsheet', 'make_document', 'make_slides', 'local_read_file', 'local_list_files', 'local_write_file', 'cloud_stage_file', 'deliver_file']);
+  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork', 'make_spreadsheet', 'make_document', 'make_slides', 'apply_patch', 'read_files', 'local_read_file', 'local_list_files', 'local_write_file', 'cloud_stage_file', 'deliver_file']);
   const missing = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `这些新工具还没有回归用例：${missing.join(', ')}`);
 });

@@ -16,6 +16,8 @@ export const BOT_TOOLS = [
   { id: 'run_script', label: '工作流编排', hint: '用脚本并行调度多个子代理；写权限需脚本显式声明' },
   { id: 'todo_write', label: '任务清单', hint: '维护本会话的待办清单，做完一项勾一项' },
   { id: 'ask_user', label: '向用户提问', hint: '信息不足时停下来问你，等文字回答' },
+  { id: 'apply_patch', label: '应用补丁', hint: '一条补丁改多个文件（Codex 格式），省往返' },
+  { id: 'read_files', label: '批量读文件', hint: '一次读多个文件，合并返回' },
   { id: 'local_read_file', label: '读本机文件', hint: '读用户这台电脑工作区里的文件，不唤醒云电脑' },
   { id: 'local_list_files', label: '列本机目录', hint: '列出本机工作区目录，不唤醒云电脑' },
   { id: 'local_write_file', label: '写本机文件', hint: '写入本机工作区（敏感操作）' },

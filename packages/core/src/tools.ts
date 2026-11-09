@@ -331,6 +331,26 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: 'apply_patch',
+    description: '用一条 Codex 风格补丁新增/修改/删除/移动多个文件——改动跨多个文件或多处时优先用它能省掉大量往返。格式：*** Begin Patch 开头、*** End Patch 结尾；*** Add File: 路径（+ 行）；*** Update File: 路径（可选 *** Move to: 新路径），随后 @@ 定位与空格空行/- 删除/+ 新增；*** Delete File: 路径。路径相对 Bot 工作目录。',
+    parameters: {
+      type: 'object',
+      properties: { input: { type: 'string', description: '完整补丁文本，以 *** Begin Patch 开始、*** End Patch 结束' } },
+      required: ['input'],
+    },
+  },
+  {
+    name: 'read_files',
+    description: '一次读取多个文本文件（最多 20 个），合并返回并带文件名分隔——比一个个读省步数。支持相对 Bot 工作目录的路径。',
+    parameters: {
+      type: 'object',
+      properties: {
+        paths: { type: 'array', items: { type: 'string' }, description: '要读取的文件路径列表' },
+      },
+      required: ['paths'],
+    },
+  },
+  {
     name: 'make_spreadsheet',
     description: '生成 Excel 表格（.xlsx）并交付给用户：给定表名、表头和数据行即可，自动列宽、表头加粗、冻结首行。适合报表、清单、数据汇总。',
     parameters: {
@@ -468,6 +488,10 @@ export interface ToolContext {
   runScript?: (callId: string, script: string, args: Record<string, unknown> | undefined, write: boolean) => Promise<{ result: unknown; agents: number; phases: string[]; seconds: number }>;
   /** 用户本机执行器（云 Bot 也可用）：local_* 工具走它，不唤醒云电脑。 */
   localDevice?: ComputerHost;
+  /** 补丁能力：一次调用改多个文件（由 AgentRuntime 注入，作用域限定在 Bot 工作目录）。 */
+  applyPatch?: (patch: string) => Promise<{ ok: boolean; applied: { kind: string; path: string; moveTo?: string }[]; error?: string }>;
+  /** 批量读文件（与 applyPatch 同一作用域）。 */
+  readFiles?: (paths: string[]) => Promise<{ path: string; text?: string; error?: string }[]>;
   /** 把本机附件上传到云机（会唤醒云电脑）：附件默认只存本机，云端要用时才上传。 */
   stageFileToCloud?: (filePath: string, target?: string) => Promise<{ ok: boolean; size: number }>;
   /** Office 生成：按 Bot 所属机器选择执行位置，产物自动交付。 */
@@ -835,6 +859,26 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const target = typeof args.target === 'string' && args.target.trim() ? args.target.trim() : undefined;
         const staged = await ctx.stageFileToCloud(source, target);
         return finish({ ok: true, summary: `已上传到云电脑：${target ?? source}（${Math.max(1, Math.round(staged.size / 1024))} KB）`, detail: '云电脑上已经可以按这个相对路径读取/处理该文件。' });
+      }
+      case 'apply_patch': {
+        if (!ctx.applyPatch) throw new Error('当前运行时不支持应用补丁');
+        const patch = requireString(args, 'input');
+        const result = await ctx.applyPatch(patch);
+        if (!result.ok) return finish({ ok: false, summary: `补丁未应用：${result.error ?? '未知错误'}`, detail: result.error });
+        const summary = result.applied.map((item) => `${item.kind === 'add' ? 'A' : item.kind === 'delete' ? 'D' : 'M'} ${item.path}${item.moveTo ? ' -> ' + item.moveTo : ''}`).join('\n');
+        return finish({ ok: true, summary: `补丁已应用：${result.applied.length} 个文件`, detail: summary });
+      }
+      case 'read_files': {
+        if (!ctx.readFiles) throw new Error('当前运行时不支持批量读文件');
+        const paths = Array.isArray(args.paths) ? args.paths.filter((item): item is string => typeof item === 'string' && !!item.trim()) : [];
+        if (!paths.length) throw new Error('paths 至少需要一个文件路径');
+        if (paths.length > 20) throw new Error('一次最多读取 20 个文件');
+        const files = await ctx.readFiles(paths);
+        const ok = files.filter((file) => file.text !== undefined).length;
+        const body = files.map((file) => file.text === undefined
+          ? `===== ${file.path} =====\n(读取失败：${file.error ?? '未知'})`
+          : `===== ${file.path} =====\n${file.text}`).join('\n\n');
+        return finish({ ok: ok > 0, summary: `读取 ${ok}/${files.length} 个文件`, detail: pruneOutput(body, 24000, 0.6) });
       }
       case 'make_spreadsheet':
       case 'make_document':
