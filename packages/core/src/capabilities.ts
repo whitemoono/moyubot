@@ -22,6 +22,21 @@ function strings(value: unknown): Record<string, string> | undefined {
 }
 
 /** Connections and credentials live in the main process, never in the renderer. */
+/**
+ * 技能目录名：复用宿主机安装同款规则。
+ * sanitizeDirName 会去掉首尾的点与空格，所以 SKILL.md 里写 `name: ..` 也不会让落点变成
+ * `.moyu/skills/..`；允许 Unicode 字母，中文技能名不必变成一排下划线。
+ */
+function skillSlug(displayName: string): string {
+  const cleaned = displayName
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}._-]/gu, '_')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+    .slice(0, 60)
+    .replace(/^[.\s]+|[.\s]+$/g, '');
+  return cleaned || 'skill';
+}
+
 export class CapabilityManager {
   private connections = new Map<string, Promise<Connection>>();
   private states = new Map<string, CapabilityStatus['servers'][number]>();
@@ -309,17 +324,34 @@ if os.path.isdir(d) and os.path.isfile(f):
     text = open(f, 'r', encoding='utf-8', errors='replace').read()
     import re
     m = re.search(r'^---\\r?\\n(.*?)\\r?\\n---', text, re.S)
-    out = {'ok': True, 'size': len(text), 'head': (m.group(1) if m else '')[:400]}
+    links = 0
+    files = 0
+    total = 0
+    for base, dirs, names in os.walk(d):
+        for name in names:
+            full = os.path.join(base, name)
+            if os.path.islink(full):
+                links += 1
+                continue
+            files += 1
+            try:
+                total += os.path.getsize(full)
+            except OSError:
+                pass
+    out = {'ok': True, 'size': len(text), 'head': (m.group(1) if m else '')[:400], 'files': files, 'bytes': total, 'links': links}
 print(json.dumps(out, ensure_ascii=False))
 PY`,
       { timeoutSeconds: 60 },
     );
-    let info: { ok?: boolean; size?: number; head?: string } = {};
+    let info: { ok?: boolean; size?: number; head?: string; files?: number; bytes?: number; links?: number } = {};
     try { info = JSON.parse(inspect.stdout.trim().split('\n').pop() ?? '{}'); } catch { info = {}; }
     if (!info.ok) throw new Error(`云电脑上找不到技能目录或 SKILL.md：${dir}`);
+    // 与宿主机安装保持同一套限制，别让云端目录把工作区撑爆。
+    if (Number(info.links ?? 0) > 0) throw new Error('技能目录不能包含符号链接');
+    if (Number(info.files ?? 0) > 1000 || Number(info.bytes ?? 0) > 20_000_000) throw new Error('技能最多 20 MB / 1000 个文件');
     const meta = parseYaml(info.head ?? '') as { name?: unknown; description?: unknown };
     const displayName = typeof meta?.name === 'string' && meta.name.trim() ? meta.name.trim() : path.posix.basename(dir);
-    const slug = displayName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'skill';
+    const slug = skillSlug(displayName);
     // 复制到 Bot 自己的技能目录（与手动 install_skill 落点一致），保留原目录不动。
     const target = options?.botDirName
       ? `${root.replace(/\/+$/, '')}/${options.botDirName}/.moyu/skills/${slug}`
@@ -332,7 +364,9 @@ PY`,
     this.cloudInventory = undefined;
     this.cloudInventoryStale = true;
     // 登记一条平台记录：让设置页与 Bot 绑定都能看见（目录指向云端路径，仅作展示）。
-    const id = newId('skill');
+    // 同一目录重复安装时复用原记录，别堆出多条。
+    const previous = (this.store.settings.skills ?? []).find((item) => item.directory === target);
+    const id = previous?.id ?? newId('skill');
     const skill: SkillConfig = {
       id,
       workspaceId,
@@ -340,7 +374,7 @@ PY`,
       description: typeof meta?.description === 'string' ? meta.description.slice(0, 2000) : `云端技能 ${slug}`,
       directory: target,
     };
-    this.store.updateSettings({ skills: [...(this.store.settings.skills ?? []), skill] });
+    this.store.updateSettings({ skills: [...(this.store.settings.skills ?? []).filter((item) => item.id !== id), skill] });
     return { target: 'cloud', name: displayName, id, path: target };
   }
 

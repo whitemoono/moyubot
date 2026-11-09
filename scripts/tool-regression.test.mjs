@@ -437,3 +437,16 @@ test('Office 云机链路：生成的启动脚本在本机 node 上真能跑通'
   assert.match(evil.error ?? '', /\.\./);
 });
 
+test('install_skill：云 Bot 传云机绝对路径时不再被本地工作区校验挡住', async () => {
+  const seen = [];
+  const f = makeCtx({ ctx: { installSkill: async (target) => { seen.push(target); return { target: 'cloud', name: 'seedance-2-prompts' }; } } });
+  const result = await runTool({ id: 'c-skill', name: 'install_skill', arguments: { directory: '/data/home/moyubot/skills/seedance-2-prompts' } }, f.ctx);
+  assert.equal(result.ok, true, '云机路径应被接受：' + result.summary);
+  assert.deepEqual(seen, ['/data/home/moyubot/skills/seedance-2-prompts'], '必须把云机路径原样交给 installSkill');
+  assert.match(result.summary, /云电脑/);
+
+  // 本地工作区之外的路径仍然要挡住（本机安全边界不能松）
+  const outside = await runTool({ id: 'c-skill-2', name: 'install_skill', arguments: { directory: '../../../etc' } }, f.ctx);
+  assert.equal(outside.ok, false, '相对路径逃逸仍应被拒');
+  assert.match(outside.summary, /工作区内/);
+});

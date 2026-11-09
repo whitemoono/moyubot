@@ -384,3 +384,52 @@ test('从云电脑安装技能：路径不存在时报清晰错误', async () =>
   await assert.rejects(() => manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/nope'), /找不到技能目录/);
   await manager.dispose();
 });
+
+function cloudHostWith(probe) {
+  return {
+    status: () => ({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 }),
+    ensureAwake: async () => ({ id: 'm1', name: 'mock', state: 'running', autoSuspendAfterSeconds: null }),
+    writeText: async () => {},
+    exec: async (cmd) => {
+      if (cmd.includes('json.dumps')) return { stdout: JSON.stringify(probe) + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+      return { stdout: 'copied\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    },
+  };
+}
+
+test('从云电脑安装技能：SKILL.md 里 name 为 .. 时不会落到技能目录之外', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const manager = new CapabilityManager(store, () => cloudHostWith({ ok: true, size: 100, head: 'name: ..\ndescription: 测试', files: 3, bytes: 1000, links: 0 }));
+  const result = await manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/evil', { botDirName: 'bot-x' });
+  assert.ok(!/skills\/(\.|\.\.)$/.test(result.path), '落点不能是 . 或 ..：' + result.path);
+  assert.match(result.path, /\.moyu\/skills\/skill$/, '应回退成安全目录名：' + result.path);
+  await manager.dispose();
+});
+
+test('从云电脑安装技能：中文名保留、重复安装不堆记录', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const probe = { ok: true, size: 100, head: 'name: 周报助手\ndescription: 生成周报', files: 3, bytes: 1000, links: 0 };
+  const manager = new CapabilityManager(store, () => cloudHostWith(probe));
+  const first = await manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/weekly', { botDirName: 'bot-y' });
+  assert.match(first.path, /skills\/周报助手$/, '中文名应保留：' + first.path);
+  const second = await manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/weekly', { botDirName: 'bot-y' });
+  assert.equal(second.id, first.id, '同一目录重复安装应复用记录');
+  assert.equal(store.settings.skills.filter((item) => item.directory === first.path).length, 1, '不应登记多条');
+  await manager.dispose();
+});
+
+test('从云电脑安装技能：超体积/文件数或含符号链接时拒绝', async () => {
+  for (const probe of [
+    { ok: true, size: 100, head: 'name: big', files: 2000, bytes: 1000, links: 0 },
+    { ok: true, size: 100, head: 'name: big', files: 10, bytes: 30_000_000, links: 0 },
+    { ok: true, size: 100, head: 'name: linky', files: 10, bytes: 1000, links: 1 },
+  ]) {
+    const store = new Store(path.join(root, String(++serial)));
+    const manager = new CapabilityManager(store, () => cloudHostWith(probe));
+    await assert.rejects(
+      () => manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/x', { botDirName: 'bot-z' }),
+      /技能目录不能包含符号链接|技能最多 20 MB/,
+    );
+    await manager.dispose();
+  }
+});

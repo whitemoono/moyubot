@@ -1016,14 +1016,22 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       case 'install_skill': {
         if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用安装 Skill 工具');
         if (!ctx.installSkill) throw new Error('当前环境不支持安装 Skill');
-        const base = path.resolve(ctx.workspaceDir);
-        const resolved = path.resolve(base, requireString(args, 'directory'));
-        if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('技能目录必须在当前工作区内');
-        if (!fs.existsSync(path.join(resolved, 'SKILL.md'))) throw new Error('目录内没有 SKILL.md');
-        if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装技能：${path.basename(resolved)}`))) return finish({ ok: false, summary: '已取消安装技能' });
+        const directory = requireString(args, 'directory');
+        // 云工作区的 Bot 可以装"已经躺在云机上"的技能：POSIX 绝对路径宿主机根本看不见，
+        // 所以跳过本地工作区校验，交给 ctx.installSkill 走云端分支（它自己会核实 SKILL.md）。
+        const looksRemote = (ctx.bot.workspaceId ?? 'workspace_cloud') === 'workspace_cloud' && directory.trim().startsWith('/');
+        let resolved = directory.trim();
+        if (!looksRemote) {
+          const base = path.resolve(ctx.workspaceDir);
+          resolved = path.resolve(base, directory);
+          if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('技能目录必须在当前工作区内');
+          if (!fs.existsSync(path.join(resolved, 'SKILL.md'))) throw new Error('目录内没有 SKILL.md');
+        }
+        const label = looksRemote ? path.posix.basename(resolved) : path.basename(resolved);
+        if (ctx.requestApproval && !(await ctx.requestApproval(call, `安装技能：${label}`))) return finish({ ok: false, summary: '已取消安装技能' });
         const result = await ctx.installSkill(resolved);
         const cloudSkill = result.target === 'cloud';
-        return finish({ ok: true, summary: cloudSkill ? `已上传技能到云电脑：${result.name ?? ''}` : `已安装技能：${result.name ?? result.id ?? ''}`, detail: cloudSkill ? '已部署到云电脑 ~/.claude/skills，由云电脑管理；可在「设置 → MCP 与 Skills」查看云端清单' : '已自动绑定到当前 Bot' });
+        return finish({ ok: true, summary: cloudSkill ? `已在云电脑安装技能：${result.name ?? ''}` : `已安装技能：${result.name ?? result.id ?? ''}`, detail: cloudSkill ? '已在云电脑安装并绑定到当前 Bot；可在「设置 → MCP 与 Skills」查看云端清单' : '已自动绑定到当前 Bot' });
       }
       case 'web_search': {
         const query = requireString(args, 'query');
