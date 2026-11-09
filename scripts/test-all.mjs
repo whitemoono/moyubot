@@ -25,7 +25,7 @@ const ELECTRON_BIN = path.join(
   process.platform === 'win32' ? 'electron.exe' : 'electron',
 );
 
-const args = { layer: 'node', jobs: 4, timeout: 300, list: false, filter: '' };
+const args = { layer: 'node', jobs: 4, timeout: 300, list: false, filter: '', retry: 1 };
   // 默认只跑 node 层：electron 层依赖 GUI 与构建产物，本机不一定具备，CI 单独一个 job 跑。
 for (const arg of process.argv.slice(2)) {
   if (arg === '--list') args.list = true;
@@ -33,6 +33,7 @@ for (const arg of process.argv.slice(2)) {
   else if (arg.startsWith('--filter=')) args.filter = arg.slice('--filter='.length);
   else if (arg.startsWith('--jobs=')) args.jobs = Math.max(1, Number(arg.slice('--jobs='.length)) || 1);
   else if (arg.startsWith('--timeout=')) args.timeout = Math.max(10, Number(arg.slice('--timeout='.length)) || 300);
+  else if (arg.startsWith('--retry=')) args.retry = Math.max(0, Number(arg.slice('--retry='.length)) || 0);
 }
 
 /** 用例里出现 require('electron') / from 'electron' 就必须用 Electron 二进制跑。 */
@@ -151,6 +152,22 @@ if (skipped.length) {
 }
 console.log(`跑 ${runnable.length} 个用例文件（jobs=${args.jobs}）\n`);
 
+/** 并发会让依赖本地端口/网络的用例偶发失败：失败的串行再跑一次，并明确标出来。 */
+async function retryFailures(results) {
+  if (!args.retry) return;
+  for (let round = 1; round <= args.retry; round += 1) {
+    const broken = results.filter((item) => !item.ok);
+    if (!broken.length) return;
+    console.log(`\n${broken.length} 个文件失败，串行重试（第 ${round} 次）：`);
+    for (const item of broken) {
+      const again = await runFile(item);
+      if (!again.ok) continue;
+      results[results.indexOf(item)] = { ...again, retried: round };
+      process.stdout.write(`↻ ${again.name.padEnd(34)} 重试通过\n`);
+    }
+  }
+}
+
 const startedAt = Date.now();
 // Electron 用例各自拉起一套 Chromium，并发只会互相挤到超时；一层串行跑。
 const layers = new Set(runnable.map((entry) => entry.layer));
@@ -164,7 +181,10 @@ if (layers.size === 1) {
     results.push(...(await runPool(group, layer === 'electron' ? 1 : args.jobs)));
   }
 }
+await retryFailures(results);
+
 const failed = results.filter((result) => !result.ok);
+const retried = results.filter((result) => result.retried);
 // Electron 用例是普通脚本，不输出 TAP 计数：按"一个文件一个用例"算。
 const totals = results.reduce((sum, item) => item.counts.found
   ? { pass: sum.pass + (item.counts.pass ?? 0), fail: sum.fail + (item.counts.fail ?? 0) }
@@ -172,6 +192,7 @@ const totals = results.reduce((sum, item) => item.counts.found
   { pass: 0, fail: 0 });
 
 console.log(`\n合计：${totals.pass} pass / ${totals.fail} fail，用时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+if (retried.length) console.log(`其中 ${retried.length} 个文件是重试后通过的：${retried.map((item) => item.name).join('、')}`);
 
 if (failed.length) {
   console.log(`\n失败文件（${failed.length}）：`);
