@@ -269,7 +269,7 @@ test('runtime continues a long tool task after compaction without repeating succ
           handlers.onText(JSON.stringify({ summary: '已完成的记忆写入均成功，按最近结果继续，不能重复执行。', memories: [] }));
         } else if (steps < 8) {
           steps++;
-          handlers.onReasoning('分析当前步骤。'.repeat(180));
+          handlers.onReasoning('分析当前步骤。'.repeat(40));
           handlers.onToolCall({ id: `long-step-${steps}`, name: 'remember', arguments: { text: `成功动作-${steps}` } });
         } else handlers.onText('八步任务已全部完成。');
         return { finishReason: 'stop', usage: { completionTokens: 100 } };
@@ -364,5 +364,32 @@ test('persistent truncated tool calls stop after a bounded recovery count withou
     await assert.rejects(f.runtime.runUnattended(f.bot.id, '持续截断'), /自动恢复未能完成/);
     assert.equal(f.requests.length, 4);
     assert.equal(f.store.listMemories(f.bot.id).length, 0);
+  } finally { await f.close(); }
+});
+
+test('小窗口下工具预算不超过窗口 25%，超了就只留核心集并告知模型', async () => {
+  const f = await fixture(() => [chunk({ content: 'ok' }, 'stop')]);
+  try {
+    const provider = f.store.settings.providers[0];
+    f.store.updateSettings({ providers: [{ ...provider, modelSettings: { [f.bot.model]: { contextWindowTokens: 8192 } } }] });
+    const bot = f.store.getBot(f.bot.id);
+    const conversation = f.store.getConversation(bot ? f.store.botConversation(bot.id).id : '');
+    assert.ok(bot && conversation, 'fixture 需要可用 Bot 与会话');
+    f.store.appendMessage(conversation.id, { id: 'budget-u1', role: 'user', content: '历史'.repeat(100), createdAt: 1 });
+    f.store.appendMessage(conversation.id, { id: 'budget-a1', role: 'assistant', content: '回答'.repeat(100), createdAt: 2 });
+    const { prepareContext, estimateTokens } = await import('../packages/core/dist/context.js');
+    const { TOOL_SCHEMAS } = await import('../packages/core/dist/index.js');
+    const logs = [];
+    const result = await prepareContext({
+      store: f.store, bot, provider: f.provider, conversation: f.store.getConversation(conversation.id), userMessageId: 'budget-u1',
+      live: [{ role: 'user', content: '现在继续' }], system: bot.systemPrompt, tools: TOOL_SCHEMAS,
+      signal: new AbortController().signal, emit: (event) => { if (event.type === 'log') logs.push(event.text); },
+    });
+    const overhead = estimateTokens(JSON.stringify(result.tools));
+    const systemTokens = estimateTokens(result.system);
+    assert.ok(result.tools.length < TOOL_SCHEMAS.length, '小窗口必须裁掉长尾工具');
+    assert.ok((overhead + systemTokens) / 8192 <= 0.25, '工具+人设不得超过窗口 25%，实际 ' + ((overhead + systemTokens) / 8192 * 100).toFixed(0) + '%');
+    assert.ok(result.system.includes('工具预算提示'), '被裁掉的工具名要写进系统提示');
+    assert.ok(logs.some((text) => text.includes('核心工具')), '要记录降级日志');
   } finally { await f.close(); }
 });

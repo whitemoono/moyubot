@@ -185,6 +185,18 @@ const PRUNE_LADDER = [4000, 2000, 800, 300];
  * 顶层和参数里的 property description 都要处理，只砍顶层等于没砍。
  * top/param=0 表示连键一起删（比留空串更省）。
  */
+/**
+ * 窗口极小时的兜底工具集：只保留日常高频能力（执行/读写/补丁/联网/记忆/清单/目标/定时/交付）。
+ * 其余工具会被移出 schema，名字写入系统提示，让模型知道“这次没给”而不是“不存在”。
+ * 选型依据：这 15 个覆盖了绝大多数对话，且去掉描述后合计约 800 tokens（8k 窗口占 10%）。
+ */
+const CORE_TOOLS = [
+  'cloud_exec', 'cloud_read', 'cloud_write', 'apply_patch', 'read_files',
+  'web_search', 'web_fetch', 'deliver_file',
+  'remember', 'recall', 'todo_write', 'ask_user',
+  'set_goal', 'update_goal', 'schedule_task',
+];
+
 const TOOL_SLIM_TIERS = [
   { top: 160, param: 96 },
   { top: 96, param: 48 },
@@ -294,14 +306,38 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
       emit({ type: 'log', level: 'info', text: `上下文窗口较小，已精简工具描述以留出预算（overhead≈${overhead} tokens）` });
     }
   }
-  if (!args.recovery && estimateTokens(summarySystem(system, summary)) + overhead + historyTokens(initial) <= budget) {
-    const fittedSystem = summarySystem(system, summary);
+  // 最后一道兜底：工具预算不该吃掉超过窗口的 25%（8k 下 2489 tokens 也占 30%，
+// 留给对话的只剩七成）。超了就只保留核心工具集，并把被裁掉的名字写进系统提示——
+// 否则模型以为工具不存在，而不是"这次没给"。
+  let baseSystem = system;
+  if (estimateTokens(baseSystem) + overhead > Math.floor(window * .25)) {
+    const allNames = effectiveTools.map((item) => item.name);
+    const dropped = allNames.filter((name) => !CORE_TOOLS.includes(name));
+    const notice = dropped.length
+      ? `\n\n[工具预算提示] 本次只提供了核心工具（${CORE_TOOLS.filter((name) => allNames.includes(name)).join('、')}）。以下工具因上下文预算不足暂未提供，需要时请让用户减少启用的工具或调大模型窗口：${dropped.join('、')}`
+      : '';
+    for (const tier of [{ top: 0, param: 0 }, { top: 96, param: 48 }]) {
+      const pool = slimTools(effectiveTools.filter((item) => CORE_TOOLS.includes(item.name)), tier);
+      const poolSystem = system + notice;
+      const poolOverhead = estimateTokens(JSON.stringify(pool));
+      const floor = Math.min(1800, Math.floor(window * .15));
+      if (estimateTokens(poolSystem) + poolOverhead + historyTokens(initial) <= budget || estimateTokens(poolSystem) + poolOverhead + floor <= budget) {
+        effectiveTools = pool;
+        overhead = poolOverhead;
+        baseSystem = poolSystem;
+        emit({ type: 'log', level: 'warn', text: `上下文窗口过小：本次只启用 ${pool.length} 个核心工具，其余 ${dropped.length} 个暂时隐藏` });
+        break;
+      }
+    }
+  }
+  if (!args.recovery && estimateTokens(summarySystem(baseSystem, summary)) + overhead + historyTokens(initial) <= budget) {
+    const fittedSystem = summarySystem(baseSystem, summary);
     reportUsage(fittedSystem, initial);
     return { system: fittedSystem, messages: initial, tools: effectiveTools };
   }
   // 超预算时先试零成本的原地精简，再考虑付一次模型往返去做摘要：阶梯由宽到窄，
   // 第一个能装进预算的宽度就够用，保留的信息严格多于「丢掉整轮 + 重写摘要」。
-  const prunableSystem = summarySystem(system, summary);
+  const prunableSystem = summarySystem(baseSystem, summary);
   const unprunedTokens = estimateTokens(prunableSystem) + overhead + historyTokens(initial);
   if (unprunedTokens > budget) {
     for (const width of PRUNE_LADDER) {
@@ -325,11 +361,11 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
   for (const boundary of boundaries) {
     cutoff = boundary;
     const remaining = [...messagesFor(older.slice(cutoff), viewer), ...live];
-    if (estimateTokens(system) + overhead + summaryAllowance + historyTokens(remaining) <= budget &&
+    if (estimateTokens(baseSystem) + overhead + summaryAllowance + historyTokens(remaining) <= budget &&
       (!args.recovery || cutoff >= Math.ceil(older.length / 2))) break;
   }
   let liveCutoff = 1;
-  const fits = (offset: number) => estimateTokens(system) + overhead + summaryAllowance +
+  const fits = (offset: number) => estimateTokens(baseSystem) + overhead + summaryAllowance +
     historyTokens([...messagesFor(older.slice(cutoff), viewer), live[0], ...live.slice(offset)]) <= budget;
   if (!fits(1) && args.taskContext) {
     // Cut only between completed call/result groups, keeping the latest group verbatim.
@@ -338,7 +374,7 @@ export async function prepareContext(args: PrepareArgs): Promise<{ system: strin
       if (fits(boundary)) break;
     }
   }
-  if ((!cutoff && liveCutoff === 1) || !fits(liveCutoff)) throw new Error('当前消息或工具输出已超过模型上下文上限，请缩短本次输入或提高供应商的上下文上限设置。历史记录已保留。');
+  if ((!cutoff && liveCutoff === 1) || !fits(liveCutoff)) throw new Error(`本次输入超出了模型上下文上限（窗口 ${window} tokens，预算 ${budget}：工具 ${overhead} + 系统提示 ${estimateTokens(baseSystem)} + 本次对话 ${historyTokens(live)}）。已压缩历史但仍放不下——请缩短本轮输入，或给这个模型调大上下文窗口。历史记录已保留。`);
   emit({ type: 'context_compaction', conversationId: conversation.id, phase: 'start' });
   try {
     const source = [transcript(older.slice(0, cutoff)), ...live.slice(1, liveCutoff).map(message => JSON.stringify(message.role === 'assistant'

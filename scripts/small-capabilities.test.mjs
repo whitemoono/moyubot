@@ -88,7 +88,9 @@ test('小窗口 + 全部工具：工具描述会按阶梯瘦身，绝不因工�
       live: [{ role: 'user', content: '现在总结' }], system: '你是助手', tools: TOOL_SCHEMAS, signal: new AbortController().signal, emit: () => {},
     });
     assert.ok(Array.isArray(result.tools), 'prepareContext 必须返回工具列表');
-    assert.equal(result.tools.length, TOOL_SCHEMAS.length, '工具不能被整条丢弃，只能瘦身描述');
+    // 8k 窗口下会先瘦描述；仍超出窗口 25% 时降级到核心工具集（并把名字写进系统提示），所以工具数可能变少。
+    assert.ok(result.tools.length > 0, '至少要保留核心工具');
+    assert.ok(result.tools.length <= TOOL_SCHEMAS.length);
     const slimOverhead = est(JSON.stringify(result.tools));
     assert.ok(slimOverhead < fullOverhead, `8K 窗口 + ${TOOL_SCHEMAS.length} 个工具应触发描述瘦身：full=${fullOverhead} slim=${slimOverhead}`);
     assert.ok(slimOverhead < 4340, `瘦身后开销应显著下降，实际 ${slimOverhead}`);

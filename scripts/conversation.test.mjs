@@ -395,7 +395,7 @@ test('an oversized current message is reported without truncating or deleting it
   const f = fixture();
   const text = '超长当前输入'.repeat(3000);
   f.store.appendMessage(f.conversation.id, { id: 'current-user', role: 'user', content: text, createdAt: Date.now() });
-  await assert.rejects(prepare(f, [{ role: 'user', content: text }], summaryProvider()), /超过模型上下文/);
+  await assert.rejects(prepare(f, [{ role: 'user', content: text }], summaryProvider()), /超出了模型上下文|超过模型上下文/);
   assert.equal(f.conversation.messages[0].content, text);
   assert.equal(f.conversation.context, undefined);
 });
