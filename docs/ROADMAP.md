@@ -1,6 +1,6 @@
 # 路线图
 
-当前版本：**0.1.3 — 上下文与缓存可观测、推理强度调节、能力自助安装与联网搜索**。
+当前版本：**0.2.4 — Office 三件套生成、文档内置预览、云端技能安装、增量记忆整理、步数软暂停**。
 
 ## 已完成（0.1）
 
@@ -16,16 +16,25 @@
 - [x] 密钥加密存储（Electron `safeStorage`，与 `settings.json` 分离）
 - [x] smoke 测试脚本（假 OpenAI SSE 服务，全链路无密钥可跑）
 
+## 已完成（0.2）
+
+- [x] Office 生成：`make_spreadsheet` / `make_document` / `make_slides`，纯 JS（ExcelJS / docx / pptxgenjs）本机与云机同源，产物自动以对话卡片交付
+- [x] 内置预览：文本 / Markdown / CSV / JSON / 图片 / PDF，docx（mammoth）与 xlsx（SheetJS）解析后净化渲染
+- [x] 云端技能安装：`install_skill` 支持云机绝对路径，落点 `.moyu/skills/<slug>`，体积/文件数/符号链接三重校验
+- [x] 增量记忆整理：检查点 + 后台提炼 + 凭据过滤 + 并发互斥
+- [x] 步数软暂停：工具调用触顶不再判失败，保留全部工具结果，可「继续」或被 `until_done` 自动续上
+- [x] 统一测试入口（`pnpm test`）+ 零依赖代码体检棘轮（`pnpm lint`）+ CI 工作流（待远程首次跑通）
+
 ## 下一步（0.2 — 打磨）
 
 - [ ] 对话内编辑/重发、分支重试（resend / regenerate）
-- [ ] 消息级产物面板：图片、命令输出、文件树可点击预览
+- [x] 消息级产物面板：文件以对话卡片交付，图片/PDF/文本/docx/xlsx 可在内置查看器预览
 - [ ] 多会话并行运行与后台任务栏（当前同一时刻只跑一个 Agent）
 - [ ] 云主机文件浏览器（列目录、上传、下载、拖拽）
-- [ ] 用量与成本面板：按 Bot / 供应商统计 token 与唤醒时长
-- [ ] 打包验证：`pnpm dist` 出 NSIS 安装包 + 自动更新（electron-updater）
-- [ ] 应用图标与首次启动向导（选供应商 → 填 Key → 连云主机）
-- [ ] CI：typecheck + build + smoke 三件套
+- [ ] 用量与成本面板：token 与调用次数已有（含压缩/整理分项待补），单价与金额待做
+- [x] 打包验证：`pnpm dist` 出 NSIS 安装包 + 应用内更新（SHA256 校验；代码签名与清单签名待补）
+- [x] 应用图标与首次启动向导（选供应商 → 填 Key → 连云主机）
+- [ ] CI：已加 `.github/workflows/ci.yml`（typecheck + 桌面构建 + 216 条用例，ubuntu/windows 双跑；Electron 层暂非阻塞），待远程首次跑通
 
 ## 0.3 — 平台扩展
 
