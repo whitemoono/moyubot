@@ -28,7 +28,8 @@ export function ToolsView() {
   const { settings, activeWorkspace } = useMoyu();
   const [builtin, setBuiltin] = useState<{ name: string; description: string }[]>([]);
   const [query, setQuery] = useState('');
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // 默认全部折叠：39 个工具展开太占地方，先给总览，想看哪组再展开。
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => Object.fromEntries(GROUPS.map((group) => [group.id, true])));
   useEffect(() => {
     let active = true;
     moyu().listTools().then((tools) => { if (active) setBuiltin(tools.filter((tool) => !HIDDEN_TOOLS.has(tool.name))); }).catch(() => {});

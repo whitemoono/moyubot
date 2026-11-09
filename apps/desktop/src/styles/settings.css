@@ -583,3 +583,74 @@
 .tool-group__head strong { font-size: 12px; }
 .tool-group__count { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 10px; }
 .tool-group__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; padding: 10px; }
+
+/* MCP / 技能页：修正版式——等宽等高、说明收敛、云清单分隔清楚 */
+.cap-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: stretch; }
+.cap-column { display: flex; flex-direction: column; min-width: 0; }
+.cap-column > h3, .cap-column__head h3 { margin: 0 0 6px; font-size: 14px; }
+.cap-column > h3 small, .cap-column__head h3 small { font-size: 10px; color: var(--text-faint); margin-left: 6px; }
+.cap-column__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+/* 说明文字压成一行小字，不再占两大行 */
+.cap-column .settings-note { margin: 0 0 10px; font-size: 11px; line-height: 1.5; color: var(--text-dim); }
+
+.cap-list { display: grid; gap: 6px; margin: 0 0 10px; flex: 1; }
+.cap-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.cap-item__main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.cap-item__main strong { font-size: 12px; font-weight: 600; }
+.cap-item__main small { color: var(--text-dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-item__main small.cap-item__error { color: #dc2626; }
+.cap-item__actions { display: flex; gap: 2px; flex: none; }
+.cap-item--cloud { border-style: dashed; background: transparent; padding: 7px 10px; }
+.cap-badge { flex: none; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 9px; line-height: 1.6; }
+
+/* 云部署清单：明确分隔，不跟主列表混 */
+.cap-cloud { margin: 4px 0 0; padding-top: 10px; border-top: 1px dashed var(--line-strong); }
+.cap-cloud > summary { cursor: pointer; color: var(--text-dim); font-size: 11px; padding: 2px 0 6px; user-select: none; }
+.cap-cloud__list { display: grid; gap: 5px; margin-top: 2px; }
+
+/* 导入区：折叠时只占一行 */
+.cap-import { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--line-strong); }
+.cap-import > summary { cursor: pointer; color: var(--text-dim); font-size: 11px; padding: 2px 0 8px; user-select: none; }
+.cap-import .field, .cap-import label { margin-top: 0; }
+.cap-import .textarea { margin-bottom: 8px; }
+
+/* 空状态统一 */
+.cap-list .inspector-note { margin: 0; padding: 18px 12px; border: 1px dashed var(--line); border-radius: 9px; text-align: center; font-size: 11px; color: var(--text-faint); background: color-mix(in srgb, var(--accent) 3%, transparent); }
+
+/* MCP / 技能：空状态行动卡 */
+.cap-empty { display: grid; justify-items: center; gap: 8px; padding: 26px 16px; border: 1px dashed var(--line-strong); border-radius: 12px; background: color-mix(in srgb, var(--accent) 3%, transparent); text-align: center; }
+.cap-empty svg { color: var(--text-faint); }
+.cap-empty strong { font-size: 12px; }
+.cap-empty small { max-width: 260px; color: var(--text-dim); font-size: 11px; line-height: 1.6; }
+.cap-empty .btn { margin-top: 2px; }
+
+/* 云端技能：紧凑 chip 网格，11 个也不拉长整栏 */
+.cap-cloud__list--grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
+.cap-cloud__chip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px dashed var(--line); border-radius: 7px; min-width: 0; }
+.cap-cloud__chip strong { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* MCP / 技能：一张清单，本机与云端合并，来源用徽标区分 */
+.cap-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+.cap-column { min-width: 0; display: flex; flex-direction: column; }
+.cap-column__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.cap-column__head h3 { margin: 0; font-size: 14px; }
+.cap-list { display: grid; gap: 6px; }
+.cap-item { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.cap-item__main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.cap-item__main strong { font-size: 12px; font-weight: 600; }
+.cap-item__main small { color: var(--text-dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-item__main small.cap-item__error { color: #dc2626; }
+.cap-item__actions { display: flex; gap: 2px; flex: none; }
+.cap-badge { flex: none; min-width: 34px; text-align: center; padding: 2px 6px; border-radius: 5px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 9px; line-height: 1.7; }
+.cap-hint { margin: 0; padding: 22px 12px; border: 1px dashed var(--line); border-radius: 9px; text-align: center; font-size: 11px; color: var(--text-faint); }
+.cap-inline-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cap-inline-form__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* 能力页：可折叠分组 */
+.cap-group { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin-bottom: 6px; }
+.cap-group__head { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 10px; border: 0; background: color-mix(in srgb, var(--accent) 4%, transparent); color: var(--text); cursor: pointer; text-align: left; font-size: 12px; }
+.cap-group__head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.cap-group__head svg { color: var(--text-dim); transition: transform 160ms ease; }
+.cap-group__head svg.is-open { transform: rotate(180deg); }
+.cap-group__count { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 10px; }
+.cap-group__body { display: grid; gap: 5px; padding: 8px; }
