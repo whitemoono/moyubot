@@ -284,6 +284,66 @@ export class CapabilityManager {
     return { target: 'local', id, name };
   }
 
+  /**
+   * 从云电脑上已有的目录安装技能：`install_skill` 的云机版。
+   *
+   * 为什么需要：宿主机的 install_skill 只能读本机工作区，看不见云机文件；
+   * 而技能经常是直接在云机上写好/下载好的（例如 seedance-2-prompts）。
+   * 这里在云机上校验 SKILL.md，再把它复制进该 Bot 的 .moyu/skills/，并在设置里登记绑定。
+   */
+  async importSkillFromCloud(workspaceId: string, remoteDirectory: string, options?: { botDirName?: string }): Promise<{ target: 'cloud'; name: string; id: string; path: string }> {
+    this.workspace(workspaceId);
+    const host = this.cloud();
+    if (!host) throw new Error('云电脑未连接，无法从云端目录安装技能');
+    const dir = remoteDirectory.trim().replace(/\/+$/, '');
+    if (!dir) throw new Error('请提供云电脑上的技能目录路径');
+    const root = this.cloudRoot();
+    // 校验 SKILL.md 存在且可解析（云机侧一次读取）。
+    const inspect = await host.exec(
+      `python3 - <<'PY'
+import json, os
+d = ${JSON.stringify(dir)}
+f = os.path.join(d, 'SKILL.md')
+out = {'ok': False}
+if os.path.isdir(d) and os.path.isfile(f):
+    text = open(f, 'r', encoding='utf-8', errors='replace').read()
+    import re
+    m = re.search(r'^---\\r?\\n(.*?)\\r?\\n---', text, re.S)
+    out = {'ok': True, 'size': len(text), 'head': (m.group(1) if m else '')[:400]}
+print(json.dumps(out, ensure_ascii=False))
+PY`,
+      { timeoutSeconds: 60 },
+    );
+    let info: { ok?: boolean; size?: number; head?: string } = {};
+    try { info = JSON.parse(inspect.stdout.trim().split('\n').pop() ?? '{}'); } catch { info = {}; }
+    if (!info.ok) throw new Error(`云电脑上找不到技能目录或 SKILL.md：${dir}`);
+    const meta = parseYaml(info.head ?? '') as { name?: unknown; description?: unknown };
+    const displayName = typeof meta?.name === 'string' && meta.name.trim() ? meta.name.trim() : path.posix.basename(dir);
+    const slug = displayName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60) || 'skill';
+    // 复制到 Bot 自己的技能目录（与手动 install_skill 落点一致），保留原目录不动。
+    const target = options?.botDirName
+      ? `${root.replace(/\/+$/, '')}/${options.botDirName}/.moyu/skills/${slug}`
+      : `${root.replace(/\/+$/, '')}/.moyu/shared/skills/${slug}`;
+    const copy = await host.exec(
+      `mkdir -p ${shellQuote(path.posix.dirname(target))} && rm -rf ${shellQuote(target)} && cp -R ${shellQuote(dir)} ${shellQuote(target)} && test -f ${shellQuote(target)}/SKILL.md && echo copied`,
+      { timeoutSeconds: 120 },
+    );
+    if (copy.exitCode !== 0) throw new Error(`复制技能到 ${target} 失败：${(copy.stderr || copy.stdout).slice(0, 300)}`);
+    this.cloudInventory = undefined;
+    this.cloudInventoryStale = true;
+    // 登记一条平台记录：让设置页与 Bot 绑定都能看见（目录指向云端路径，仅作展示）。
+    const id = newId('skill');
+    const skill: SkillConfig = {
+      id,
+      workspaceId,
+      name: String(displayName).slice(0, 100),
+      description: typeof meta?.description === 'string' ? meta.description.slice(0, 2000) : `云端技能 ${slug}`,
+      directory: target,
+    };
+    this.store.updateSettings({ skills: [...(this.store.settings.skills ?? []), skill] });
+    return { target: 'cloud', name: displayName, id, path: target };
+  }
+
   /** 把本地技能目录打包上传到云电脑：默认共享 ~/.claude/skills/<name>；botDirName 时写该 Bot 家目录。 */
   private async deployCloudSkill(root: string, name: string, botDirName?: string): Promise<void> {
     const host = this.cloud();

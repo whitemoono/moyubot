@@ -1,6 +1,6 @@
 {
   "name": "moyubot",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, in a focused desktop workspace",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "smoke": "pnpm build && node scripts/smoke.mjs",
     "smoke:desktop": "pnpm build && pnpm --filter @moyu/desktop exec electron ../../scripts/desktop-smoke.cjs",
     "test:conversations": "pnpm --filter @moyu/core build && node --test scripts/conversation.test.mjs",
-    "test:memories": "pnpm --filter @moyu/core build && node --test scripts/memory-store.test.mjs",
+    "test:memories": "pnpm --filter @moyu/core build && node --test scripts/memory-store.test.mjs scripts/memory-consolidation.test.mjs",
     "test:usage": "pnpm --filter @moyu/core build && node --test scripts/usage.test.mjs",
     "test:providers": "pnpm --filter @moyu/core build && node --test scripts/provider-sdk.test.mjs scripts/output-limits.test.mjs scripts/conversation.test.mjs scripts/usage.test.mjs scripts/capabilities.test.mjs",
     "test:schedules": "pnpm --filter @moyu/core build && node --test scripts/schedules.test.mjs",

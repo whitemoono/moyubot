@@ -342,3 +342,45 @@ test('persisted pre-moyu entries (claude-sourced) stay hidden until a fresh .moy
   assert.equal(offline.skills.length, 0, '迁移前的 ~/.claude 技能不应再展示');
   await manager.dispose();
 });
+
+test('从云电脑目录安装技能：云端校验 + 复制到 Bot 技能目录 + 平台登记', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const bot = { ...store.settings.bots[0], workspaceId: 'workspace_cloud' };
+  store.updateSettings({ bots: [bot] });
+  const dirName = store.botDirName(bot.id);
+  const execs = [];
+  const host = {
+    status: () => ({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 }),
+    ensureAwake: async () => ({ id: 'm1', name: 'mock', state: 'running', autoSuspendAfterSeconds: null }),
+    writeText: async () => {},
+    exec: async (cmd) => {
+      execs.push(cmd);
+      if (cmd.includes('SKILL.md') && cmd.includes('json.dumps')) return { stdout: JSON.stringify({ ok: true, size: 120, head: 'name: seedance-2-prompts\ndescription: 视频提示词库' }) + '\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+      return { stdout: 'copied\n', stderr: '', exitCode: 0, timedOut: false, truncated: false };
+    },
+  };
+  const manager = new CapabilityManager(store, () => host);
+  const result = await manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/seedance-2-prompts', { botDirName: dirName });
+  assert.equal(result.target, 'cloud');
+  assert.equal(result.name, 'seedance-2-prompts');
+  assert.ok(result.path.includes(dirName) && result.path.includes('.moyu/skills/seedance-2-prompts'), '应复制到该 Bot 的技能目录: ' + result.path);
+  assert.ok(execs.some((c) => c.includes('cp -R')), '要在云机上复制目录');
+  // 平台登记：设置里出现该技能
+  const skill = store.settings.skills.find((item) => item.id === result.id);
+  assert.ok(skill, '技能应登记进 settings');
+  assert.equal(skill.name, 'seedance-2-prompts');
+  await manager.dispose();
+});
+
+test('从云电脑安装技能：路径不存在时报清晰错误', async () => {
+  const store = new Store(path.join(root, String(++serial)));
+  const host = {
+    status: () => ({ state: 'ready', lastTransitionAt: Date.now(), awakeMs: 0, wakeCount: 0 }),
+    ensureAwake: async () => ({ id: 'm1', name: 'mock', state: 'running', autoSuspendAfterSeconds: null }),
+    writeText: async () => {},
+    exec: async () => ({ stdout: '{"ok": false}\n', stderr: '', exitCode: 0, timedOut: false, truncated: false }),
+  };
+  const manager = new CapabilityManager(store, () => host);
+  await assert.rejects(() => manager.importSkillFromCloud('workspace_cloud', '/data/home/moyubot/nope'), /找不到技能目录/);
+  await manager.dispose();
+});

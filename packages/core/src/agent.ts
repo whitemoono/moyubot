@@ -4,6 +4,7 @@ import type { Store } from './store';
 import type { CloudHost, ComputerHost } from './cloud';
 import { createChatProvider, generateImageWithProvider } from './providers';
 import type { AgentMessage, ChatProvider, StreamHandlers } from './providers';
+import { maybeConsolidateMemories } from './memory-consolidation';
 import { ProviderError, OutputLimitError } from './providers';
 import type {
   AgentEvent,
@@ -378,9 +379,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     let expandedOutput = false;
     let outputRecoveries = 0;
     let errorText: string | undefined;
+    let replyProvider: ChatProvider | undefined;
 
     try {
       const { provider, imageGenerator } = this.providerFor(bot);
+      replyProvider = provider;
       // In plan mode MCP tools are hidden too: they are third-party writes with the same reach
       // as our own, so "read-only" has to cover them. load_skill only reads SKILL.md, so it stays.
       const capabilitySchemas = await this.capabilities?.schemas(bot) ?? [];
@@ -559,7 +562,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               // 生成后自动交付为对话卡片。文件已经在 Bot 工作目录里（result.path 相对 botDir），
               // 不能再复制到 uploads/<botDir>/ 下——那会让附件的路径与实际落点不一致，预览时报“文件不存在”。
               try {
-                const { bytes } = await computer.readBytes(result.path, botDir);
+                // 云机已在 stdout 回报字节数，本机生成也自带 bytes；都不必再整份读一遍。
+                const size = result.bytes ?? (await computer.readBytes(result.path, botDir)).bytes.length;
                 const fileName = path.posix.basename(result.path);
                 const mimes: Record<string, string> = { xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
                 const mimeType = mimes[request.kind] ?? 'application/octet-stream';
@@ -568,7 +572,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                 assistantMessage.attachments = [...(assistantMessage.attachments ?? []), {
                   id: newId('att'), kind: 'file' as const, name: fileName, mimeType,
                   path: relPath,
-                  size: bytes.length, origin: isLocal ? 'local' : 'cloud',
+                  size, origin: isLocal ? 'local' : 'cloud',
                 }];
                 this.store.saveConversation(conversationId);
               } catch { /* 交付失败不影响生成结果，用户仍可按路径取 */ }
@@ -674,6 +678,15 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
               const botDirName = workspaceId === 'workspace_cloud' ? this.store.botDirName(bot.id) : undefined;
+              // 云工作区的 Bot 可以装"已经在云机上的技能"：像 /data/home/moyubot/xxx 这种绝对路径
+              // 宿主机根本看不见，直接走云端安装，而不是报"目录必须在工作区内"。
+              const looksRemote = workspaceId === 'workspace_cloud' && directory.trim().startsWith('/');
+              if (looksRemote) {
+                const result = await this.capabilities.importSkillFromCloud(workspaceId, directory, { botDirName });
+                const current = this.store.getBot(bot.id);
+                if (current) this.store.upsertBot({ ...current, skillIds: [...new Set([...(current.skillIds ?? []), result.id])], updatedAt: Date.now() });
+                return { target: 'cloud' as const, name: result.name };
+              }
               const before = new Set((this.store.settings.skills ?? []).map((item) => item.id));
               const result = await this.capabilities.importSkill(workspaceId, directory, { botDirName });
               if (result.target === 'cloud') return { target: 'cloud' as const, name: result.name };
@@ -798,6 +811,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
           this.runs.delete(conversationId);
           this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
         }
+      }
+      // 增量记忆整理：成功回复结束后检查检查点，达到阈值就在后台提炼一次（不阻塞、失败静默）。
+      if (!errorText && !abort.signal.aborted && !params.silent && replyProvider) {
+        void maybeConsolidateMemories({ store: this.store, bot, conversation, provider: replyProvider, emit: (event) => this.emit(event) }).catch(() => {});
       }
       this.computerFor(bot).touch();
       this.computerFor(bot).armIdleIfNeeded?.();

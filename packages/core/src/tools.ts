@@ -142,7 +142,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'install_skill',
-    description: '从当前工作区内的目录安装 Skill（目录需包含带 name/description 的 SKILL.md 头部），并自动绑定到当前 Bot。会请求用户确认。注意：请勿自行把技能克隆到 ~/.agents/skills 或 ~/.claude/skills——那些位置平台扫描不到、也不按 Bot 隔离。云工作区若要从云机内已有的技能目录安装，优先把技能放到该 Bot 的 .moyu/skills/<技能名> 下。',
+    description: '安装技能并绑定到这个 Bot。传给本地工作区里的技能目录（宿主机可见的路径）；如果技能已经在云电脑上，传云机绝对路径（如 /data/home/moyubot/xxx）即可从云端安装。',
     parameters: {
       type: 'object',
       properties: { directory: { type: 'string', description: '技能目录：工作区相对路径，或工作区内的绝对路径' } },
@@ -854,10 +854,11 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         const result = await ctx.makeOffice(request);
         if (!result.ok || !result.path) return finish({ ok: false, summary: `生成失败：${result.error ?? '未知错误'}`, detail: result.error });
         const kb = Math.max(1, Math.round((result.bytes ?? 0) / 1024));
+        // 云机那一步失败、本机兜底成功时也要说出来，别让用户以为一切照常。
         return finish({
           ok: true,
-          summary: `已生成 ${path.posix.basename(result.path)}（${kb} KB · ${result.machine === 'cloud' ? '云电脑' : '本机'}）并交付`,
-          detail: `文件：${result.path}`,
+          summary: `已生成 ${path.posix.basename(result.path)}（${kb} KB · ${result.machine === 'cloud' ? '云电脑' : '本机'}）并交付${result.error ? '，云机生成失败已回退本机' : ''}`,
+          detail: `文件：${result.path}${result.error ? `\n云机错误：${result.error}` : ''}`,
         });
       }
       case 'deliver_file': {
