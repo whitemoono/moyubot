@@ -380,6 +380,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     let outputRecoveries = 0;
     let errorText: string | undefined;
     let replyProvider: ChatProvider | undefined;
+    /** 本轮是否因步数触顶而软暂停（对齐 DSH：不是失败，可继续/自动续航）。 */
+    let pausedForSteps = false;
 
     try {
       const { provider, imageGenerator } = this.providerFor(bot);
@@ -782,7 +784,9 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
         }
         if (desktopImages.length) history.push({ role: 'user', content: '这是 desktop_action 返回的桌面截图（按调用顺序）。请根据可辨识内容继续；无法识别画面时不要猜测坐标。', images: desktopImages });
       }
-      if (!finished) throw new Error('已达到本次工具调用轮数上限，任务尚未确认完成。已执行的工具结果已保留，可以继续。');
+      // 对齐 DSH：步数触顶不是失败，而是软暂停——保留全部工具结果，界面提供「继续」。
+      // 自动续航（until_done）下会由 autonomyLoop 自动开下一轮，用户无需手动点。
+      if (!finished) { pausedForSteps = true; }
     } catch (error) {
       if (taskDeadline.signal.aborted && !abort.signal.aborted) {
         errorText = `已达到任务最长时间（${duration} 秒），任务尚未确认完成；已执行结果已保留。`;
@@ -801,6 +805,8 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     } finally {
       clearTimeout(timer);
       message.streaming = false;
+      // 步数触顶 = 软暂停（对齐 DSH）：不是失败，保留全部工具结果，界面给「继续」。
+      if (pausedForSteps && !errorText) message.paused = 'steps';
       if (!message.content) {
         message.content = message.error ? `（没有回复：${message.error}）` : message.stopped || message.toolCalls?.length ? '' : '（空回复）';
       }
@@ -809,7 +815,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
         this.emit({ type: 'message_end', conversationId, message });
         if (!params.group) {
           this.runs.delete(conversationId);
-          this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText });
+          this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText, ...(pausedForSteps ? { paused: 'steps' as const } : {}) });
         }
       }
       // 增量记忆整理：成功回复结束后检查检查点，达到阈值就在后台提炼一次（不阻塞、失败静默）。

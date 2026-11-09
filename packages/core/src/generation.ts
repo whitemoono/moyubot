@@ -1,7 +1,7 @@
 import type { Bot, BotGenerationSettings, ModelSettings, ProviderConfig } from './types';
 import { remoteModelCatalog } from './model-catalog';
 
-export const DEFAULT_TASK_LIMITS = { maxSteps: 32, maxTaskOutputTokens: 131072, maxDurationSeconds: 1200 };
+export const DEFAULT_TASK_LIMITS = { maxSteps: 64, maxTaskOutputTokens: 131072, maxDurationSeconds: 1200 };
 
 /**
  * Known context windows / output ceilings, matched on the model id with any

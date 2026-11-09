@@ -267,6 +267,8 @@ export interface Message {
   streaming?: boolean;
   /** Generation was explicitly stopped; preserved separately from provider failures. */
   stopped?: boolean;
+  /** 软暂停（对齐 DSH）：本轮达到工具调用步数上限，但任务没失败；可一键继续，自动续航模式下会自动接着跑。 */
+  paused?: 'steps';
   reasoning?: string;
   /** Complete model responses, preserving thinking/tool boundaries across requests and reloads. */
   modelTurns?: { content: string; reasoning?: string; toolCalls?: ToolCall[]; replay?: ProviderReplay }[];
@@ -529,7 +531,7 @@ export type AgentEvent =
   | { type: 'tool_start'; conversationId: string; messageId: string; call: ToolCall }
   | { type: 'tool_end'; conversationId: string; messageId: string; result: ToolResult }
   | { type: 'message_end'; conversationId: string; message: Message }
-  | { type: 'run_end'; conversationId: string; runId: string; ok: boolean; error?: string }
+  | { type: 'run_end'; conversationId: string; runId: string; ok: boolean; error?: string; paused?: 'steps' }
   | { type: 'context_compaction'; conversationId: string; phase: 'start' | 'done' | 'error'; context?: ConversationContext }
   | { type: 'context_pruned'; conversationId: string; pruned: number; savedTokens: number }
   /** 子智能体批次进度。父会话用它画嵌套卡片；子会话内部的 token 增量不外发，避免界面串台。 */
@@ -635,7 +637,7 @@ export interface UsageRecord {
   model: string;
   conversationId: string;
   messageId?: string;
-  purpose: 'chat' | 'compaction' | 'historical';
+  purpose: 'chat' | 'compaction' | 'consolidation' | 'historical';
   status: 'complete' | 'error';
   usage?: TokenUsage;
 }

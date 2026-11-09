@@ -6,7 +6,7 @@ import http from 'node:http';
 import { AgentRuntime, CloudHost, Store } from '../packages/core/dist/index.js';
 import { testProvider } from './test-provider.mjs';
 import { outputBudget, contextWindow, prepareContext, messagesFor } from '../packages/core/dist/context.js';
-import { TaskOutputBudget, validateModelSettings, validateGeneration } from '../packages/core/dist/generation.js';
+import { TaskOutputBudget, validateModelSettings, validateGeneration, DEFAULT_CONTEXT_WINDOW_TOKENS } from '../packages/core/dist/generation.js';
 import { trackedChat, createChatProvider } from '../packages/core/dist/index.js';
 import { OutputLimitError } from '../packages/core/dist/providers/types.js';
 
@@ -75,14 +75,16 @@ test('partial visible output resumes and truncated tool arguments never execute'
   } finally { await f.close(); }
 });
 
-test('tool-step exhaustion reports unfinished work and retains successful results', async () => {
+test('tool-step exhaustion soft-pauses (not an error) and retains successful results', async () => {
   const f = await fixture(() => [memoryCall('step-limit', '{"text":"已执行但尚未总结"}')], 1);
   try {
-    await assert.rejects(f.runtime.runUnattended(f.bot.id, '执行任务'), /轮数上限/);
+    // 对齐 DSH：步数触顶是软暂停，不是失败——runUnattended 正常返回，消息带 paused 标记。
+    await f.runtime.runUnattended(f.bot.id, '执行任务');
     assert.equal(f.requests.length, 1);
     const reply = f.store.botConversation(f.bot.id).messages.at(-1);
-    assert.match(reply.error, /尚未确认完成/);
-    assert.equal(reply.toolResults[0].ok, true);
+    assert.equal(reply.paused, 'steps', '应标记为步数软暂停');
+    assert.equal(reply.error, undefined, '不应记录为错误');
+    assert.equal(reply.toolResults[0].ok, true, '已执行的工具结果要保留');
   } finally { await f.close(); }
 });
 
@@ -337,7 +339,8 @@ test('DeepSeek model profile reserves real reasoning capacity; tool thinking rep
     assert.deepEqual(history.map(message => message.role), ['assistant', 'tool', 'assistant', 'tool', 'assistant']);
     assert.equal(history[2].reasoning, '第二步基于前一步继续');
     const other = { ...bot, model: 'unknown' };
-    assert.equal(contextWindow(f.store, other), 32768);
+    // 未知模型回落到 DEFAULT_CONTEXT_WINDOW_TOKENS（models.dev 目录接入后为 131072）。
+    assert.equal(contextWindow(f.store, other), DEFAULT_CONTEXT_WINDOW_TOKENS);
   } finally { await f.close(); }
 });
 

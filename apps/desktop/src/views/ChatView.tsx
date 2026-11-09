@@ -4,7 +4,7 @@ import type { MouseEvent } from 'react';
 import type { Bot, Message, ToolResult } from '@moyu/core';
 import { assetUrl, moyu } from '../lib/bridge';
 import { formatClock } from '../lib/format';
-import { highlightCode, openLinksExternally, renderMarkdown } from '../lib/markdown';
+import { highlightCode, openLinksExternally, renderMarkdown, sanitizeHtml } from '../lib/markdown';
 import { useMoyu } from '../state';
 import { BotAvatar } from '../components/BotAvatar';
 import { ReplyToolCard } from '../components/ReplyToolCard';
@@ -74,7 +74,7 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
 }
 
 const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onPreviewFile, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onPreviewFile: (file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
-  const { botActivities, setView, settings, toast } = useMoyu();
+  const { botActivities, setView, settings, toast, sendMessage } = useMoyu();
   const ref = useRef<HTMLDivElement | null>(null);
 
   // 选中消息文字后右键 → 弹出「复制」菜单（无选区时保持默认行为）。
@@ -186,6 +186,11 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           </div>
         ) : null}
 
+        {message.paused === 'steps' ? <div className="reply-paused" role="status">
+          <strong>本轮工具调用已达上限</strong>
+          <p>任务没有失败，已执行的工具结果都保留着。可以点「继续」接着跑，或在输入框选「自动跑到底」让它在触顶后自动续上。</p>
+          <button type="button" onClick={() => void sendMessage('（继续）接着上次的进度往下做，不要重复已完成的步骤', [], undefined)}>继续</button>
+        </div> : null}
         {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <button type="button" onClick={() => setView('settings')}>配置供应商</button> : null}</div> : null}
         {message.attachments?.filter((attachment) => attachment.kind === 'file').length ? (
           <div className="artifact-grid artifact-grid--files">
@@ -284,7 +289,7 @@ function FileViewer({ file, onClose }: { file: { path: string; name?: string; si
         if (isDocx) {
           const mammoth = await import('mammoth');
           const result = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer });
-          if (active) setState({ loading: false, html: result.value });
+          if (active) setState({ loading: false, html: sanitizeHtml(result.value) });
           return;
         }
         if (isXlsx) {
@@ -294,7 +299,7 @@ function FileViewer({ file, onClose }: { file: { path: string; name?: string; si
             const sheet = workbook.Sheets[name]!;
             return `<h4>${name}</h4>${XLSX.utils.sheet_to_html(sheet, { editable: false })}`;
           });
-          if (active) setState({ loading: false, html: parts.join('') });
+          if (active) setState({ loading: false, html: sanitizeHtml(parts.join('')) });
           return;
         }
         const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
@@ -411,7 +416,7 @@ function SubagentPopover({ batches }: { batches: [string, { conversationId: stri
   );
 }
 
-function Composer({ bot, home, replyTo, onClearReply, topSlot }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void; topSlot?: React.ReactNode }) {
+function Composer({ bot, home, replyTo, onClearReply, topSlot, showJump, onJump }: { bot: Bot; home: boolean; replyTo?: Message['replyTo']; onClearReply: () => void; topSlot?: React.ReactNode; showJump?: boolean; onJump?: () => void }) {
   const { running, sendMessage, stop, saveBot, settings, compacting, conversation, setConversationMode, setConversationAutonomy, toast } = useMoyu();
   const group = conversation?.group;
   const recipient = group ? conversation.title : bot.name;
@@ -549,6 +554,7 @@ function Composer({ bot, home, replyTo, onClearReply, topSlot }: { bot: Bot; hom
         document.body,
       ) : null}
       {replyTo ? <div className="composer-reply" role="region" aria-label="正在引用的消息"><ReplyPreview reply={replyTo} onClick={() => jumpToMessage(replyTo.messageId, settings.ui.reduceMotion)} /><button type="button" className="composer-reply__dismiss" aria-label="取消引用" title="取消引用" onClick={() => { onClearReply(); textarea.current?.focus(); }}><Icon name="close" size={14} /></button></div> : null}
+      {showJump ? <button type="button" className="jump-to-bottom" aria-label="回到底部" title="回到底部" onClick={onJump}><Icon name="chevron" size={17} /></button> : null}
       {topSlot}
       <div className={`composer glass composer--compact ${attachments.length ? 'has-attachments' : ''}`.trim()}>
         {attachments.length ? (
@@ -713,7 +719,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
   const members = conversation?.group?.memberBotIds.map((id) => settings.bots.find((item) => item.id === id)).filter((item): item is Bot => !!item) ?? [];
   const messages = conversation?.messages ?? [];
   const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
-  const scrollRef = useAutoScroll<HTMLDivElement>(conversation?.id);
+  const { ref: scrollRef, awayFromBottom: showJumpToBottom } = useAutoScroll<HTMLDivElement>(conversation?.id);
   const handleReply = useCallback((quote: NonNullable<Message['replyTo']>) => setReply({ conversationId: conversation?.id ?? '', quote }), [conversation?.id]);
 
   if (!bot) {
@@ -816,7 +822,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
         </div>
       </div>
 
-      <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} topSlot={question?.conversationId === conversation.id ? <QuestionCard /> : null} />
+      <Composer key={conversation.id} bot={bot} home={messages.length === 0} replyTo={reply?.conversationId === conversation.id ? reply.quote : undefined} onClearReply={() => setReply(undefined)} topSlot={question?.conversationId === conversation.id ? <QuestionCard /> : null} showJump={messages.length > 0 && showJumpToBottom} onJump={() => { const node = scrollRef.current; if (node) node.scrollTo({ top: node.scrollHeight, behavior: settings.ui.reduceMotion ? 'instant' : 'smooth' }); }} />
       </div>
       {messages.length === 0 ? <div className="home-footnote"><Icon name={activeWorkspace?.kind === 'local' ? 'terminal' : 'cloud'} size={14} /><span>{activeWorkspace?.kind === 'local' ? '所有 Bot 共用本机 Windows 工作区' : '工作区内的 Bot 共用一台云电脑'}</span><span className="home-footnote__dot">·</span><span>{activeWorkspace?.kind === 'local' ? '文件与命令在本地完成' : '需要时唤醒，空闲时休眠'}</span></div> : null}
 

@@ -2801,3 +2801,10 @@ select {
 .file-viewer__sheet td, .file-viewer__sheet th { border: 1px solid var(--line-strong); padding: 5px 10px; white-space: pre-wrap; }
 .file-viewer__sheet tr:first-child td { background: color-mix(in srgb, var(--accent) 8%, transparent); font-weight: 600; }
 .file-viewer__sheet td { color: var(--text); }
+
+/* 步数触顶的软暂停提示（对齐 DSH：不是错误，可继续） */
+.reply-paused { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, #d97706 40%, var(--line-strong)); background: color-mix(in srgb, #d97706 8%, transparent); }
+.reply-paused strong { font-size: 12px; color: #b45309; }
+.reply-paused p { margin: 0; font-size: 11px; line-height: 1.6; color: var(--text-dim); }
+.reply-paused button { margin-top: 2px; padding: 4px 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, #d97706 45%, var(--line-strong)); background: var(--surface); color: #b45309; font-size: 11px; cursor: pointer; }
+.reply-paused button:hover { background: color-mix(in srgb, #d97706 12%, transparent); }
