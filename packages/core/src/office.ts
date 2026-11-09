@@ -42,6 +42,23 @@ export interface DeckSlide {
   notes?: string;
 }
 
+/**
+ * 粗略显示宽度：东亚宽字符按 2 个字符位算。
+ * 直接用 length 会把中文列算窄一半，长项目名在 Excel 里被截断。
+ */
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    const wide = (code >= 0x1100 && (
+      code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe6f) || (code >= 0xff00 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6) || (code >= 0x20000 && code <= 0x3fffd)));
+    width += wide ? 2 : 1;
+  }
+  return width;
+}
+
 /** .xlsx：列宽、表头加粗、冻结首行、标题行合并。 */
 export async function buildSpreadsheet(sheets: SheetSpec[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -73,7 +90,7 @@ export async function buildSpreadsheet(sheets: SheetSpec[]): Promise<Buffer> {
       const columnCount = Math.max(spec.columns?.length ?? 0, ...spec.rows.map((row) => row.length), 1);
       for (let index = 1; index <= columnCount; index++) {
         const lengths = [spec.columns?.[index - 1]?.header ?? '', ...spec.rows.map((row) => String(row[index - 1] ?? ''))]
-          .map((text) => String(text).length);
+          .map((text) => displayWidth(String(text)));
         sheet.getColumn(index).width = Math.min(60, Math.max(8, Math.max(...lengths) + 2));
       }
     }
@@ -94,7 +111,7 @@ export async function buildDocument(spec: { title?: string; blocks: DocBlock[] }
       children.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
-          new TableRow({ children: columns.map((header) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: header, bold: true })] })] })) }),
+          new TableRow({ tableHeader: true, children: columns.map((header) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: header, bold: true })] })] })) }),
           ...rows.map((row) => new TableRow({ children: row.map((cell) => new TableCell({ children: [new Paragraph(String(cell ?? ''))] })) })),
         ],
       }));
@@ -132,7 +149,7 @@ export async function buildSlides(deck: { title?: string; slides: DeckSlide[] })
     if (bullets.length) {
       // 要点过多时自动缩小字号，尽量一页放下
       const fontSize = bullets.length > 8 ? 12 : bullets.length > 6 ? 14 : 16;
-      slide.addText(bullets.map((item) => ({ text: item, options: { bullet: true } })), { x: 0.7, y, w: 8.6, h: 4.6, fontSize, lineSpacingMultiple: 1.2 });
+      slide.addText(bullets.map((item) => ({ text: item, options: { bullet: true } })), { x: 0.7, y, w: 8.6, h: 4.6, fontSize, lineSpacingMultiple: 1.2, fit: 'shrink' });
     }
     if (slideSpec.notes) slide.addNotes(slideSpec.notes);
   }

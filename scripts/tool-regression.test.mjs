@@ -362,3 +362,78 @@ test('每个内置 schema 工具都在回归表里被覆盖', async () => {
   const missing = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `这些新工具还没有回归用例：${missing.join(', ')}`);
 });
+
+test('Office 云机链路：生成的启动脚本在本机 node 上真能跑通', async () => {
+  const f = makeCtx();
+  const officeRouter = await import('../packages/core/dist/office-router.js');
+  const { execFileSync } = await import('node:child_process');
+  const inDir = (p, sub) => path.join(f.workspaceDir, sub ? path.join(sub, p) : p);
+  const uploads = [];
+  const host = {
+    getSettings: () => ({ workspaceDir: f.workspaceDir, machineName: 'mock-cloud', remoteWorkspaceDir: '/data/moyubot' }),
+    beginTask() {}, endTask() {}, touch() {}, armIdleIfNeeded() {},
+    status: () => ({ state: 'running' }),
+    control: { acquire: async () => () => {} },
+    writeText: async (p, content, sub) => {
+      const target = inDir(p, sub);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+      uploads.push([p, content.length]);
+    },
+    writeBytes: async (p, bytes, sub) => {
+      const target = inDir(p, sub);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, bytes);
+    },
+    readText: async (p, sub) => fs.readFileSync(inDir(p, sub), 'utf8'),
+    readBytes: async (p, sub) => ({ bytes: new Uint8Array(fs.readFileSync(inDir(p, sub))), machineId: 'mock' }),
+    // 云机 exec 的替身：把生成器下发的那条命令原样交给本机 node 执行。
+    exec: async (cmd, options = {}) => {
+      const cwd = options.subDirectory ? path.join(f.workspaceDir, options.subDirectory) : f.workspaceDir;
+      if (cmd.startsWith('rm -f --')) {
+        const officeDir = path.join(cwd, '_office');
+        if (fs.existsSync(officeDir)) {
+          for (const name of fs.readdirSync(officeDir)) {
+            if (/^(payload-.*\.json|build-.*\.cjs|runtime-.*\.cjs)$/.test(name)) fs.unlinkSync(path.join(officeDir, name));
+          }
+        }
+        return { stdout: '', stderr: '', exitCode: 0, timedOut: false };
+      }
+      const match = /^node "(.+)" "(.+)" "(.+)"$/.exec(cmd);
+      if (!match) return { stdout: '', stderr: 'unsupported: ' + cmd, exitCode: 127, timedOut: false };
+      try {
+        const stdout = execFileSync(process.execPath, [match[1], match[2], match[3]], { cwd, encoding: 'utf8' });
+        return { stdout, stderr: '', exitCode: 0, timedOut: false };
+      } catch (error) {
+        return { stdout: String(error.stdout ?? ''), stderr: String(error.stderr ?? error.message), exitCode: error.status ?? 1, timedOut: false };
+      }
+    },
+  };
+
+  const request = { kind: 'docx', name: '云周报', directory: '', document: { title: '周报', blocks: [{ type: 'paragraph', text: '正文' }] } };
+  const first = await officeRouter.buildOfficeOnCloud(host, request, 'bot-x');
+  assert.equal(first.ok, true, '云机生成应成功：' + (first.error ?? ''));
+  assert.equal(first.machine, 'cloud');
+  assert.ok((first.bytes ?? 0) > 0, '应回报字节数，避免再整份下载回来');
+
+  const produced = path.join(f.workspaceDir, 'bot-x', '云周报.docx');
+  assert.equal(fs.readFileSync(produced).subarray(0, 2).toString(), 'PK', 'docx 不是合法 zip');
+
+  // payload 里有用户文档全文，不能在云机上留存
+  const officeDir = path.join(f.workspaceDir, 'bot-x', '_office');
+  const leftovers = fs.existsSync(officeDir) ? fs.readdirSync(officeDir).filter((n) => n.startsWith('payload-') || n.startsWith('build-')) : [];
+  assert.deepEqual(leftovers, [], '云机上残留了 payload / 启动脚本');
+
+  // 运行时按内容哈希复用：第二次生成不再上传 3 MB
+  const runtimeUploads = () => uploads.filter(([p]) => p === '_office/runtime.cjs').length;
+  assert.equal(runtimeUploads(), 1, '首次应上传一次运行时');
+  const second = await officeRouter.buildOfficeOnCloud(host, request, 'bot-x');
+  assert.equal(second.ok, true, '第二次也应成功：' + (second.error ?? ''));
+  assert.equal(runtimeUploads(), 1, '运行时不应重复上传');
+
+  // 目录逃逸必须挡住（模型可以自由编 directory）
+  const evil = await officeRouter.buildOfficeOnCloud(host, { ...request, directory: '../../etc' }, 'bot-x');
+  assert.equal(evil.ok, false, '目录逃逸应被拒绝');
+  assert.match(evil.error ?? '', /\.\./);
+});
+
