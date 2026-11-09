@@ -4,12 +4,16 @@ import type { MouseEvent } from 'react';
 
 marked.use({ gfm: true, breaks: true });
 
-export function renderMarkdown(text: string): string {
-  const html = marked.parse(text, { async: false }) as string;
+/** 统一净化入口：消息正文、docx/xlsx 预览（mammoth / SheetJS 产出的 HTML）都走这里。 */
+export function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['target', 'rel'],
     FORBID_TAGS: ['style', 'iframe', 'form', 'input'],
   });
+}
+
+export function renderMarkdown(text: string): string {
+  return sanitizeHtml(marked.parse(text, { async: false }) as string);
 }
 
 export function openLinksExternally(event: MouseEvent<HTMLDivElement>): void {

@@ -705,6 +705,9 @@ export class MoyuApp {
     handle('moyu:artifact:read-bytes', (_event, relPath: string) => {
       const file = this.resolveWorkspaceArtifact(relPath);
       if (!file || !fs.existsSync(file)) throw new Error('文件不存在或已被移动');
+      const bytes = fs.statSync(file).size;
+      // IPC 会把整份字节复制给渲染进程，大文件等于让两个进程各持一份内存。
+      if (bytes > 16 * 1024 * 1024) throw new Error(`文件 ${(bytes / 1024 / 1024).toFixed(1)} MB 超过预览上限（16 MB），请用「系统程序」打开`);
       return new Uint8Array(fs.readFileSync(file));
     });
 
