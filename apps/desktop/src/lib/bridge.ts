@@ -49,7 +49,8 @@ export interface MoyuBridge {
   capabilityStatus(workspaceId: string): Promise<CapabilityStatus>;
   importMcp(workspaceId: string, json: string): Promise<CapabilityImportResult>;
   testMcp(id: string): Promise<void>;
-  importSkill(workspaceId: string): Promise<CapabilityImportResult>;
+  /** 用户取消选择目录时返回 undefined。 */
+  importSkill(workspaceId: string): Promise<CapabilityImportResult | undefined>;
   removeCapability(kind: 'mcp' | 'skill', id: string): Promise<void>;
   setupDirectory(directory: string): Promise<AppSettings>;
   dataDirInfo(): Promise<{ current: string; source: 'env' | 'chosen' | 'legacy' | 'portable' | 'userData'; portable: string; userData: string; installBase: string }>;

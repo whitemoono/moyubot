@@ -445,7 +445,10 @@ export class MoyuApp {
     handle('moyu:mcp:test', (_event, id: string) => this.capabilities.test(id));
     handle('moyu:skill:import', async (_event, workspaceId: string) => {
       const picked = await dialog.showOpenDialog({ title: '选择包含 SKILL.md 的技能目录', properties: ['openDirectory'] });
-      if (!picked.canceled && picked.filePaths[0]) this.capabilities.importSkill(workspaceId, picked.filePaths[0]);
+      // 取消 → undefined（渲染层据此跳过提示）；导入失败必须冒泡回渲染层。
+      // 以前既没 await 也没 return：渲染层拿到 undefined 就抛 TypeError，失败还变成未捕获拒绝。
+      if (picked.canceled || !picked.filePaths[0]) return undefined;
+      return this.capabilities.importSkill(workspaceId, picked.filePaths[0]);
     });
     handle('moyu:capabilities:remove', (_event, kind: 'mcp' | 'skill', id: string) => {
       if (!['mcp', 'skill'].includes(kind)) throw new Error('能力类型无效');

@@ -58,7 +58,7 @@ export function CapabilitiesSettings() {
       </details> : null}
     </Panel> : null}
     <Panel className="settings-card">
-      <div className="inspector-section__head"><h3>技能库</h3><Button size="sm" icon="plus" disabled={busy} onClick={() => void run(async () => { const result = await moyu().importSkill(workspaceId); toast(result.target === 'cloud' ? `已上传技能到云电脑：${result.name ?? ''}` : '已导入技能，可在 Bot 编辑页或右侧详情中启用'); })}>{workspaceId === 'workspace_cloud' ? '上传技能到云电脑' : '导入技能目录'}</Button></div>
+      <div className="inspector-section__head"><h3>技能库</h3><Button size="sm" icon="plus" disabled={busy} onClick={() => void run(async () => { const result = await moyu().importSkill(workspaceId); if (!result) return; toast(result.target === 'cloud' ? `已上传技能到云电脑：${result.name ?? ''}` : '已导入技能，可在 Bot 编辑页或右侧详情中启用'); })}>{workspaceId === 'workspace_cloud' ? '上传技能到云电脑' : '导入技能目录'}</Button></div>
       <p className="settings-note">{workspaceId === 'workspace_cloud' ? '选择含 SKILL.md 的目录，打包上传到云电脑 .moyu/shared/skills（全部 Bot 共用）。Bot 对话里安装的技能会放进它专属的 .moyu/skills。' : '选择含 SKILL.md 的目录，会连同参考资料和脚本复制到本地技能库。文件更新后需重新导入。技能使用 Bot 已有工具与权限。'}</p>
       {!skills.length ? <p className="inspector-note">还没有技能。导入后在 Bot 编辑页或右侧详情中启用。</p> : skills.map(skill => <div className="capability-config" key={skill.id}><div><strong>{skill.name}</strong><p>{skill.description}</p></div><Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button></div>)}
     </Panel>
