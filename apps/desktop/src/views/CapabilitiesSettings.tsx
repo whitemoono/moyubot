@@ -31,37 +31,77 @@ export function CapabilitiesSettings() {
   };
   const servers = (settings.mcpServers ?? []).filter(s => s.workspaceId === workspaceId);
   const skills = (settings.skills ?? []).filter(s => s.workspaceId === workspaceId);
+  const cloudMcp = status.cloudServers ?? [];
+  const cloudSkill = status.cloudSkills ?? [];
   return <div className="capabilities-settings">
-    <Panel className="settings-card">
-      <h3>MCP 服务 <small>{activeWorkspace?.name}</small></h3>
-      <p className="settings-note">{workspaceId === 'workspace_cloud' ? '导入的 mcpServers 配置写入云电脑的 .moyu/shared/mcp.json（moyubot 自有命名空间，全部 Bot 共用；与云机自带的 claude 配置分离）。Bot 在对话里自己安装的会写入它专属的 .moyu/mcp.json。' : '工作区内共享配置，每个 Bot 独立启用。stdio 在本机启动程序；远程服务使用 Streamable HTTP。'}</p>
-      <Field label="导入 MCP JSON" hint={workspaceId === 'workspace_cloud' ? '上传到云电脑（.moyu/shared/mcp.json），支持常见的 mcpServers 配置。' : '支持常见的 mcpServers 配置，env 和 headers 单独加密保存。导入后点击连接测试会启动服务。'}>
-        <textarea className="textarea mono" aria-label="MCP JSON 配置" spellCheck={false} rows={7} value={json} onChange={e => setJson(e.target.value)} placeholder={'{\n  "mcpServers": {\n    "my-service": { "url": "https://example.com/mcp" }\n  }\n}'} />
-      </Field>
-      <Button icon="plus" disabled={busy || !json.trim()} onClick={() => void run(async () => { const result = await moyu().importMcp(workspaceId, json); setJson(''); toast(result.target === 'cloud' ? `已上传到云电脑：${result.names?.join('、')}` : '已导入 MCP，请测试连接并为 Bot 启用'); })}>{workspaceId === 'workspace_cloud' ? '上传到云电脑' : '导入服务'}</Button>
-      {servers.map(server => { const state = status.servers.find(s => s.id === server.id); return <div className="capability-config" key={server.id}>
-        <div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? `${server.command} · 本机进程` : server.url}{server.hasSecrets ? ' · 已保存认证配置' : ''}</small><small>{state?.state === 'connected' ? `已连接 · ${state.tools.length} 个工具` : state?.state === 'connecting' ? '连接中…' : state?.error ?? '等待连接测试'}</small></div>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await moyu().testMcp(server.id); toast('MCP 连接成功'); })}>测试连接</Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('mcp', server.id))}>移除</Button>
-      </div>; })}
-    </Panel>
-    {workspaceId === 'workspace_cloud' && ((status.cloudServers?.length) || (status.cloudSkills?.length)) ? <Panel className="settings-card">
-      <h3>云电脑已部署 <small>由云主机盘点 · 只读</small></h3>
-      <p className="settings-note">云电脑上的能力分两档，都在 .moyu 命名空间：共享（.moyu/shared，moyubot 管理，全部 Bot 可用）和自有（各 Bot 家目录的 .moyu）。云机自带 claude 的 ~/.claude 不再读取；首次盘点会把它里面的 MCP/技能一次性复制进共享（marker 幂等，云机 claude 不受影响）。</p>
-      {status.cloudServers?.length ? <details className="capability-cloud-block capability-cloud-block--fold" open>
-        <summary className="capability-cloud-title">MCP 服务（{status.cloudServers.length}）</summary>
-        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudServers.map(server => <div className="capability-item" key={server.id}><span className="capability-cloud-badge">{server.botId ? '自有' : '共享'}</span><div><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · {server.source}</small></div></div>)}</div>
-      </details> : null}
-      {status.cloudSkills?.length ? <details className="capability-cloud-block capability-cloud-block--fold" style={{ marginTop: 12 }}>
-        <summary className="capability-cloud-title">技能（{status.cloudSkills.length}）</summary>
-        <div className="capability-cloud-list capability-cloud-list--grid">{status.cloudSkills.map(skill => <div className="capability-item" key={skill.id}><span className="capability-cloud-badge">{skill.botId ? '自有' : '共享'}</span><div><strong>{skill.name}</strong><small>{skill.source}</small></div></div>)}</div>
-      </details> : null}
-    </Panel> : null}
-    <Panel className="settings-card">
-      <div className="inspector-section__head"><h3>技能库</h3><Button size="sm" icon="plus" disabled={busy} onClick={() => void run(async () => { const result = await moyu().importSkill(workspaceId); if (!result) return; toast(result.target === 'cloud' ? `已上传技能到云电脑：${result.name ?? ''}` : '已导入技能，可在 Bot 编辑页或右侧详情中启用'); })}>{workspaceId === 'workspace_cloud' ? '上传技能到云电脑' : '导入技能目录'}</Button></div>
-      <p className="settings-note">{workspaceId === 'workspace_cloud' ? '选择含 SKILL.md 的目录，打包上传到云电脑 .moyu/shared/skills（全部 Bot 共用）。Bot 对话里安装的技能会放进它专属的 .moyu/skills。' : '选择含 SKILL.md 的目录，会连同参考资料和脚本复制到本地技能库。文件更新后需重新导入。技能使用 Bot 已有工具与权限。'}</p>
-      {!skills.length ? <p className="inspector-note">还没有技能。导入后在 Bot 编辑页或右侧详情中启用。</p> : skills.map(skill => <div className="capability-config" key={skill.id}><div><strong>{skill.name}</strong><p>{skill.description}</p></div><Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button></div>)}
-    </Panel>
+    <div className="cap-split">
+      {/* ── MCP 服务 ─────────────────────────────────────────────── */}
+      <Panel className="settings-card cap-column">
+        <h3>MCP 服务 <small>{activeWorkspace?.name}</small></h3>
+        <p className="settings-note">{workspaceId === 'workspace_cloud' ? '写入云电脑 .moyu/shared/mcp.json（全部 Bot 共用）；Bot 自己装的写进它专属 .moyu/mcp.json。' : '工作区内共享配置，每个 Bot 独立启用。stdio 在本机启动程序，远程服务用 Streamable HTTP。'}</p>
+
+        <div className="cap-list">
+          {servers.length ? servers.map(server => {
+            const state = status.servers.find(s => s.id === server.id);
+            const stateText = state?.state === 'connected' ? `已连接 · ${state.tools.length} 个工具` : state?.state === 'connecting' ? '连接中…' : state?.error ?? '等待连接测试';
+            return <div className="cap-item" key={server.id}>
+              <div className="cap-item__main">
+                <strong>{server.name}</strong>
+                <small>{server.transport === 'stdio' ? `${server.command} · ${workspaceId === 'workspace_cloud' ? '云机进程' : '本机进程'}` : server.url}</small>
+                <small className={state?.error ? 'cap-item__error' : ''}>{stateText}{server.hasSecrets ? ' · 已保存认证' : ''}</small>
+              </div>
+              <div className="cap-item__actions">
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await moyu().testMcp(server.id); toast('MCP 连接成功'); })}>测试</Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('mcp', server.id))}>移除</Button>
+              </div>
+            </div>;
+          }) : <p className="inspector-note">还没有 MCP 服务。展开下方「导入」添加。</p>}
+        </div>
+
+        {workspaceId === 'workspace_cloud' && cloudMcp.length ? <details className="cap-cloud" open>
+          <summary>云电脑已部署 · MCP（{cloudMcp.length}）</summary>
+          <div className="cap-cloud__list">{cloudMcp.map(server => <div className="cap-item cap-item--cloud" key={server.id}>
+            <span className="cap-badge">{server.botId ? '自有' : '共享'}</span>
+            <div className="cap-item__main"><strong>{server.name}</strong><small>{server.transport === 'stdio' ? server.command : server.url} · {server.source}</small></div>
+          </div>)}</div>
+        </details> : null}
+
+        <details className="cap-import">
+          <summary>导入 MCP JSON</summary>
+          <Field label="mcpServers 配置" hint={workspaceId === 'workspace_cloud' ? '上传到云电脑 .moyu/shared/mcp.json' : 'env 和 headers 单独加密保存'}>
+            <textarea className="textarea mono" aria-label="MCP JSON 配置" spellCheck={false} rows={6} value={json} onChange={e => setJson(e.target.value)} placeholder={'{\n  "mcpServers": {\n    "my-service": { "url": "https://example.com/mcp" }\n  }\n}'} />
+          </Field>
+          <Button icon="plus" disabled={busy || !json.trim()} onClick={() => void run(async () => { const result = await moyu().importMcp(workspaceId, json); setJson(''); toast(result.target === 'cloud' ? `已上传到云电脑：${result.names?.join('、')}` : '已导入 MCP，请测试连接并为 Bot 启用'); })}>{workspaceId === 'workspace_cloud' ? '上传到云电脑' : '导入服务'}</Button>
+        </details>
+      </Panel>
+
+      {/* ── 技能 ─────────────────────────────────────────────────── */}
+      <Panel className="settings-card cap-column">
+        <div className="cap-column__head">
+          <h3>技能 <small>{activeWorkspace?.name}</small></h3>
+          <Button size="sm" icon="plus" disabled={busy} onClick={() => void run(async () => { const result = await moyu().importSkill(workspaceId); if (!result) return; toast(result.target === 'cloud' ? `已上传技能到云电脑：${result.name ?? ''}` : '已导入技能，可在 Bot 编辑页或右侧详情中启用'); })}>{workspaceId === 'workspace_cloud' ? '上传到云机' : '导入目录'}</Button>
+        </div>
+        <p className="settings-note">{workspaceId === 'workspace_cloud' ? '含 SKILL.md 的目录上传到 .moyu/shared/skills（共用）；Bot 自己装的进它专属 .moyu/skills。' : '含 SKILL.md 的目录会连同参考资料一起复制到本地技能库，更新后需重新导入。'}</p>
+
+        <div className="cap-list">
+          {skills.length ? skills.map(skill => <div className="cap-item" key={skill.id}>
+            <div className="cap-item__main"><strong>{skill.name}</strong><small title={skill.description}>{skill.description}</small></div>
+            <div className="cap-item__actions">
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button>
+            </div>
+          </div>) : <p className="inspector-note">还没有技能。点右上角「导入目录」上传含 SKILL.md 的文件夹。</p>}
+        </div>
+
+        {workspaceId === 'workspace_cloud' && cloudSkill.length ? <details className="cap-cloud" open>
+          <summary>云电脑已部署 · 技能（{cloudSkill.length}）</summary>
+          <div className="cap-cloud__list">{cloudSkill.map(skill => <div className="cap-item cap-item--cloud" key={skill.id}>
+            <span className="cap-badge">{skill.botId ? '自有' : '共享'}</span>
+            <div className="cap-item__main"><strong>{skill.name}</strong><small>{skill.source}</small></div>
+          </div>)}</div>
+        </details> : null}
+      </Panel>
+    </div>
+
     <Panel className="settings-card">
       <h3>联网搜索 <small>web_search 工具</small></h3>
       <p className="settings-note">默认 DuckDuckGo 免密钥可用；换后端需填写密钥或实例地址。此处设置对所有工作区生效。</p>

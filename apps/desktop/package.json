@@ -1,6 +1,6 @@
 {
   "name": "@moyu/desktop",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": true,
   "description": "MoyuBot Windows desktop workspace (Electron + React)",
   "license": "MIT",

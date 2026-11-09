@@ -74,3 +74,32 @@ export function newBot(provider: ProviderConfig | undefined, seed?: Bot): Bot {
     wakeOnTask: true, createdAt: now, updatedAt: now,
   };
 }
+
+/** 工具分组：工具页与 Bot 编辑器共用，按"用户会怎么想"分类。未归组的进「其他」。 */
+export const TOOL_GROUPS: { id: string; title: string; tools: string[] }[] = [
+  { id: 'computer', title: '电脑操作', tools: ['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action'] },
+  { id: 'edit', title: '代码编辑', tools: ['read_files', 'apply_patch'] },
+  { id: 'office', title: '文档生成', tools: ['make_spreadsheet', 'make_document', 'make_slides'] },
+  { id: 'deliver', title: '文件交付', tools: ['deliver_file', 'cloud_stage_file'] },
+  { id: 'local', title: '本机文件', tools: ['local_read_file', 'local_list_files', 'local_write_file'] },
+  { id: 'web', title: '联网', tools: ['web_search', 'web_fetch', 'generate_image'] },
+  { id: 'memory', title: '记忆与检索', tools: ['remember', 'recall', 'history_search', 'project_list', 'project_upsert', 'project_switch'] },
+  { id: 'task', title: '目标与清单', tools: ['set_goal', 'update_goal', 'todo_write', 'ask_user'] },
+  { id: 'schedule', title: '定时任务', tools: ['schedule_task', 'list_tasks', 'update_task'] },
+  { id: 'agent', title: '多智能体', tools: ['spawn_agent', 'run_script', 'subagent_fork', 'subagent_list_agents', 'subagent_control', 'job_list', 'job_kill'] },
+  { id: 'install', title: '能力安装', tools: ['install_mcp', 'install_skill'] },
+  { id: 'plan', title: '计划模式', tools: ['exit_plan_mode'] },
+];
+
+export function groupToolsForEditor(catalog: { id: string; label: string; hint: string }[]) {
+  const byId = new Map(catalog.map((tool) => [tool.id, tool]));
+  const used = new Set<string>();
+  const groups = TOOL_GROUPS.map((group) => {
+    const items = group.tools.map((id) => byId.get(id)).filter((tool): tool is NonNullable<typeof tool> => !!tool);
+    for (const item of items) used.add(item.id);
+    return { id: group.id, title: group.title, items };
+  }).filter((group) => group.items.length);
+  const others = catalog.filter((tool) => !used.has(tool.id));
+  if (others.length) groups.push({ id: 'others', title: '其他', items: others });
+  return groups;
+}

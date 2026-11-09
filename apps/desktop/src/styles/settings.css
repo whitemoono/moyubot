@@ -534,3 +534,52 @@
 .provider-embedding__ops { display: flex; gap: 8px; align-items: center; padding-bottom: 22px; }
 .provider-embedding__off { margin: 10px 0 0; font-size: 11px; color: var(--text-faint); }
 @media (max-width: 900px) { .provider-embedding__form { grid-template-columns: 1fr 1fr; align-items: start; } .provider-embedding__ops { padding-bottom: 0; } }
+
+/* 工具页：分组折叠 + 搜索 + 使用统计 */
+.tools-toolbar { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
+.tools-search { flex: 1; display: flex; align-items: center; gap: 8px; max-width: 380px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--bg); color: var(--text-dim); }
+.tools-search .input { border: 0; background: none; box-shadow: none; padding: 7px 0; }
+.tools-search .input:focus { outline: none; box-shadow: none; }
+.tools-toolbar__hint { color: var(--text-faint); font-size: 11px; }
+.tools-sections { display: grid; gap: 14px; }
+.tools-section { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.tools-section__head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; border: 0; background: none; color: var(--text); cursor: pointer; text-align: left; }
+.tools-section__head:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.tools-section__head svg { transition: transform 160ms ease; color: var(--text-dim); }
+.tools-section__head svg.is-open { transform: rotate(180deg); }
+.tools-section__head strong { font-size: 13px; }
+.tools-section__count { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 10px; }
+.tools-section__head small { color: var(--text-faint); font-size: 11px; }
+.tools-section__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; padding: 0 12px 12px; }
+.tool-badge--use { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.tool-badge--idle { background: var(--line); color: var(--text-faint); }
+
+/* MCP / 技能：双栏 + 统一条目样式 */
+.cap-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.cap-column { min-width: 0; }
+.cap-column__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cap-list { display: grid; gap: 8px; margin: 10px 0; }
+.cap-item { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.cap-item__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.cap-item__main strong { font-size: 12px; }
+.cap-item__main small { color: var(--text-dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-item__main small.cap-item__error { color: #dc2626; }
+.cap-item__actions { display: flex; gap: 2px; flex: none; }
+.cap-item--cloud { background: none; border-style: dashed; }
+.cap-badge { flex: none; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 9px; }
+.cap-cloud { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.cap-cloud summary { cursor: pointer; color: var(--text-dim); font-size: 11px; padding: 4px 0; }
+.cap-cloud__list { display: grid; gap: 6px; margin-top: 6px; }
+.cap-import { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.cap-import summary { cursor: pointer; color: var(--text-dim); font-size: 11px; padding: 4px 0 8px; }
+
+/* Bot 编辑器：工具分组折叠 */
+.tool-groups { display: grid; gap: 10px; }
+.tool-group { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tool-group__head { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 11px; border: 0; background: color-mix(in srgb, var(--accent) 4%, transparent); color: var(--text); cursor: pointer; text-align: left; }
+.tool-group__head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.tool-group__head svg { transition: transform 160ms ease; color: var(--text-dim); }
+.tool-group__head svg.is-open { transform: rotate(180deg); }
+.tool-group__head strong { font-size: 12px; }
+.tool-group__count { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: var(--bg); color: var(--text-dim); font-size: 10px; }
+.tool-group__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; padding: 10px; }

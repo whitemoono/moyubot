@@ -5,7 +5,7 @@ import { useMoyu } from '../state';
 import { Button, Field, Segmented, Sheet } from './Glass';
 import { BotAvatar } from './BotAvatar';
 import { Icon } from './Icon';
-import { editorToolCatalog, isToolEnabled, toggleTool } from '../lib/bots';
+import { editorToolCatalog, groupToolsForEditor, isToolEnabled, toggleTool } from '../lib/bots';
 import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
 import { BotGenerationEditor } from './BotGenerationEditor';
@@ -29,6 +29,8 @@ export function BotEditor({
   const { secrets, saveProviderKey, toast } = useMoyu();
   const [draft, setDraft] = useState<Bot>(initial);
   const [builtinTools, setBuiltinTools] = useState<{ name: string; description?: string }[]>([]);
+  const [toolSectionCollapsed, setToolSectionCollapsed] = useState<Record<string, boolean>>({});
+  const toolGroups = useMemo(() => groupToolsForEditor(editorToolCatalog(builtinTools)), [builtinTools]);
   useEffect(() => { let active = true; void moyu().listTools().then((tools) => { if (active) setBuiltinTools(tools); }).catch(() => {}); return () => { active = false; }; }, []);
   const [key, setKey] = useState('');
   const [models, setModels] = useState<string[]>([]);
@@ -187,28 +189,31 @@ export function BotEditor({
 
         <section className="editor-block editor-block--wide">
           <h3>可用工具</h3>
-          <div className="tool-toggles">
-            {editorToolCatalog(builtinTools).map((tool) => {
+          <div className="tool-groups">
+            {toolGroups.map((group) => {
               const defaultEnabled = builtinTools.map((item) => item.name);
-              const enabled = isToolEnabled(draft.tools, tool.id, defaultEnabled);
-              return (
-                <button
-                  key={tool.id}
-                  type="button"
-                  className={`tool-toggle ${enabled ? 'is-on' : ''}`}
-                  onClick={() =>
-                    patch('tools', toggleTool(draft.tools, tool.id, defaultEnabled))
-                  }
-                >
-                  <span className="tool-toggle__check">
-                    <Icon name="check" size={12} />
-                  </span>
-                  <span>
-                    <strong>{tool.label}</strong>
-                    <em>{tool.hint}</em>
-                  </span>
+              const items = group.items;
+              const on = items.filter((item) => isToolEnabled(draft.tools, item.id, defaultEnabled)).length;
+              const open = !toolSectionCollapsed[group.id];
+              return <div className="tool-group" key={group.id}>
+                <button type="button" className="tool-group__head" aria-expanded={open} onClick={() => setToolSectionCollapsed((prev) => ({ ...prev, [group.id]: open }))}>
+                  <Icon name="chevron" size={13} className={open ? 'is-open' : ''} />
+                  <strong>{group.title}</strong>
+                  <span className="tool-group__count">{on}/{items.length}</span>
                 </button>
-              );
+                {open ? <div className="tool-group__grid">{items.map((tool) => {
+                  const enabled = isToolEnabled(draft.tools, tool.id, defaultEnabled);
+                  return <button
+                    key={tool.id}
+                    type="button"
+                    className={`tool-toggle ${enabled ? 'is-on' : ''}`}
+                    onClick={() => patch('tools', toggleTool(draft.tools, tool.id, defaultEnabled))}
+                  >
+                    <span className="tool-toggle__check"><Icon name="check" size={12} /></span>
+                    <span><strong>{tool.label}</strong><em>{tool.hint}</em></span>
+                  </button>;
+                })}</div> : null}
+              </div>;
             })}
           </div>
         </section>
