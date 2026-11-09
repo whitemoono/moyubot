@@ -22,22 +22,31 @@ const releaseFile = path.join(root, 'apps/desktop/release');
 const notesArg = process.argv.slice(2).find((arg) => arg.startsWith('--notes='))?.slice('--notes='.length);
 const compareUrl = `https://github.com/${REPO}/compare`;
 
-/** 生成 release 说明：优先用手写文件，否则用「上个 tag..当前 tag」的提交列表。 */
+/** 生成 release 说明：优先用手写文件，否则用「上个 tag..HEAD」的提交标题+正文。
+ *  注意脚本可能在本地打 tag 之前运行（发布流程），所以终点用 HEAD 而不是 tag 名；
+ *  上一个 tag 用 `git describe --tags --abbrev=0 HEAD` 找，避免 tag 尚未创建时报错。 */
 function buildNotes() {
   if (notesArg) {
     const file = path.resolve(root, notesArg);
-    if (fs.existsSync(file)) console.log(`使用手写说明：${notesArg}`);
-    if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8');
+    if (fs.existsSync(file)) { console.log(`使用手写说明：${notesArg}`); return fs.readFileSync(file, 'utf8'); }
   }
+  const git = (args) => { try { return execFileSync('git', args, { encoding: 'utf8' }).trim(); } catch { return ''; } };
+  // 上一个 tag：排除当前版本（本地可能已经有同名 tag 也可能没有）
   let previous = '';
-  try { previous = execFileSync('git', ['describe', '--tags', '--abbrev=0', `${tag}^`], { encoding: 'utf8' }).trim(); } catch { /* 没有上一个 tag */ }
-  let commits = '';
-  try {
-    commits = execFileSync('git', ['log', `${previous || tag}..${tag}`, '--pretty=format:- %s'], { encoding: 'utf8' }).trim();
-  } catch { commits = ''; }
-  const lines = commits ? commits.split('\n') : [`- 版本 ${version}`];
-  const compare = previous ? `**Full Changelog**: ${compareUrl}/${previous}...${tag}` : '';
-  return ['## 更新内容', '', ...lines, '', compare].filter((line, index, all) => !(line === '' && all[index - 1] === '')).join('\n').trim();
+  const tags = git(['tag', '--sort=-creatordate']).split('\n').filter(Boolean);
+  previous = tags.find((name) => name !== tag) ?? '';
+  const range = previous ? `${previous}..HEAD` : 'HEAD';
+  // 标题 + 正文（正文用来写详细条目）
+  const raw = git(['log', range, '--pretty=format:%s%n%b%n---%n']);
+  const entries = raw.split('\n---\n').map((chunk) => chunk.trim()).filter(Boolean)
+    .map((chunk) => {
+      const [subject, ...rest] = chunk.split('\n');
+      const body = rest.join('\n').trim();
+      return body ? `### ${subject}\n\n${body}` : `- ${subject}`;
+    });
+  const lines = entries.length ? entries : [`- 版本 ${version}`];
+  const compare = previous ? `\n\n**Full Changelog**: ${compareUrl}/${previous}...${tag}` : '';
+  return `## 更新内容\n\n${lines.join('\n\n')}${compare}`;
 }
 
 function token() {
