@@ -1,7 +1,7 @@
 import type { Bot, BotGenerationSettings, ModelSettings, ProviderConfig } from './types';
 import { remoteModelCatalog } from './model-catalog';
 
-export const DEFAULT_TASK_LIMITS = { maxSteps: 64, maxTaskOutputTokens: 131072, maxDurationSeconds: 1200 };
+export const DEFAULT_TASK_LIMITS = { maxSteps: 64, maxTaskOutputTokens: 131072, maxDurationSeconds: 0 };
 
 /**
  * Known context windows / output ceilings, matched on the model id with any
@@ -80,7 +80,7 @@ export function validateGeneration(settings: BotGenerationSettings | undefined) 
   integer(settings.thinkingBudgetTokens, 1024, 999999, 'Bot 思考预算');
   integer(settings.maxSteps, 1, 200, '任务轮数');
   integer(settings.maxTaskOutputTokens, 1024, 10000000, '任务累计生成上限');
-  integer(settings.maxDurationSeconds, 30, 86400, '任务最长时间（秒）');
+  integer(settings.maxDurationSeconds, 0, 86400, '任务最长时间（秒，0 表示不限）');
   if (settings.reasoningEffort && !['low', 'medium', 'high'].includes(settings.reasoningEffort)) throw new Error('Bot 思考强度无效');
   if (settings.thinkingBudgetTokens && settings.maxOutputTokens && settings.thinkingBudgetTokens >= settings.maxOutputTokens) throw new Error('Bot 思考预算必须小于输出上限');
 }

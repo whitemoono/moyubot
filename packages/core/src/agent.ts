@@ -372,9 +372,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
     const taskBudget = params.taskBudget ?? new TaskOutputBudget(bot.generation?.maxTaskOutputTokens ?? DEFAULT_TASK_LIMITS.maxTaskOutputTokens);
     const maxSteps = params.maxStepsOverride ?? bot.generation?.maxSteps ?? this.maxSteps;
     const duration = params.durationSeconds ?? bot.generation?.maxDurationSeconds ?? DEFAULT_TASK_LIMITS.maxDurationSeconds;
+    // 时长上限 0 = 不限（对齐 DSH：它没有总时长闸门，只靠单轮迭代上限 + 上下文压缩）。
+    // 保留可配置入口：某个 Bot 想加保险就在生成设置里填秒数。
     const taskDeadline = new AbortController();
-    const timer = setTimeout(() => taskDeadline.abort(), duration * 1000);
-    const signal = AbortSignal.any([abort.signal, taskDeadline.signal]);
+    const timer = duration > 0 ? setTimeout(() => taskDeadline.abort(), duration * 1000) : undefined;
+    const signal = timer ? AbortSignal.any([abort.signal, taskDeadline.signal]) : abort.signal;
     // Keep an increased allowance for subsequent steps in this task.
     let expandedOutput = false;
     let outputRecoveries = 0;
@@ -803,7 +805,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
         this.emit({ type: 'log', level: abort.signal.aborted ? 'info' : 'error', text: summarize(errorText, 300) });
       }
     } finally {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       message.streaming = false;
       // 步数触顶 = 软暂停（对齐 DSH）：不是失败，保留全部工具结果，界面给「继续」。
       if (pausedForSteps && !errorText) message.paused = 'steps';
