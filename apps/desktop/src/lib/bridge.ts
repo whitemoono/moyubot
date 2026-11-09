@@ -131,7 +131,7 @@ export interface MoyuBridge {
   addMemory(botId: string, text: string): Promise<MemoryFact>;
   updateMemory(id: string, patch: { text?: string; pinned?: boolean }): Promise<MemoryFact>;
   deleteMemory(id: string): Promise<void>;
-  memoryScopes(): Promise<MemoryScopeSummary[]>;
+  memoryScopes(workspaceId?: string): Promise<MemoryScopeSummary[]>;
   memoryPath(): Promise<string>;
   openMemoryFolder(scopeId?: string): Promise<void>;
   exportMemories(): Promise<string>;

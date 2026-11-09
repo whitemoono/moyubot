@@ -653,7 +653,7 @@ export class MoyuApp {
       return this.store.updateMemory(id, next);
     });
     handle('moyu:memory:delete', (_event, id: string) => this.store.removeMemory(id));
-    handle('moyu:memory:scopes', (): MemoryScopeSummary[] => this.store.memoryScopeSummaries());
+    handle('moyu:memory:scopes', (_event, workspaceId?: string): MemoryScopeSummary[] => this.store.memoryScopeSummaries(typeof workspaceId === 'string' && workspaceId ? workspaceId : undefined));
     handle('moyu:memory:path', (): string => this.store.memoryLibraryPath());
     handle('moyu:memory:export', (): string => this.store.exportMemoriesMarkdown());
     handle('moyu:embedding:key', (_event, key: string) => {

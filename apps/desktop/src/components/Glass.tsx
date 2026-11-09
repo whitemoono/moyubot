@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { Icon } from './Icon';
@@ -180,6 +180,8 @@ export function Spinner({ size = 16 }: { size?: number }) {
 export function useAutoScroll<T extends HTMLElement>(conversationId?: string) {
   const ref = useRef<T | null>(null);
   const stickRef = useRef(true);
+  /** 距底部超过一屏小段距离时为 true，用于显示「回到底部」按钮。 */
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
 
   const follow = () => {
     const node = ref.current;
@@ -192,9 +194,12 @@ export function useAutoScroll<T extends HTMLElement>(conversationId?: string) {
     const node = ref.current;
     if (!node) return;
     stickRef.current = true;
+    setAwayFromBottom(false);
     follow();
     const onScroll = () => {
-      stickRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
+      const distance = node.scrollHeight - node.scrollTop - node.clientHeight;
+      stickRef.current = distance < 120;
+      setAwayFromBottom(distance > 160);
     };
     node.addEventListener('scroll', onScroll, { passive: true });
     // Images, tool cards and the composer change height after the first layout.
@@ -209,5 +214,5 @@ export function useAutoScroll<T extends HTMLElement>(conversationId?: string) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(follow);
 
-  return ref;
+  return { ref, awayFromBottom };
 }

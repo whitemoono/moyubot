@@ -38,6 +38,7 @@ LangString moyuDeleteData 1033 "Delete user data (chats, settings, credentials a
   Delete "${profile}\moyu\memories.db"
   Delete "${profile}\moyu\memories.db-wal"
   Delete "${profile}\moyu\memories.db-shm"
+  Delete "${profile}\moyu\memory-checkpoints.json"
   RMDir /r "${profile}\moyu\memories"
   RMDir /r "${profile}\moyu\memories-md-archive"
   RMDir /r "${profile}\moyu\memories-export"

@@ -14,7 +14,7 @@ function scopeMeta(scope: MemoryScopeSummary): string {
 }
 
 export function MemoriesView() {
-  const { settings, toast } = useMoyu();
+  const { settings, toast, activeWorkspace } = useMoyu();
   const [scopes, setScopes] = useState<MemoryScopeSummary[]>();
   const [libraryPath, setLibraryPath] = useState('');
   const [error, setError] = useState('');
@@ -22,10 +22,10 @@ export function MemoriesView() {
   const [exporting, setExporting] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    moyu().memoryScopes().then((value) => { if (!cancelled) { setScopes(value); setError(''); } }).catch((failure: Error) => { if (!cancelled) setError(failure.message); });
+    moyu().memoryScopes(activeWorkspace?.id).then((value) => { if (!cancelled) { setScopes(value); setError(''); } }).catch((failure: Error) => { if (!cancelled) setError(failure.message); });
     moyu().memoryPath().then((value) => { if (!cancelled) setLibraryPath(value); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [tick]);
+  }, [tick, activeWorkspace?.id]);
   const total = scopes?.reduce((sum, item) => sum + item.total, 0) ?? 0;
   const pinned = scopes?.reduce((sum, item) => sum + item.pinned, 0) ?? 0;
   const open = async (scopeId?: string) => {

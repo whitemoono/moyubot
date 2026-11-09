@@ -686,6 +686,18 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .reduce-motion .composer-model-picker .picker__trigger, .reduce-motion .composer-policy-picker .picker__trigger, .reduce-motion .composer--compact .send-btn { transition: none; }
 @media (prefers-reduced-motion: reduce) { .composer-model-picker .picker__trigger, .composer-policy-picker .picker__trigger, .composer--compact .send-btn { transition: none; } }
 
+/* 距底部较远时出现在输入框卡片右上角的「回到底部」悬浮按钮。 */
+.composer-wrap--floating .jump-to-bottom { position: absolute; right: 48px; bottom: calc(100% + 8px); width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; padding: 0; pointer-events: auto; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--line-strong); color: var(--text-dim); box-shadow: 0 8px 22px #00000026; z-index: 6; transition: background 160ms ease, color 160ms ease, border-color 160ms ease, translate 180ms var(--ease-out); }
+.composer-wrap--floating .jump-to-bottom svg { width: 17px; height: 17px; }
+.composer-wrap--floating .jump-to-bottom:hover { background: var(--surface); color: var(--text); border-color: var(--text); translate: 0 -2px; }
+:root[data-theme="dark"] .composer-wrap--floating .jump-to-bottom:hover { background: #2e2e2e; }
+:root[data-theme="light"] .composer-wrap--floating .jump-to-bottom:hover { background: #ffffff; }
+.composer-wrap--floating .jump-to-bottom:active { translate: 0 0; }
+.composer-wrap--floating .jump-to-bottom:focus-visible { outline: 2px solid var(--text-dim); outline-offset: 2px; }
+.reduce-motion .composer-wrap--floating .jump-to-bottom { transition: none; }
+@media (prefers-reduced-motion: reduce) { .composer-wrap--floating .jump-to-bottom { transition: none; } }
+@media (max-width: 850px) { .composer-wrap--floating .jump-to-bottom { right: 34px; } }
+
 /* Keep metadata outside the message surface; actions appear near the pointer. */
 .msg { position: relative; outline: none; }
 .msg__stack { display: flex; flex-direction: column; gap: 5px; min-width: 0; max-width: min(780px, calc(100% - 48px)); }
