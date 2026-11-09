@@ -54,6 +54,9 @@ const metrics = {
   largestFileChars: Math.max(...texts.map((item) => item.text.length)),
 };
 
+/** 仅供展示：绝对值指标里"最大的那个文件"，让回退信息可行动。 */
+const largestFile = texts.reduce((worst, item) => (item.text.length > worst.chars ? { file: item.file, chars: item.text.length } : worst), { file: '', chars: 0 });
+
 /** 0 字节但被 git 跟踪的文件（仓库卫生）。 */
 function emptyTrackedFiles() {
   try {
@@ -70,6 +73,7 @@ metrics.emptyTrackedFiles = emptyTrackedFiles().length;
 
 console.log('当前数值：');
 for (const [key, value] of Object.entries(metrics)) console.log(`  ${key.padEnd(20)} ${value}`);
+console.log(`  最大文件              ${largestFile.file}（${largestFile.chars}）`);
 if (metrics.emptyTrackedFiles) console.log(`  0 字节跟踪文件：${emptyTrackedFiles().join(', ')}`);
 
 if (mode === 'report') process.exit(0);

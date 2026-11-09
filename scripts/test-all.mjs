@@ -99,10 +99,10 @@ function runFile(entry) {
   });
 }
 
-async function runPool(entries) {
+async function runPool(entries, jobs = args.jobs) {
   const results = [];
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(args.jobs, entries.length) }, async () => {
+  const workers = Array.from({ length: Math.min(jobs, entries.length) }, async () => {
     while (cursor < entries.length) {
       const entry = entries[cursor++];
       const result = await runFile(entry);
@@ -152,12 +152,24 @@ if (skipped.length) {
 console.log(`跑 ${runnable.length} 个用例文件（jobs=${args.jobs}）\n`);
 
 const startedAt = Date.now();
-const results = await runPool(runnable);
+// Electron 用例各自拉起一套 Chromium，并发只会互相挤到超时；一层串行跑。
+const layers = new Set(runnable.map((entry) => entry.layer));
+const results = [];
+if (layers.size === 1) {
+  results.push(...(await runPool(runnable)));
+} else {
+  for (const layer of ['node', 'electron']) {
+    const group = runnable.filter((entry) => entry.layer === layer);
+    if (!group.length) continue;
+    results.push(...(await runPool(group, layer === 'electron' ? 1 : args.jobs)));
+  }
+}
 const failed = results.filter((result) => !result.ok);
-const totals = results.reduce((sum, item) => ({
-  pass: sum.pass + (item.counts.pass ?? 0),
-  fail: sum.fail + (item.counts.fail ?? 0),
-}), { pass: 0, fail: 0 });
+// Electron 用例是普通脚本，不输出 TAP 计数：按"一个文件一个用例"算。
+const totals = results.reduce((sum, item) => item.counts.found
+  ? { pass: sum.pass + (item.counts.pass ?? 0), fail: sum.fail + (item.counts.fail ?? 0) }
+  : { pass: sum.pass + (item.ok ? 1 : 0), fail: sum.fail + (item.ok ? 0 : 1) },
+  { pass: 0, fail: 0 });
 
 console.log(`\n合计：${totals.pass} pass / ${totals.fail} fail，用时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
 

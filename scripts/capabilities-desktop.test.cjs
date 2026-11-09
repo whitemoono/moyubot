@@ -12,7 +12,7 @@ const errors = [];
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const evaluate = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`);
 async function until(fn, label) {
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 20000;
   while (Date.now() < deadline) { if (await evaluate(fn)) return; await delay(60); }
   throw new Error(`Timed out: ${label}`);
 }
@@ -36,8 +36,17 @@ async function capture(name) {
 app.whenReady().then(async () => {
   const { MoyuApp } = require('../apps/desktop/dist-electron/app.js');
   backend = new MoyuApp(path.join(output, 'data'), '0.1.1');
-  const bot = backend.store.settings.bots[0];
-  backend.store.updateSettings({ onboarding: { step: 2, completedAt: Date.now() }, cloud: { driver: 'mock' }, activeBotId: bot.id, activeView: 'chat' });
+  // 能力绑定开关（.switch）只出现在本地工作区 Bot 的详情里；
+  // 云端 Bot 用的是"云机上已部署的能力"，没有 per-bot 开关，这里必须用本地 Bot 才跑得通。
+  const bot = { ...backend.store.settings.bots[0], workspaceId: 'workspace_local' };
+  backend.store.updateSettings({
+    onboarding: { step: 2, completedAt: Date.now() },
+    cloud: { driver: 'mock' },
+    bots: [bot],
+    activeBotId: bot.id,
+    activeView: 'chat',
+    activeWorkspaceId: 'workspace_local',
+  });
   const source = path.join(output, 'source'); fs.mkdirSync(source);
   fs.writeFileSync(path.join(source, 'SKILL.md'), '---\nname: 周报整理\ndescription: 汇总本周工作，整理交付成果与下周待办。\n---\n先整理项目，再按进度分组。');
   const server = path.join(output, 'server.cjs');
@@ -94,6 +103,16 @@ app.whenReady().then(async () => {
   console.log('Capabilities desktop passed. Screenshots: ' + output);
 }).catch(async e => {
   console.error(e); process.exitCode = 1;
+  if (win && !win.isDestroyed()) {
+    try {
+      const dump = await evaluate(() => ({
+        settings: (document.querySelector('.capabilities-settings')?.textContent || '').slice(0, 600),
+        toasts: [...document.querySelectorAll('.toast')].map((el) => el.textContent),
+      }));
+      console.error('settings 面板文本：' + dump.settings);
+      console.error('toast：' + JSON.stringify(dump.toasts));
+    } catch { /* 仅诊断用 */ }
+  }
   if (win && !win.isDestroyed()) await capture('failure');
 }).finally(async () => {
   if (backend) { await backend.capabilities.dispose(); backend.dispose(); }

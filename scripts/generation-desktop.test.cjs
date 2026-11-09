@@ -12,7 +12,7 @@ const errors = [];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const evaluate = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(...${JSON.stringify(args)})`);
 async function until(fn, label) {
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 20000;
   while (Date.now() < deadline) { if (await evaluate(fn)) return; await delay(60); }
   throw new Error('Timed out: ' + label);
 }
@@ -53,21 +53,24 @@ app.whenReady().then(async () => {
   await click('[aria-label="用户菜单"]');
   await textClick('[role="menuitem"]', '设置');
   await textClick('.settings-tabs button', '模型供应商');
-  await input('模型上下文上限', 131072);
-  await input('模型最大输出', 32768);
+  await input('上下文窗口', 131072);
+  await input('最大输出', 32768);
   await click('[aria-label="模型思考接口"]');
   await textClick('[role="option"]', 'OpenAI reasoning_effort');
   await click('[aria-label="默认思考强度"]');
   await textClick('[role="option"]', '高');
   await click('[aria-label="思考回传"]');
   await textClick('[role="option"]', '启用 DeepSeek 思考回传');
-  await input('配置模型额度', 'model-b');
-  assert.equal(await evaluate(() => document.querySelector('[aria-label="模型最大输出"]').value), '');
-  await input('模型上下文上限', 16384);
-  await input('模型最大输出', 2048);
-  await input('配置模型额度', 'model-a');
-  assert.equal(await evaluate(() => document.querySelector('[aria-label="模型最大输出"]').value), '32768');
-  await evaluate(() => document.querySelector('[aria-label="配置模型额度"]').blur());
+  // 切换"配置模型额度"现在是个下拉（Select），不是输入框
+  await click('[aria-label="配置模型额度"]');
+  await textClick('[role="option"]', 'model-b');
+  assert.equal(await evaluate(() => document.querySelector('[aria-label="最大输出"]').value), '');
+  await input('上下文窗口', 16384);
+  await input('最大输出', 2048);
+  await click('[aria-label="配置模型额度"]');
+  await textClick('[role="option"]', 'model-a');
+  assert.equal(await evaluate(() => document.querySelector('[aria-label="最大输出"]').value), '32768');
+  await evaluate(() => document.querySelector('[aria-label="最大输出"]').blur());
   await textClick('.provider-savebar button', '保存更改');
   await until(() => document.querySelector('.provider-savebar')?.textContent.includes('所有更改已保存'), 'provider saved');
   const saved = backend.store.getProvider(provider.id);

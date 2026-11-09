@@ -56,13 +56,11 @@ jobs:
       - run: pnpm --filter @moyu/core build
       - run: pnpm --filter @moyu/desktop build
 
-  # 需要真实 Electron 运行时的 3 个端到端用例。
-  # 现状：mobile-desktop 绿；capabilities-desktop 与 generation-desktop 的选择器/流程已随 UI 改版过期，
-  # 暂设为非阻塞（continue-on-error），等它们修好后去掉这一行即可。
+  # 需要真实 Electron 运行时的 3 个端到端用例（串行跑：每个都拉起一套 Chromium）。
+  # 这一层是唯一真正覆盖 IPC + 渲染层接线的测试，必须阻塞。
   electron-tests:
-    name: Electron layer (windows, 非阻塞)
+    name: Electron layer (windows)
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
