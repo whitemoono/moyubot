@@ -28,5 +28,7 @@ export { setProviderFetch } from './providers/transport';
 export type { ChatProvider, AgentMessage, StreamHandlers, GeneratedImage, ImageRequest } from './providers';
 export { parseCron, nextCronTime, ScheduleRunner } from './scheduler';
 export { embedTexts } from './embedding';
+export { CONSOLIDATION_ROUNDS, CONSOLIDATION_CHARS, maybeConsolidateMemories, consolidationProgress } from './memory-consolidation';
+export { PROJECT_UPDATE_ROUNDS, maybeAutoUpdateProject } from './project-auto-update';
 export { TelegramGateway } from './telegram';
 export * from './sync';

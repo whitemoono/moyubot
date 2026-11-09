@@ -381,6 +381,33 @@ export interface TodoList {
   updatedAt: number;
 }
 
+/**
+ * 项目状态（L2 Project State）——一个 Bot 可以同时推进多个项目，各自独立保存
+ * 目标、状态、决定、下一步。与 Goal（会话级续航目标）和 Schedule（定时任务）分开：
+ * 项目是人/模型显式维护的"正在做什么"的状态，不做任务调度。
+ */
+export interface ProjectState {
+  /** 项目标识：用户可读的名称（也用于"继续上次的 XX 项目"的匹配）。 */
+  name: string;
+  description?: string;
+  status: 'active' | 'paused' | 'completed';
+  /** 当前聚焦的目标一句话。 */
+  currentGoal?: string;
+  /** 进度小结：最近做了什么、进展如何。 */
+  summary?: string;
+  decisions?: string[];
+  nextActions?: string[];
+  /** 关联的工作区路径（可选）。 */
+  workspacePaths?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectStore {
+  /** 某个 Bot 的全部项目，按名字索引。 */
+  [botId: string]: Record<string, ProjectState>;
+}
+
 /** 开放提问：模型信息不足时问用户，等一段文字回答（区别于"是/否"审批）。 */
 export interface AskRequest {
   id: string;
@@ -637,7 +664,7 @@ export interface UsageRecord {
   model: string;
   conversationId: string;
   messageId?: string;
-  purpose: 'chat' | 'compaction' | 'consolidation' | 'historical';
+  purpose: 'chat' | 'compaction' | 'consolidation' | 'project_update' | 'historical';
   status: 'complete' | 'error';
   usage?: TokenUsage;
 }

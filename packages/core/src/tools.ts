@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Bot, CloudStatus, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult, WebSearchSettings } from './types';
+import type { Bot, CloudStatus, ProjectState, Schedule, ScheduleInput, ScheduleUpdate, ToolCall, ToolResult, WebSearchSettings } from './types';
 import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
 import { newId, pruneOutput, summarize } from './util';
@@ -87,11 +87,55 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   },
   {
     name: 'recall',
-    description: '在长期记忆里搜索相关内容（关键词匹配）。',
+    description: '在长期记忆里搜索已整理好的相关事实（关键词匹配）。',
     parameters: {
       type: 'object',
       properties: { query: { type: 'string', description: '关键词或短语' } },
       required: ['query'],
+    },
+  },
+  {
+    name: 'history_search',
+    description: '在原始对话历史里全文检索过去真实发生过的事（含时间与来源）。当长期记忆不够、需要查"之前具体怎么聊的/某个决定的前因后果"时使用；与 recall（搜已整理知识）不同。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '要检索的关键词或短语，中文至少 3 字' },
+        since: { type: 'string', description: '可选，ISO 时间，仅返回之后的记录' },
+        limit: { type: 'number', description: '返回条数，默认 5，最多 10' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'project_list',
+    description: '列出当前 Bot 的所有项目及其状态（活动/暂停/完成）、当前目标、进度小结、下一步。用于了解"正在做什么"，或用户提到"继续上次那个项目"时定位目标项目。',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'project_upsert',
+    description: '创建或更新一个项目。一个 Bot 可同时维护多个项目，各自独立的状态。项目不承担任务调度（定时任务用 schedule_task），只记录目标、状态、决定和下一步。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '项目名，用于"继续上次的 XX 项目"的匹配' },
+        status: { type: 'string', enum: ['active', 'paused', 'completed'], description: '默认 active' },
+        currentGoal: { type: 'string', description: '当前聚焦的目标一句话' },
+        summary: { type: 'string', description: '进度小结：最近做了什么、进展如何' },
+        decisions: { type: 'array', items: { type: 'string' }, description: '关键决定；覆盖传入的列表' },
+        nextActions: { type: 'array', items: { type: 'string' }, description: '下一步待办；覆盖传入的列表' },
+        workspacePaths: { type: 'array', items: { type: 'string' }, description: '关联的工作区路径' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'project_switch',
+    description: '把某个项目设为当前活动项目（其他活动项目自动降为暂停）。用于用户说"先不管 A 了，继续 B 项目"。',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: '要聚焦的项目名' } },
+      required: ['name'],
     },
   },
   {
@@ -455,6 +499,13 @@ export interface ToolContext {
   remember: (text: string, pinned: boolean) => { id: string };
   /** 混合检索（关键词 + 语义向量），向量服务不可用时自动退化为纯关键词。 */
   recall: (query: string) => Promise<string[]>;
+  /** 历史全文检索：返回 [{conversationId, role, createdAt, text}]。 */
+  searchHistory: (query: string, options?: { conversationId?: string; limit?: number; since?: number }) => { conversationId: string; role: string; createdAt: number; text: string }[];
+  /** L2 项目状态：列出 / 取单个 / 创建更新 / 切换聚焦项目。 */
+  listProjects: () => ProjectState[];
+  getProject: (name: string) => ProjectState | undefined;
+  upsertProject: (patch: Partial<ProjectState> & { name: string }) => ProjectState;
+  setActiveProject: (name: string) => ProjectState | undefined;
   createSchedule: (input: ScheduleInput) => Schedule;
   listTasks: (includeClosed: boolean) => Schedule[];
   updateTask: (id: string, patch: ScheduleUpdate) => Schedule;
@@ -507,12 +558,16 @@ export function toolNamesFor(bot: Bot): string[] {
   // 空清单 = 全部内置工具（含安装类；安装动作本身仍需用户审批，计划模式会收走）。
   const names = bot.tools.length ? bot.tools : TOOL_SCHEMAS.map((tool) => tool.name);
   const expanded = names.includes('schedule_task') ? [...names, 'list_tasks', 'update_task'] : [...names];
+  // 有记忆检索能力的 Bot 自动获得历史全文检索（两者是同一能力在"知识 vs 原始对话"上的一对工具）。
+  if (names.includes('recall')) expanded.push('history_search');
+  // 有能力写记忆的 Bot 默认具备项目管理（project 三件套）。
+  if (names.includes('remember')) expanded.push('project_list', 'project_upsert', 'project_switch');
   if (bot.workspaceId !== 'workspace_local' && names.includes('cloud_exec')) expanded.push('desktop_action');
   return [...new Set(expanded)].filter((name) => bot.workspaceId !== 'workspace_local' || name !== 'desktop_action');
 }
 
 /** 计划模式要收走的写能力：命令、写文件、桌面操作、绘图、记忆写入、定时任务、能力安装。 */
-const WRITE_TOOLS = new Set(['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'list_tasks', 'update_task', 'install_mcp', 'install_skill', 'job_kill', 'subagent_control', 'subagent_fork']);
+const WRITE_TOOLS = new Set(['cloud_exec', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'schedule_task', 'list_tasks', 'update_task', 'install_mcp', 'install_skill', 'job_kill', 'subagent_control', 'subagent_fork', 'project_upsert', 'project_switch']);
 
 const EXIT_PLAN_TOOL: ToolSchema = {
   name: 'exit_plan_mode',
@@ -1012,6 +1067,51 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
           summary: hits.length ? `找到 ${hits.length} 条记忆` : '没有匹配的记忆',
           detail: hits.join('\n'),
         });
+      }
+      case 'history_search': {
+        const query = requireString(args, 'query');
+        const since = typeof args.since === 'string' && !isNaN(Date.parse(args.since)) ? Date.parse(args.since) : undefined;
+        const limit = Math.min(10, Math.max(1, typeof args.limit === 'number' ? Math.floor(args.limit) : 5));
+        const hits = ctx.searchHistory(query, { limit, since });
+        const detail = hits.length
+          ? hits.map((hit, index) => {
+              const time = new Date(hit.createdAt).toLocaleString('zh-CN', { hour12: false });
+              const who = hit.role === 'user' ? '用户' : '助手';
+              return `${index + 1}. ${time} ${who}：${hit.text.split('\n')[0]}`;
+            }).join('\n')
+          : '没有找到相关历史。';
+        return finish({
+          ok: true,
+          summary: hits.length ? `找到 ${hits.length} 条相关历史` : '没有找到相关历史',
+          detail,
+        });
+      }
+      case 'project_list': {
+        const projects = ctx.listProjects();
+        return finish({
+          ok: true,
+          summary: projects.length ? `有 ${projects.length} 个项目` : '还没有项目',
+          detail: projects.length ? projects.map((p, index) => `${index + 1}. [${p.status}] ${p.name}${p.currentGoal ? ` · 目标: ${p.currentGoal}` : ''}${p.summary ? `\n   进展: ${summarize(p.summary, 120)}` : ''}${p.nextActions?.length ? `\n   下一步: ${p.nextActions.join('; ')}` : ''}`).join('\n') : '用 project_upsert 创建一个项目。',
+        });
+      }
+      case 'project_upsert': {
+        const name = requireString(args, 'name');
+        const patch: Partial<ProjectState> & { name: string } = { name };
+        const status = args.status as string;
+        if (status && ['active', 'paused', 'completed'].includes(status)) patch.status = status as ProjectState['status'];
+        if (typeof args.currentGoal === 'string') patch.currentGoal = args.currentGoal;
+        if (typeof args.summary === 'string') patch.summary = args.summary;
+        if (Array.isArray(args.decisions)) patch.decisions = args.decisions.map(String).filter(Boolean);
+        if (Array.isArray(args.nextActions)) patch.nextActions = args.nextActions.map(String).filter(Boolean);
+        if (Array.isArray(args.workspacePaths)) patch.workspacePaths = args.workspacePaths.map(String).filter(Boolean);
+        const project = ctx.upsertProject(patch);
+        return finish({ ok: true, summary: `项目「${name}」已保存`, detail: `状态: ${project.status} ${project.currentGoal ? `· 目标: ${project.currentGoal}` : ''}` });
+      }
+      case 'project_switch': {
+        const name = requireString(args, 'name');
+        const project = ctx.setActiveProject(name);
+        if (!project) return finish({ ok: false, summary: `找不到项目「${name}」，用 project_list 看看现有项目`, detail: '可先用 project_upsert 创建。' });
+        return finish({ ok: true, summary: `已聚焦「${name}」项目`, detail: `状态: ${project.status}` });
       }
       case 'schedule_task': {
         if (!toolNamesFor(ctx.bot).includes(call.name)) throw new Error('当前 Bot 未启用定时任务工具');

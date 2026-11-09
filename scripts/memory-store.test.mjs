@@ -106,3 +106,18 @@ test('mobile sync applies memory records into SQLite', () => {
   reopened.applySyncRecords([{ collection: 'memories', id: 'mem_sync_1', revision: 2, value: null }]);
   assert.equal(new Store(f.dataDir).listMemories(f.atlas.id).length, 0, '同步删除落盘');
 });
+
+test('memory scope summaries filter by workspace', () => {
+  const f = fixture();
+  const localBot = { ...f.atlas, id: 'bot_local', name: '本地助手', workspaceId: 'workspace_local' };
+  f.store.updateSettings({ bots: [f.atlas, f.nova, localBot] });
+  f.store.addMemory(f.atlas.id, '云工作区记忆');
+  f.store.addMemory(localBot.id, '本地工作区记忆');
+  assert.equal(f.store.memoryScopeSummaries().length, 3, '不传工作区时列出全部');
+  const cloud = f.store.memoryScopeSummaries('workspace_cloud');
+  assert.ok(cloud.some((item) => item.scopeId === f.atlas.id));
+  assert.ok(!cloud.some((item) => item.scopeId === 'bot_local'), '本地工作区 Bot 不出现在云工作区列表');
+  const local = f.store.memoryScopeSummaries('workspace_local');
+  assert.ok(local.some((item) => item.scopeId === 'bot_local' && item.total === 1));
+  assert.ok(!local.some((item) => item.scopeId === f.atlas.id));
+});

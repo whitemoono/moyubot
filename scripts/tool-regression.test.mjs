@@ -40,6 +40,11 @@ function makeCtx(options = {}) {
     imageApiKey: '',
     remember: (text, pinned) => { const fact = store.addMemory(bot.id, text, pinned); return { id: fact.id }; },
     recall: (query) => store.listMemories(bot.id).filter((m) => m.text.toLowerCase().includes(query.toLowerCase())).map((m) => m.text),
+    searchHistory: (query, options) => store.searchHistory(query, { ...options, conversationId: options?.conversationId ?? conversationId }),
+    listProjects: () => store.listProjects(bot.id),
+    getProject: (name) => store.getProject(bot.id, name),
+    upsertProject: (patch) => store.upsertProject(bot.id, patch),
+    setActiveProject: (name) => store.setActiveProject(bot.id, name),
     createSchedule: (input) => store.createSchedule(bot.id, input),
     listTasks: (includeClosed) => store.listSchedules().filter((t) => t.botId === bot.id && (includeClosed || !t.closedAt && !t.completedAt)),
     updateTask: (id, patch) => store.updateSchedule(bot.id, id, patch),
@@ -112,6 +117,32 @@ test('remember + recall 往返', async () => {
   const found = await runTool(call('recall', { query: '中文' }), ctx);
   assert.equal(found.ok, true);
   assert.match(found.detail, /用户偏好中文/);
+});
+
+test('history_search 检索原始对话', async () => {
+  const { ctx, store, bot, conversationId } = makeCtx();
+  store.appendMessage(conversationId, { id: 'hist-1', role: 'user', content: '上次讨论过为什么放弃那个 API', createdAt: Date.now() });
+  store.appendMessage(conversationId, { id: 'hist-2', role: 'assistant', content: '因为中转商经常 502，决定换 DeepSeek 直连。', createdAt: Date.now() + 1 });
+  const result = await runTool(call('history_search', { query: '放弃 API' }), ctx);
+  assert.equal(result.ok, true);
+  assert.match(result.detail, /放弃那个 API|助手/);
+  assert.match(result.summary, /找到/);
+});
+
+test('project 三件套：upsert → list → switch', async () => {
+  const { ctx } = makeCtx();
+  const created = await runTool(call('project_upsert', { name: 'MoyuBot 记忆改造', currentGoal: '完成分层记忆', nextActions: ['Project State', 'History Search'] }), ctx);
+  assert.equal(created.ok, true, created.summary);
+  assert.match(created.summary, /已保存/);
+  const listed = await runTool(call('project_list', {}), ctx);
+  assert.equal(listed.ok, true);
+  assert.match(listed.detail, /MoyuBot 记忆改造/);
+  const switched = await runTool(call('project_switch', { name: 'MoyuBot 记忆改造' }), ctx);
+  assert.equal(switched.ok, true);
+  assert.match(switched.summary, /已聚焦/);
+  // 切换不存在项目应清晰报错
+  const missing = await runTool(call('project_switch', { name: '不存在' }), ctx);
+  assert.equal(missing.ok, false);
 });
 
 // —— 定时任务三件套 ——
@@ -397,7 +428,7 @@ test('apply_patch 匹配失败时不静默写入', async () => {
 test('每个内置 schema 工具都在回归表里被覆盖', async () => {
   // 兜底：防止将来加了新工具却忘记加回归。此测试枚举 TOOL_SCHEMAS，
   // 与上面手写用例覆盖到的名字对比（维护时在 covered 里补一项）。
-  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork', 'make_spreadsheet', 'make_document', 'make_slides', 'apply_patch', 'read_files', 'local_read_file', 'local_list_files', 'local_write_file', 'cloud_stage_file', 'deliver_file']);
+  const covered = new Set(['cloud_exec', 'cloud_read', 'cloud_write', 'desktop_action', 'generate_image', 'remember', 'recall', 'history_search', 'project_list', 'project_upsert', 'project_switch', 'schedule_task', 'list_tasks', 'update_task', 'web_fetch', 'web_search', 'install_mcp', 'install_skill', 'set_goal', 'update_goal', 'todo_write', 'ask_user', 'spawn_agent', 'run_script', 'job_list', 'job_kill', 'subagent_list_agents', 'subagent_control', 'subagent_fork', 'make_spreadsheet', 'make_document', 'make_slides', 'apply_patch', 'read_files', 'local_read_file', 'local_list_files', 'local_write_file', 'cloud_stage_file', 'deliver_file']);
   const missing = TOOL_SCHEMAS.map((tool) => tool.name).filter((name) => !covered.has(name));
   assert.deepEqual(missing, [], `这些新工具还没有回归用例：${missing.join(', ')}`);
 });

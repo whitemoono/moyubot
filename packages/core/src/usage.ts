@@ -117,7 +117,7 @@ export class UsageLedger {
 }
 
 /** Each stream reports cumulative snapshots; persist exactly once, including failed streams. */
-export async function trackedChat(store: Store, bot: Bot, conversationId: string, purpose: 'chat' | 'compaction', provider: ChatProvider, args: ChatArgs, handlers: StreamHandlers, messageId?: string, taskBudget?: TaskOutputBudget): Promise<ChatOutcome> {
+export async function trackedChat(store: Store, bot: Bot, conversationId: string, purpose: 'chat' | 'compaction' | 'consolidation' | 'project_update', provider: ChatProvider, args: ChatArgs, handlers: StreamHandlers, messageId?: string, taskBudget?: TaskOutputBudget): Promise<ChatOutcome> {
   taskBudget?.requireAvailable();
   if (taskBudget && args.maxTokens) args = { ...args, maxTokens: Math.min(args.maxTokens, taskBudget.remaining()) };
   if (['anthropic-budget', 'gemini-budget'].includes(args.reasoning?.reasoningControl ?? '') && args.reasoning?.thinkingBudgetTokens && args.maxTokens && args.reasoning.thinkingBudgetTokens >= args.maxTokens) throw new Error('思考预算必须小于本次可用输出额度，请调整模型或 Bot 的思考预算和任务额度。');

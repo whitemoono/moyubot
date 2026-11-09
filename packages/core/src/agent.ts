@@ -5,6 +5,7 @@ import type { CloudHost, ComputerHost } from './cloud';
 import { createChatProvider, generateImageWithProvider } from './providers';
 import type { AgentMessage, ChatProvider, StreamHandlers } from './providers';
 import { maybeConsolidateMemories } from './memory-consolidation';
+import { maybeAutoUpdateProject } from './project-auto-update';
 import { ProviderError, OutputLimitError } from './providers';
 import type {
   AgentEvent,
@@ -35,7 +36,7 @@ import { DEFAULT_TASK_LIMITS, modelSettings, TaskOutputBudget } from './generati
  * memory/schedule mutation, no MCP or skills, and no nested spawn. They exist to widen research
  * coverage, not to act on anything.
  */
-const SUBAGENT_TOOLS = ['cloud_read', 'web_fetch', 'web_search', 'recall'];
+const SUBAGENT_TOOLS = ['cloud_read', 'web_fetch', 'web_search', 'recall', 'history_search'];
 const SUBAGENT_MAX_STEPS = 12;
 const SUBAGENT_MAX_SECONDS = 600;
 const SUBAGENT_MAX_DEPTH = 2;
@@ -128,6 +129,11 @@ export class AgentRuntime {
     const memoryBlock = facts.length
       ? `\n\n长期记忆（关于用户与这个 Bot 的事实）：\n${facts.map((fact) => `- ${fact.text}`).join('\n')}`
       : '';
+    // L2 项目状态：注入当前活动项目，让"正在做什么"始终在上下文里。
+    const activeProject = this.store.listProjects(bot.id).find((project) => project.status === 'active');
+    const projectBlock = activeProject
+      ? `\n\n当前项目：${activeProject.name}\n当前目标：${activeProject.currentGoal ?? '（未设定）'}\n进度：${activeProject.summary ?? '（无）'}${activeProject.decisions?.length ? `\n已定决定：${activeProject.decisions.join('；')}` : ''}${activeProject.nextActions?.length ? `\n下一步：${activeProject.nextActions.join('；')}` : ''}`
+      : '';
     const computer = this.computerFor(bot);
     const workspace = computer.getSettings().workspaceDir;
     const scheduleGuide = toolNamesFor(bot).includes('schedule_task') ? `\n\n定时任务（本地时区 ${Intl.DateTimeFormat().resolvedOptions().timeZone}）：用户要求或已允许后续执行才创建；时间不明确先询问。创建前查重，修改前用 list_tasks 定位，不能猜 ID。周期用 cron，一次用含时区 runAt。仅工具成功后确认操作和执行时间；到点执行不要重新创建同一任务。` : '';
@@ -140,7 +146,7 @@ ${bot.workspaceId === 'workspace_local' ? '' : `云电脑工作目录：${comput
 当前工作区电脑：${computer.getSettings().machineName}${bot.workspaceId === 'workspace_local' ? '（本机 Windows）' : ` · 空闲 ${this.store.getSettings().cloud.idleSuspendMinutes} 分钟后自动休眠`}。
 ${bot.workspaceId === 'workspace_local' ? '执行环境约束：以上角色设定若提及云端 Linux，以本条为准。cloud_exec / cloud_read / cloud_write 是兼容工具名，实际只操作本机 Windows 工作区。命令使用 PowerShell 语法，文件路径位于该工作区目录，不能使用 bash 或云端路径。API 绘图不唤醒云电脑。' : ''}
 任务执行：工具成功后继续处理结果，完成用户要求的检查后及时给出结论，不反复规划或重复读取相同内容。大文件按合理大小分步写入或编辑，单次工具参数避免包含过长文件；调用被截断时，该轮所有工具都未执行，需重新生成完整参数，不能拼接残缺 JSON。已有成功结果不得重复执行。
-${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.workspaceInstructionsFor(workspace)}`;
+${memoryBlock}${projectBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.workspaceInstructionsFor(workspace)}`;
   }
 
   /**
@@ -714,6 +720,11 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                 : undefined,
             remember: (text, pinned) => this.store.addMemory(memoryScope, text, pinned),
             recall: (query) => this.store.searchMemories(memoryScope, query),
+            searchHistory: (query, options) => this.store.searchHistory(query, { ...options, conversationId: options?.conversationId ?? conversationId }),
+            listProjects: () => this.store.listProjects(bot.id),
+            getProject: (name) => this.store.getProject(bot.id, name),
+            upsertProject: (patch) => this.store.upsertProject(bot.id, patch),
+            setActiveProject: (name) => this.store.setActiveProject(bot.id, name),
             createSchedule: (input) => this.store.createSchedule(bot.id, input),
             listTasks: (includeClosed) => this.store.listSchedules().filter((task) => task.botId === bot.id && (includeClosed || !task.closedAt && !task.completedAt)),
             updateTask: (id, patch) => this.store.updateSchedule(bot.id, id, patch),
@@ -872,9 +883,10 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
           this.emit({ type: 'run_end', conversationId, runId, ok: !errorText, error: errorText, ...(pausedForSteps ? { paused: 'steps' as const } : {}) });
         }
       }
-      // 增量记忆整理：成功回复结束后检查检查点，达到阈值就在后台提炼一次（不阻塞、失败静默）。
+      // 增量记忆整理 + 自动项目进度更新：成功回复结束后后台运行（不阻塞、失败静默、独立检查点）。
       if (!errorText && !abort.signal.aborted && !params.silent && replyProvider) {
         void maybeConsolidateMemories({ store: this.store, bot, conversation, provider: replyProvider, emit: (event) => this.emit(event) }).catch(() => {});
+        void maybeAutoUpdateProject({ store: this.store, bot, conversation, provider: replyProvider, emit: (event) => this.emit(event) }).catch(() => {});
       }
       this.computerFor(bot).touch();
       this.computerFor(bot).armIdleIfNeeded?.();

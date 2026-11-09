@@ -12,6 +12,8 @@ import type {
   Goal,
   MemoryFact,
   MemoryScopeSummary,
+  ProjectState,
+  ProjectStore,
   TodoList,
   Message,
   Schedule,
@@ -25,6 +27,7 @@ import { newId, normalizeRemoteDirectory, safeJsonParse, sanitizeDirName } from 
 import { MemoryLibrary, scopeDirName } from './memory-library';
 import { MemoryStore, cosineSimilarity } from './memory-store';
 import { embedTexts } from './embedding';
+import { HistorySearch } from './history-search';
 import { UsageLedger } from './usage';
 import { nextCronTime } from './scheduler';
 import { modelSettings, validateGeneration, validateModelSettings } from './generation';
@@ -174,6 +177,8 @@ export class Store {
   private memories: MemoryFact[] = [];
   /** 记忆持久层：单个 SQLite 数据库（memories.db），含检索向量。 */
   private memoryDb!: MemoryStore;
+  /** 历史消息全文索引（可重建的派生库）。 */
+  readonly historySearch: HistorySearch;
   /** 旧版 Markdown 记忆库，仅在启动迁移时读取。 */
   private markdownLibraryRef?: MemoryLibrary;
   /** 测试可注入的向量函数；生产路径走 embedTexts + 配置的在线向量模型。 */
@@ -186,10 +191,16 @@ export class Store {
   /** close() 之后不再做任何落盘动作。 */
   private closed = false;
   private queryVectorCache = new Map<string, Float32Array>();
+  /** 增量记忆整理检查点（按会话）：throughMessageId 之前的内容已提炼过。 */
+  private memoryCheckpoints: Record<string, { throughMessageId: string; updatedAt: number; failures?: number }> = {};
   private scheduleList: Schedule[] = [];
   /** Conversation-scoped goals, kept apart from schedules so "edit the goal" never reads as "edit a task". */
   private goalList: Goal[] = [];
   private todoLists: TodoList[] = [];
+  /** 项目状态（L2）：按 botId -> 项目名 -> ProjectState。 */
+  private projects: ProjectStore = {};
+  /** 项目自动更新检查点，按 botId 存。 */
+  private autoProjectCheckpoints: Record<string, { lastRound: number; failures?: number; lastActiveProject?: string }> = {};
   /** 三段上下文快照，按会话 id 存于 context-usage.json（界面重启后仍能显示上次值；压缩后自动变小）。 */
   private contextUsage: Record<string, import('./types').ContextUsageSnapshot> = {};
   private scheduleListeners = new Set<(schedules: Schedule[]) => void>();
@@ -252,17 +263,23 @@ export class Store {
     }
     if (!this.settings.workspaces.some((item) => item.id === this.settings.activeWorkspaceId)) this.settings.activeWorkspaceId = this.settings.workspaces[0]?.id;
     this.persistSettings();
+    // 历史索引派生库需在 loadConversations 之前就绪（后者会用它回填）
+    this.historySearch = new HistorySearch(path.join(dataDir, 'history.db'));
     this.loadConversations();
     this.sweepInterruptedMessages();
     for (const bot of this.settings.bots) this.botConversation(bot.id);
+    // 对已存在的历史做一次索引回填（增量，幂等）
+    this.backfillHistoryIndex();
     this.usage = new UsageLedger(dataDir);
     this.usage.backfill(this.conversations.values(), this.settings.bots);
     this.memoryDb = new MemoryStore(path.join(dataDir, 'memories.db'));
     this.loadMemories();
+    this.loadMemoryCheckpoints();
     this.scheduleEmbeddingBackfill();
     this.loadSchedules();
     this.loadGoals();
     this.loadTodos();
+    this.loadProjects();
     this.loadContextUsage();
   }
 
@@ -625,6 +642,7 @@ export class Store {
     conv.updatedAt = Date.now();
     conv.title = this.getBot(conv.botId)?.name ?? conv.title;
     this.saveConversation(conv.id);
+    try { this.historySearch.indexMessage(message, conversationId); } catch { /* 索引失败不影响会话主流程 */ }
     return conv;
   }
 
@@ -665,6 +683,22 @@ export class Store {
     this.conversations.delete(id);
     const file = path.join(this.dir('conversations'), `${id}.json`);
     if (fs.existsSync(file)) fs.unlinkSync(file);
+    try { this.historySearch.removeConversation(id); } catch { /* noop */ }
+  }
+
+  /** 对已存在的会话历史增量回填搜索索引（启动时调用，幂等）。 */
+  private backfillHistoryIndex(): void {
+    for (const [id, conv] of this.conversations) {
+      if (conv.subagent) continue;
+      for (const message of conv.messages) {
+        try { this.historySearch.indexMessage(message, id); } catch { /* 忽略单条失败 */ }
+      }
+    }
+  }
+
+  /** 历史消息全文检索（Timeline）：查询过去真实发生过的对话。scopeId 为空则检索所有。 */
+  searchHistory(query: string, options: { conversationId?: string; limit?: number; since?: number; before?: number } = {}): import('./history-search').HistoryHit[] {
+    return this.historySearch.search(query, options);
   }
 
   // ----- memories -----
@@ -757,6 +791,22 @@ export class Store {
     this.memories = this.memoryDb.list();
   }
 
+  // ----- 增量记忆整理检查点 -----
+  private loadMemoryCheckpoints(): void {
+    const file = path.join(this.dataDir, 'memory-checkpoints.json');
+    if (!fs.existsSync(file)) return;
+    this.memoryCheckpoints = safeJsonParse<Record<string, { throughMessageId: string; updatedAt: number; failures?: number }>>(fs.readFileSync(file, 'utf8'), {});
+  }
+
+  getMemoryCheckpoint(conversationId: string): { throughMessageId: string; updatedAt: number; failures?: number } | undefined {
+    return this.memoryCheckpoints[conversationId];
+  }
+
+  setMemoryCheckpoint(conversationId: string, checkpoint: { throughMessageId: string; updatedAt: number; failures?: number }): void {
+    this.memoryCheckpoints[conversationId] = checkpoint;
+    writeJsonAtomic(path.join(this.dataDir, 'memory-checkpoints.json'), this.memoryCheckpoints);
+  }
+
   /** 一次性把旧版 memories.json 与 Markdown 记忆库迁入 SQLite，之后旧目录改名归档。 */
   private migrateLegacyMemories(): void {
     if (this.memoryDb.count() > 0) return;
@@ -838,8 +888,8 @@ export class Store {
     return next;
   }
 
-  /** 设置页记忆总览：每个 Bot（含没有记忆的）与有记忆的群聊一行统计。 */
-  memoryScopeSummaries(): MemoryScopeSummary[] {
+  /** 设置页记忆总览：每个 Bot（含没有记忆的）与有记忆的群聊一行统计；传 workspaceId 时按工作区过滤。 */
+  memoryScopeSummaries(workspaceId?: string): MemoryScopeSummary[] {
     const stats = new Map<string, { total: number; pinned: number; latestAt: number }>();
     for (const fact of this.memories) {
       const entry = stats.get(fact.botId) ?? { total: 0, pinned: 0, latestAt: 0 };
@@ -848,16 +898,20 @@ export class Store {
       entry.latestAt = Math.max(entry.latestAt, fact.createdAt);
       stats.set(fact.botId, entry);
     }
-    const summaries: MemoryScopeSummary[] = this.settings.bots.map((bot) => ({
-      scopeId: bot.id, title: bot.name, kind: 'bot' as const, ...(stats.get(bot.id) ?? { total: 0, pinned: 0, latestAt: 0 }),
-    }));
+    const inWorkspace = (id: string | undefined) => !workspaceId || (id ?? 'workspace_cloud') === workspaceId;
+    const summaries: MemoryScopeSummary[] = this.settings.bots
+      .filter((bot) => inWorkspace(bot.workspaceId))
+      .map((bot) => ({ scopeId: bot.id, title: bot.name, kind: 'bot' as const, ...(stats.get(bot.id) ?? { total: 0, pinned: 0, latestAt: 0 }) }));
     for (const conversation of this.conversations.values()) {
       const entry = conversation.group && stats.get(conversation.id);
-      if (!entry || conversation.mergedInto) continue;
+      if (!entry || conversation.mergedInto || conversation.deletedAt || !inWorkspace(conversation.workspaceId)) continue;
       summaries.push({ scopeId: conversation.id, title: conversation.title, kind: 'group', ...entry });
     }
-    for (const [scopeId, entry] of stats) {
-      if (!summaries.some((item) => item.scopeId === scopeId)) summaries.push({ scopeId, title: scopeId, kind: 'bot', ...entry });
+    if (!workspaceId) {
+      // 只在全量视图里兜底展示"找不到归属"的范围（Bot 已删除等），避免数据不可见；工作区过滤视图跳过。
+      for (const [scopeId, entry] of stats) {
+        if (!summaries.some((item) => item.scopeId === scopeId)) summaries.push({ scopeId, title: scopeId, kind: 'bot', ...entry });
+      }
     }
     return summaries.sort((a, b) => b.latestAt - a.latestAt || a.title.localeCompare(b.title, 'zh-CN'));
   }
@@ -1097,6 +1151,85 @@ export class Store {
   private persistTodos(next: TodoList[]): void {
     writeJsonAtomic(path.join(this.dataDir, 'todos.json'), next);
     this.todoLists = next;
+  }
+
+  // ----- projects (L2 项目状态) -----
+  private loadProjects(): void {
+    const file = path.join(this.dataDir, 'projects.json');
+    if (!fs.existsSync(file)) return;
+    this.projects = safeJsonParse<ProjectStore>(fs.readFileSync(file, 'utf8'), {});
+    const autoFile = path.join(this.dataDir, 'projects-auto.json');
+    if (fs.existsSync(autoFile)) this.autoProjectCheckpoints = safeJsonParse<typeof this.autoProjectCheckpoints>(fs.readFileSync(autoFile, 'utf8'), {});
+  }
+
+  private persistProjects(): void {
+    writeJsonAtomic(path.join(this.dataDir, 'projects.json'), this.projects);
+  }
+
+  /** 某 Bot 的全部项目（副本）。 */
+  listProjects(botId: string): ProjectState[] {
+    const map = this.projects[botId] ?? {};
+    return Object.entries(map)
+      .map(([name, project]) => ({ ...project, name }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  /** 按名称取项目（用于"继续上次的 XX 项目"）。 */
+  getProject(botId: string, name: string): ProjectState | undefined {
+    const project = this.projects[botId]?.[name];
+    return project ? { ...project, name } : undefined;
+  }
+
+  /** 设当前活动项目（聚焦的）。旧的活动项目自动降为 paused。 */
+  setActiveProject(botId: string, name: string): ProjectState | undefined {
+    const map = this.projects[botId] ?? {};
+    const target = map[name];
+    if (!target) return undefined;
+    for (const [key, project] of Object.entries(map)) {
+      if (key !== name && project.status === 'active') map[key] = { ...project, status: 'paused', updatedAt: Date.now() };
+    }
+    map[name] = { ...target, status: 'active', updatedAt: Date.now() };
+    this.projects[botId] = map;
+    this.persistProjects();
+    return { ...map[name]!, name };
+  }
+
+  /** 创建或更新一个项目。 */
+  upsertProject(botId: string, patch: Partial<ProjectState> & { name: string }): ProjectState {
+    const map = this.projects[botId] ?? {};
+    const current = map[patch.name];
+    const next: ProjectState = {
+      name: patch.name,
+      description: patch.description ?? current?.description,
+      status: patch.status ?? current?.status ?? 'active',
+      currentGoal: patch.currentGoal ?? current?.currentGoal,
+      summary: patch.summary ?? current?.summary,
+      decisions: patch.decisions ?? current?.decisions ?? [],
+      nextActions: patch.nextActions ?? current?.nextActions ?? [],
+      workspacePaths: patch.workspacePaths ?? current?.workspacePaths ?? [],
+      createdAt: current?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+    };
+    map[patch.name] = next;
+    this.projects[botId] = map;
+    this.persistProjects();
+    return { ...next };
+  }
+
+  /** 删除项目。 */
+  deleteProject(botId: string, name: string): void {
+    const map = this.projects[botId];
+    if (map?.[name]) { delete map[name]; this.persistProjects(); }
+  }
+
+  /** 项目自动更新的低频检查点（按 botId）。 */
+  getAutoProjectCheckpoints(): Record<string, { lastRound: number; failures?: number; lastActiveProject?: string }> {
+    return this.autoProjectCheckpoints;
+  }
+
+  setAutoProjectCheckpoints(all: Record<string, { lastRound: number; failures?: number; lastActiveProject?: string }>): void {
+    this.autoProjectCheckpoints = all;
+    writeJsonAtomic(path.join(this.dataDir, 'projects-auto.json'), all);
   }
 
   // ----- goals -----
