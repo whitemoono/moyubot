@@ -24,7 +24,7 @@ import { runTool, schemasFor, toolNamesFor } from './tools';
 import { CapabilityManager } from './capabilities';
 import { newId, formatDuration, pruneOutput, summarize, truncate, shellQuote } from './util';
 import { buildOffice } from './office-router';
-import { applyHunk, parsePatch } from './patch';
+import { applyHunk, assertSafePatchPath, parsePatch } from './patch';
 import { runWorkflow } from './workflow';
 import { contextWindow, outputBudget, isContextOverflow, parseContextLimit, messagesFor, prepareContext, type TaskContext } from './context';
 import { trackedChat } from './usage';
@@ -591,12 +591,17 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
               const applied: { kind: string; path: string; moveTo?: string }[] = [];
               for (const change of parsed.changes) {
                 try {
+                  // 所有路径先过工作区约束：删除/重命名走的是 shell 的 rm，不校验就能删到工作区外。
+                  change.path = assertSafePatchPath(change.path);
+                  if (change.moveTo) change.moveTo = assertSafePatchPath(change.moveTo);
                   if (change.kind === 'add') {
                     await computer.writeText(change.path, (change.addLines ?? []).join('\n') + '\n', botDir);
                   } else if (change.kind === 'delete') {
-                    await computer.exec(`rm -f ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
+                    await computer.exec(`rm -f -- ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
                   } else {
                     const { bytes } = await computer.readBytes(change.path, botDir);
+                    // 二进制文件按 UTF-8 解码再写回去会直接损坏（docx/zip/图片），必须拒绝。
+                    if (bytes.includes(0)) throw new Error('这是二进制文件，apply_patch 只能改文本文件');
                     let text = Buffer.from(bytes).toString('utf8');
                     for (const hunk of change.hunks) {
                       const next = applyHunk(text, hunk);
@@ -605,7 +610,7 @@ ${memoryBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?? ''}${this.wor
                     }
                     if (!text.endsWith('\n')) text += '\n';
                     await computer.writeText(change.moveTo ?? change.path, text, botDir);
-                    if (change.moveTo) await computer.exec(`rm -f ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
+                    if (change.moveTo) await computer.exec(`rm -f -- ${shellQuote(change.path)}`, { timeoutSeconds: 30, subDirectory: botDir });
                   }
                   applied.push({ kind: change.kind, path: change.path, ...(change.moveTo ? { moveTo: change.moveTo } : {}) });
                 } catch (error) {

@@ -864,7 +864,17 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
         if (!ctx.applyPatch) throw new Error('当前运行时不支持应用补丁');
         const patch = requireString(args, 'input');
         const result = await ctx.applyPatch(patch);
-        if (!result.ok) return finish({ ok: false, summary: `补丁未应用：${result.error ?? '未知错误'}`, detail: result.error });
+        if (!result.ok) {
+          // 已应用的改动不会回滚：说清"改了几个"，别让模型以为整份补丁原样未动而重放。
+          const done = result.applied.map((item) => `${item.kind === 'add' ? 'A' : item.kind === 'delete' ? 'D' : 'M'} ${item.path}`).join('、');
+          return finish({
+            ok: false,
+            summary: result.applied.length
+              ? `补丁部分应用：${result.applied.length} 个文件已改，之后失败——${result.error ?? '未知错误'}`
+              : `补丁未应用：${result.error ?? '未知错误'}`,
+            detail: (done ? `已应用：${done}\n` : '') + String(result.error ?? ''),
+          });
+        }
         const summary = result.applied.map((item) => `${item.kind === 'add' ? 'A' : item.kind === 'delete' ? 'D' : 'M'} ${item.path}${item.moveTo ? ' -> ' + item.moveTo : ''}`).join('\n');
         return finish({ ok: true, summary: `补丁已应用：${result.applied.length} 个文件`, detail: summary });
       }

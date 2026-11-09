@@ -45,6 +45,19 @@ export interface PatchResult {
   error?: string;
 }
 
+/**
+ * 补丁里的路径一律相对 Bot 工作目录。
+ * 模型可以自由编路径，而删除/重命名最终走的是 shell 的 rm，`../` 会删到工作区外，
+ * 所以这里先拒掉绝对路径、盘符、~ 与任何 `..` 段。
+ */
+export function assertSafePatchPath(relPath: string): string {
+  const value = relPath.trim().replace(/\\/g, '/');
+  if (!value) throw new Error('补丁路径不能为空');
+  if (/^[a-zA-Z]:/.test(value) || value.startsWith('/') || value.startsWith('~')) throw new Error(`补丁路径必须是相对 Bot 工作目录的路径：${relPath}`);
+  if (value.split('/').some((part) => part === '..')) throw new Error(`补丁路径不能包含 ..：${relPath}`);
+  return value;
+}
+
 /** 解析补丁文本；失败时给出可定位的错误（行号 + 原因）。 */
 export function parsePatch(input: string): { changes: PatchChange[]; error?: string } {
   const lines = input.replace(/\r\n/g, '\n').split('\n');
@@ -141,21 +154,15 @@ export function applyHunk(text: string, hunk: PatchHunk): { text?: string; error
 
   let start = 0;
   if (hunk.atEnd) {
-    // 锚定到文件末尾：从后往前找
+    // *** End of File 的语义就是"这段必须在文件末尾"。
+    // 以前只要目标在文件里任意位置出现过，就会把 start 定位到末尾去覆盖最后 N 行——
+    // 结果是把匹配内容复制到尾部、不报错、文件被悄悄改坏。这里只接受真正贴着末尾的匹配。
     const expected = target.length;
-    start = fileLines.length - expected;
-    if (start >= 0 && findFrom(0) === -1) {
-      // 精确比对末尾
-      for (let at = Math.max(0, fileLines.length - expected); at >= 0; at -= 1) {
-        if (findFrom(at) === at) { start = at; break; }
-        start = -1;
-      }
+    const atTail = fileLines.length - expected;
+    if (atTail < 0 || findLastOccurrence(fileLines, target) !== atTail) {
+      return { error: `*** End of File 锚定失败：这段内容不在文件末尾（文件 ${fileLines.length} 行，需要 ${expected} 行完全匹配最后几行）` };
     }
-    if (start < 0) {
-      const at = findLastOccurrence(fileLines, target);
-      if (at === -1) return { error: `没有找到 End of File 锚定的内容（期望 ${expected} 行）` };
-      start = at;
-    }
+    start = atTail;
   } else {
     if (hunk.context) {
       const anchor = fileLines.findIndex((line) => line.includes(hunk.context!));
