@@ -16,6 +16,13 @@ async function until(fn, label) {
   while (Date.now() < deadline) { if (await evaluate(fn)) return; await delay(60); }
   throw new Error(`Timed out: ${label}`);
 }
+/** 等主进程状态落地（DOM 之外的事实，比文本断言稳）。 */
+async function waitStore(check, label, timeout = 15000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) { if (check()) return; await delay(80); }
+  throw new Error('Timed out (store): ' + label);
+}
+
 async function click(selector) {
   assert.ok(await evaluate(s => { const el = document.querySelector(s); el?.click(); return !!el; }, selector), selector);
   await delay(150);
@@ -59,7 +66,7 @@ app.whenReady().then(async () => {
   const nodeExe = process.env.CAPABILITY_TEST_NODE;
   assert.ok(nodeExe, 'CAPABILITY_TEST_NODE');
   backend.start();
-  win = new BrowserWindow({ width: 1380, height: 940, show: false, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
+  win = new BrowserWindow({ width: 1380, height: 940, show: true, webPreferences: { preload: path.join(root, 'apps/desktop/dist-electron/preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
   backend.setWindow(win);
   win.webContents.on('console-message', (_e, entry) => { if (entry.level === 'error') errors.push(entry.message); });
   await win.loadFile(path.join(root, 'apps/desktop/dist/index.html'));
@@ -69,24 +76,41 @@ app.whenReady().then(async () => {
   await click('.chat__who');
   await click('#inspector-tab-details');
   await until(() => !!document.querySelector('.bot-capabilities'), 'capabilities in inspector');
-  await click('.bot-capabilities .btn');
+
+  // 从右侧详情进入「MCP 与 Skills」设置页
+  await click('[data-testid="bot-cap-add"]');
   await until(() => !!document.querySelector('.capabilities-settings'), 'capability settings');
-  await input('[aria-label="MCP JSON 配置"]', JSON.stringify({ mcpServers: { '项目搜索': { command: nodeExe, args: [server] } } }));
-  await evaluate(() => [...document.querySelectorAll('.capabilities-settings button')].find(b => b.textContent === '导入服务').click());
-  await until(() => !!document.querySelector('.capability-config'), 'imported MCP');
-  await evaluate(() => [...document.querySelectorAll('.capability-config button')].find(b => b.textContent === '测试连接').click());
-  await until(() => document.querySelector('.capability-config')?.textContent.includes('已连接'), 'MCP connected');
+
+  // 0.3.0 起导入是「添加」→ 内联表单 → 导入（不再有常驻的 textarea）
+  await click('[data-testid="cap-mcp-add"]');
+  await until(() => !!document.querySelector('[data-testid="cap-mcp-json"]'), 'mcp inline form');
+  await input('[data-testid="cap-mcp-json"]', JSON.stringify({ mcpServers: { '项目搜索': { command: nodeExe, args: [server] } } }));
+  await click('[data-testid="cap-mcp-submit"]');
+  await waitStore(() => backend.store.getSettings().mcpServers.length === 1, 'mcp imported via IPC');
+
+  // 分组默认收起：展开后再测试连接
+  await click('[data-testid="cap-group-mcp-local"]');
+  await until(() => !!document.querySelector('[data-testid^="cap-mcp-row-"]'), 'mcp row');
+  await evaluate(() => document.querySelector('[data-testid^="cap-mcp-test-"]').click());
+  await until(() => !!document.querySelector('[data-testid^="cap-mcp-row-"]')?.textContent.includes('已连接'), 'mcp connected');
+
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [source] });
-  await evaluate(() => [...document.querySelectorAll('.capabilities-settings button')].find(b => b.textContent === '导入技能目录').click());
-  await until(() => document.querySelector('.capabilities-settings')?.textContent.includes('周报整理'), 'skill imported via IPC');
+  await click('[data-testid="cap-skill-add"]');
+  await waitStore(() => backend.store.getSettings().skills.length === 1, 'skill imported via IPC');
+  await click('[data-testid="cap-group-skill-local"]');
+  await until(() => document.querySelector('.capabilities-settings')?.textContent.includes('周报整理'), 'skill listed');
   await capture('settings-dark');
+
   await click('[aria-label="关闭设置"]');
   await until(() => !document.querySelector('.settings-dialog'), 'settings closed');
-  await until(() => document.querySelectorAll('.bot-capabilities .switch button').length === 2, 'bindings available');
-  await click('.bot-capabilities .switch button');
-  await until(() => document.querySelector('.bot-capabilities .switch button')?.getAttribute('aria-checked') === 'true', 'MCP enabled');
-  await click('.bot-capabilities section:nth-child(2) .switch button');
-  await until(() => document.querySelector('.bot-capabilities section:nth-child(2) .switch button')?.getAttribute('aria-checked') === 'true', 'skill enabled');
+
+  // 回到 Bot 详情：两个开关各点一次
+  await until(() => document.querySelectorAll('[data-testid^="bot-cap-mcp-"], [data-testid^="bot-cap-skill-"]').length === 2, 'bindings available');
+  await evaluate(() => document.querySelector('[data-testid^="bot-cap-mcp-"]').click());
+  await until(() => document.querySelector('[data-testid^="bot-cap-mcp-"]')?.getAttribute('aria-checked') === 'true', 'MCP enabled');
+  await evaluate(() => document.querySelector('[data-testid^="bot-cap-skill-"]').click());
+  await until(() => document.querySelector('[data-testid^="bot-cap-skill-"]')?.getAttribute('aria-checked') === 'true', 'skill enabled');
+
   const saved = backend.store.getBot(bot.id);
   assert.equal(saved.mcpServerIds.length, 1); assert.equal(saved.skillIds.length, 1);
   const loaded = await backend.capabilities.call(saved, { id: 'load-demo', name: 'load_skill', arguments: { skillId: saved.skillIds[0] } });

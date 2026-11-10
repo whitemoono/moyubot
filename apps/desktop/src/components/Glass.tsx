@@ -64,12 +64,15 @@ export function Toggle({
   label,
   hint,
   disabled,
+  testId,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   label: string;
   hint?: string;
   disabled?: boolean;
+  /** 稳定的 E2E 钩子：UI 重排时不会跟着断。 */
+  testId?: string;
 }) {
   return (
     <label className={`switch ${disabled ? 'is-disabled' : ''}`.trim()}>
@@ -79,6 +82,7 @@ export function Toggle({
       </span>
       <button
         type="button"
+        data-testid={testId}
         role="switch"
         aria-checked={checked}
         disabled={disabled}

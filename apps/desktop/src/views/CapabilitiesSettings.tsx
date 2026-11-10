@@ -49,7 +49,7 @@ export function CapabilitiesSettings() {
   const CapGroup = ({ id, title, count, children }: { id: string; title: string; count: number; children: React.ReactNode }) => {
     const open = !!openGroups[id];
     return <div className="cap-group">
-      <button type="button" className="cap-group__head" aria-expanded={open} onClick={() => toggleGroup(id)}>
+      <button type="button" className="cap-group__head" data-testid={`cap-group-${id}`} aria-expanded={open} onClick={() => toggleGroup(id)}>
         <Icon name="chevron" size={13} className={open ? 'is-open' : ''} />
         <strong>{title}</strong>
         <span className="cap-group__count">{count}</span>
@@ -59,8 +59,8 @@ export function CapabilitiesSettings() {
   };
 
   /** 一行能力：名称 + 来源徽标 + 副标题（本机与云端合并展示）。 */
-  const CapRow = ({ name, badge, detail, error, children }: { name: string; badge: string; detail: string; error?: boolean; children?: React.ReactNode }) => (
-    <div className="cap-item">
+  const CapRow = ({ name, badge, detail, error, testid, children }: { name: string; badge: string; detail: string; error?: boolean; testid?: string; children?: React.ReactNode }) => (
+    <div className="cap-item" data-testid={testid}>
       <span className="cap-badge">{badge}</span>
       <div className="cap-item__main">
         <strong>{name}</strong>
@@ -76,7 +76,7 @@ export function CapabilitiesSettings() {
       <Panel className="settings-card cap-column">
         <div className="cap-column__head">
           <h3>MCP 服务</h3>
-          <Button size="sm" icon="plus" onClick={() => setShowMcpImport(true)}>添加</Button>
+          <Button size="sm" icon="plus" data-testid="cap-mcp-add" onClick={() => setShowMcpImport(true)}>添加</Button>
         </div>
 
         <div className="cap-list">
@@ -85,9 +85,9 @@ export function CapabilitiesSettings() {
             const detail = state?.state === 'connected' ? `已连接 · ${state.tools.length} 个工具`
               : state?.state === 'connecting' ? '连接中…'
               : state?.error ?? `${server.transport === 'stdio' ? server.command : server.url} · 未连接`;
-            return <CapRow key={server.id} name={server.name} badge={isCloud ? '云机' : '本机'} detail={detail} error={!!state?.error}>
+            return <CapRow key={server.id} testid={`cap-mcp-row-${server.id}`} name={server.name} badge={isCloud ? '云机' : '本机'} detail={detail} error={!!state?.error}>
               <div className="cap-item__actions">
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await moyu().testMcp(server.id); toast('MCP 连接成功'); })}>测试</Button>
+                <Button size="sm" variant="ghost" data-testid={`cap-mcp-test-${server.id}`} disabled={busy} onClick={() => void run(async () => { await moyu().testMcp(server.id); toast('MCP 连接成功'); })}>测试</Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('mcp', server.id))}>移除</Button>
               </div>
             </CapRow>;
@@ -101,11 +101,11 @@ export function CapabilitiesSettings() {
 
         {showMcpImport ? <div className="cap-inline-form">
           <Field label="mcpServers 配置" hint={isCloud ? '上传到云电脑 .moyu/shared/mcp.json' : 'env 和 headers 单独加密保存'}>
-            <textarea className="textarea mono" aria-label="MCP JSON 配置" spellCheck={false} rows={6} value={json} onChange={e => setJson(e.target.value)} placeholder={'{\n  "mcpServers": {\n    "my-service": { "url": "https://example.com/mcp" }\n  }\n}'} />
+            <textarea className="textarea mono" data-testid="cap-mcp-json" aria-label="MCP JSON 配置" spellCheck={false} rows={6} value={json} onChange={e => setJson(e.target.value)} placeholder={'{\n  "mcpServers": {\n    "my-service": { "url": "https://example.com/mcp" }\n  }\n}'} />
           </Field>
           <div className="cap-inline-form__actions">
             <Button size="sm" variant="ghost" onClick={() => setShowMcpImport(false)}>取消</Button>
-            <Button size="sm" icon="plus" disabled={busy || !json.trim()} onClick={() => void run(async () => {
+            <Button size="sm" icon="plus" data-testid="cap-mcp-submit" disabled={busy || !json.trim()} onClick={() => void run(async () => {
               const result = await moyu().importMcp(workspaceId, json);
               setJson(''); setShowMcpImport(false);
               toast(result.target === 'cloud' ? `已上传到云电脑：${result.names?.join('、')}` : '已导入 MCP，请测试连接并为 Bot 启用');
@@ -118,7 +118,7 @@ export function CapabilitiesSettings() {
       <Panel className="settings-card cap-column">
         <div className="cap-column__head">
           <h3>技能</h3>
-          <Button size="sm" icon="plus" disabled={busy} onClick={importSkill}>添加</Button>
+          <Button size="sm" icon="plus" data-testid="cap-skill-add" disabled={busy} onClick={importSkill}>添加</Button>
         </div>
 
         <div className="cap-list">

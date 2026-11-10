@@ -38,12 +38,12 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
   const toggle = (field: 'mcpServerIds' | 'skillIds', id: string, enabled: boolean) => onChange({ [field]: enabled ? [...new Set([...(bot[field] ?? []), id])] : (bot[field] ?? []).filter(x => x !== id) });
   return <div className={`bot-capabilities ${inspector ? 'bot-capabilities--inspector' : ''}`}>
     <section className={inspector ? 'inspector-section' : 'editor-block'}>
-      <div className="inspector-section__head"><h3>MCP 服务</h3>{inspector && isLocalWorkspace ? <Button size="sm" variant="ghost" icon="plus" onClick={() => openSettings('capabilities')}>添加</Button> : null}</div>
+      <div className="inspector-section__head"><h3>MCP 服务</h3>{inspector && isLocalWorkspace ? <Button size="sm" variant="ghost" icon="plus" data-testid="bot-cap-add" onClick={() => openSettings('capabilities')}>添加</Button> : null}</div>
       {isLocalWorkspace ? (!servers.length ? <p className="inspector-note">添加外部工具服务，再为这个 Bot 启用。</p> : servers.map(server => {
         const state = status.servers.find(s => s.id === server.id);
         const enabled = bot.mcpServerIds?.includes(server.id) ?? false;
         return <div className="capability-item" key={server.id}>
-          <Toggle label={server.name} hint={`${STATES[state?.state ?? 'disconnected']} · ${server.transport === 'stdio' ? '本机进程' : '远程服务'}${state?.state === 'connected' ? ` · ${state.tools.length} 个工具` : ''}`} checked={enabled} disabled={disabled} onChange={value => toggle('mcpServerIds', server.id, value)} />
+          <Toggle testId={`bot-cap-mcp-${server.id}`} label={server.name} hint={`${STATES[state?.state ?? 'disconnected']} · ${server.transport === 'stdio' ? '本机进程' : '远程服务'}${state?.state === 'connected' ? ` · ${state.tools.length} 个工具` : ''}`} checked={enabled} disabled={disabled} onChange={value => toggle('mcpServerIds', server.id, value)} />
           {state?.error ? <p className="capability-error">{state.error}</p> : null}
           {inspector && enabled && state?.state !== 'connected' ? <Button size="sm" variant="ghost" disabled={testing !== null} loading={testing === server.id} onClick={() => {
             setTesting(server.id);
@@ -61,11 +61,11 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
       </details> : null}
     </section>
     <section className={inspector ? 'inspector-section' : 'editor-block'}>
-      <div className="inspector-section__head"><h3>Skills</h3>{inspector && isLocalWorkspace ? <Button size="sm" variant="ghost" icon="plus" onClick={() => openSettings('capabilities')}>添加</Button> : null}</div>
+      <div className="inspector-section__head"><h3>Skills</h3>{inspector && isLocalWorkspace ? <Button size="sm" variant="ghost" icon="plus" data-testid="bot-cap-add" onClick={() => openSettings('capabilities')}>添加</Button> : null}</div>
       {isLocalWorkspace ? (!skills.length ? <p className="inspector-note">导入含 SKILL.md 的目录，让 Bot 按需使用技能。</p> : skills.map(skill => {
         const loaded = status.loadedSkills.find(s => s.botId === bot.id && s.skillId === skill.id);
         return <div className="capability-item" key={skill.id}>
-          <Toggle label={skill.name} hint={bot.skillIds?.includes(skill.id) ? loaded ? `最近加载 ${new Date(loaded.loadedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '已启用 · 按需加载' : '未启用'} checked={bot.skillIds?.includes(skill.id) ?? false} disabled={disabled} onChange={value => toggle('skillIds', skill.id, value)} />
+          <Toggle testId={`bot-cap-skill-${skill.id}`} label={skill.name} hint={bot.skillIds?.includes(skill.id) ? loaded ? `最近加载 ${new Date(loaded.loadedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '已启用 · 按需加载' : '未启用'} checked={bot.skillIds?.includes(skill.id) ?? false} disabled={disabled} onChange={value => toggle('skillIds', skill.id, value)} />
           <details><summary>技能说明</summary><p>{skill.description}</p></details>
         </div>;
       })) : cloudSkills.length ? null : <p className="inspector-note">云电脑还没有部署 Skills。</p>}
