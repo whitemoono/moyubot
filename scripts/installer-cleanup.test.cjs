@@ -6,7 +6,7 @@ const { spawnSync } = require('node:child_process');
 
 // Compile the real NSIS hooks with all paths redirected into an isolated fixture.
 // No installed app, registry entry or real user profile is changed by this test.
-test('NSIS uninstall deletes selected state, preserves unchecked/upgrade data and all project files', { skip: process.platform !== 'win32' }, () => {
+test('NSIS uninstall deletes selected state, preserves unchecked/upgrade data and all project files', { skip: process.platform !== 'win32' }, (t) => {
   const cache = path.join(process.env.LOCALAPPDATA, 'electron-builder', 'Cache');
   const findCompiler = (folder) => {
     if (!fs.existsSync(folder)) return;
