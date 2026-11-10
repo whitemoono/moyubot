@@ -424,6 +424,9 @@ export class LocalHost {
   /** botDir 锚点：子目录必须仍在本机工作区内（逃逸保护，非法子目录退回共享根）。 */
   private workspaceRoot(subDirectory?: string): string {
     if (!subDirectory) return this.settings.workspaceDir;
+    // Bot 的 dirName 允许是绝对路径：一个 Bot 一个根，这里就是它自己的工作目录。
+    // 越界保护不在这里，而在 safePath()（仍然只允许根内路径）。
+    if (path.isAbsolute(subDirectory)) return path.resolve(subDirectory);
     const root = path.resolve(this.settings.workspaceDir);
     const target = path.resolve(root, subDirectory);
     const relative = path.relative(root, target);

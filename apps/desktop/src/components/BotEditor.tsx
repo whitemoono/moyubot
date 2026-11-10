@@ -175,6 +175,15 @@ export function BotEditor({
           <Field label="系统提示词" hint="支持 {bot_name} 占位符">
             <textarea className="textarea" rows={6} value={draft.systemPrompt} onChange={(event) => patch('systemPrompt', event.target.value)} />
           </Field>
+          <Field label="工作目录" hint="留空 = 默认（本机工作区 / 该 Bot 名）。填绝对路径（如 D:\\dev\\moyubot）就让这个 Bot 在那个目录里干活；想让几个 Bot 共用一棵树，就各自填同一个路径。">
+            <input
+              className="input mono"
+              data-testid="bot-working-dir"
+              value={draft.dirName ?? ''}
+              placeholder="默认：<工作区>/<Bot 名>"
+              onChange={(event) => patch('dirName', event.target.value.trim() ? event.target.value : undefined)}
+            />
+          </Field>
           <Field label="执行权限">
             <Segmented<ApprovalPolicy>
               value={draft.approvalPolicy}

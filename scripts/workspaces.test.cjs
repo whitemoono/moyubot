@@ -224,3 +224,25 @@ test('cloud commands and relative file tools use the selected remote directory a
   assert.equal((await cloud.exec('pwd')).stdout, '/data/another');
   assert.equal(requests.at(-1).cwd, '/data/another');
 });
+
+test('Bot 的工作目录可以直接填绝对路径（一个 Bot 一个根）', async (t) => {
+  const directory = temporary(t);
+  const botRoot = path.join(directory, 'repo');
+  fs.mkdirSync(botRoot, { recursive: true });
+  const store = openStore(path.join(directory, 'data'));
+  const bot = { ...store.getSettings().bots[0], dirName: botRoot };
+  store.updateSettings({ bots: [bot] });
+  const host = new LocalHost({ ...store.getSettings().cloud, workspaceDir: path.join(directory, 'workspace') });
+  t.after(() => host.dispose());
+
+  const dirName = store.botDirName(bot.id);
+  assert.equal(dirName, botRoot, '绝对路径应原样作为该 Bot 的根');
+
+  const cwd = await host.exec(process.platform === 'win32' ? '(Get-Location).Path' : 'pwd', { subDirectory: dirName });
+  assert.equal(fs.realpathSync.native(cwd.stdout.trim()), fs.realpathSync.native(botRoot), 'exec 应在这个根里');
+
+  await host.writeText('笔记.txt', '你好', dirName);
+  assert.equal(fs.readFileSync(path.join(botRoot, '笔记.txt'), 'utf8'), '你好', '文件应落在该根');
+
+  await assert.rejects(() => host.readText('../外面.txt', dirName), /工作区|路径/, '越界仍应被拒绝');
+});
