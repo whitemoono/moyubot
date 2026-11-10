@@ -30,10 +30,12 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Typecheck
-        run: pnpm -r typecheck
+      # @moyu/core 的 types 指向 dist/index.d.ts，干净 checkout 上必须先构建，
+      # 否则 apps/desktop 的类型检查会因为找不到类型声明而失败。
       - name: Build core
         run: pnpm --filter @moyu/core build
+      - name: Typecheck
+        run: pnpm -r typecheck
       - name: Unit tests (node layer)
         run: node scripts/test-all.mjs --layer=node
       - name: Code health ratchet
