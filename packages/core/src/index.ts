@@ -6,6 +6,7 @@ export { DiagnosticJournal, redactDiagnostic } from './diagnostics';
 export type { DiagnosticEntry } from './diagnostics';
 export { UsageLedger, trackedChat, normalizeUsage, modelUsageKey } from './usage';
 export * from './util';
+export { assertPublicHttpsUrl, assertPublicUrl, fetchPublicText } from './net-guard';
 export { Store, PlainSecretBox, defaultSettings } from './store';
 export type { SecretBox, ConversationSummary, SettingsPatch } from './store';
 export { CloudHost, LocalHost, MockDriver, InstaBoxDriver, E2BDriver, resolveCloudState } from './cloud';

@@ -4,6 +4,7 @@ import type { Bot, CloudStatus, ProjectState, Schedule, ScheduleInput, ScheduleU
 import type { ComputerHost } from './cloud';
 import type { GeneratedImage } from './providers';
 import { newId, pruneOutput, summarize } from './util';
+import { fetchPublicText } from './net-guard';
 
 export interface ToolSchema {
   name: string;
@@ -1135,14 +1136,18 @@ export async function runTool(call: ToolCall, ctx: ToolContext): Promise<ToolRes
       }
       case 'web_fetch': {
         const url = requireString(args, 'url');
-        if (!/^https:\/\//i.test(url)) return finish({ ok: false, summary: '只允许 https:// 地址' });
-        const host = new URL(url).hostname;
-        if (/^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|\[::1\])/i.test(host)) {
-          return finish({ ok: false, summary: '拒绝访问内网地址' });
+        // 统一守卫：https、禁内网/元数据地址（含 DNS 解析结果）、手动跟随重定向、限字节与时长。
+        let fetched;
+        try {
+          fetched = await fetchPublicText((input, init) => fetch(input, init), url, {
+            maxBytes: 200_000, timeoutMs: 20_000, signal: ctx.signal, headers: { 'user-agent': 'MoyuBot/0.1' },
+          });
+        } catch (error) {
+          return finish({ ok: false, summary: (error as Error).message || '抓取被拒绝' });
         }
-        const res = await fetch(url, { signal: ctx.signal, headers: { 'user-agent': 'MoyuBot/0.1' } });
-        if (!res.ok) return finish({ ok: false, summary: `抓取失败：HTTP ${res.status}` });
-        const html = (await res.text()).slice(0, 200_000);
+        if (!fetched.ok) return finish({ ok: false, summary: `抓取失败：HTTP ${fetched.status}` });
+        const host = new URL(fetched.url).hostname;
+        const html = fetched.text;
         const text = html
           .replace(/<script[\s\S]*?<\/script>/gi, ' ')
           .replace(/<style[\s\S]*?<\/style>/gi, ' ')

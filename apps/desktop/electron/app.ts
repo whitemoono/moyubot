@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, BUILTIN_BOT_PRESETS, embedTexts, exportBotToTemplate, normalizeRemoteDirectory, resolveArtifact, templateToBot, validateBotTemplate } from '@moyu/core';
+import { AgentRuntime, BUILTIN_BOT_PRESETS, CloudHost, DesktopSessions, DiagnosticJournal, embedTexts, exportBotToTemplate, fetchPublicText, LocalHost, normalizeRemoteDirectory, resolveArtifact, ScheduleRunner, Store, templateToBot, TOOL_SCHEMAS, validateBotTemplate } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { PtyManager } from './pty';
@@ -548,10 +548,13 @@ export class MoyuApp {
       return this.store.removeTemplateSubmission(handle);
     });
     handle('moyu:market:remote', async (_event, url: string) => {
-      if (typeof url !== 'string' || !/^https:\/\//i.test(url)) throw new Error('模板源需要 https 地址');
-      const response = await net.fetch(url, { method: 'GET' });
-      if (!response.ok) throw new Error(`模板源请求失败（${response.status}）`);
-      const payload: unknown = await response.json();
+      if (typeof url !== 'string') throw new Error('模板源需要 https 地址');
+      // 渲染层给的地址交给主进程直连，必须与 web_fetch 用同一套守卫：
+      // https、禁内网与元数据地址（含 DNS 解析结果）、手动跟随重定向、限 512 KB / 10 秒。
+      const fetched = await fetchPublicText((input: string, init?: RequestInit) => net.fetch(input, init), url, { maxBytes: 512 * 1024, timeoutMs: 10_000 });
+      if (!fetched.ok) throw new Error(`模板源请求失败（${fetched.status}）`);
+      let payload: unknown;
+      try { payload = JSON.parse(fetched.text); } catch { throw new Error('模板源不是合法 JSON'); }
       // 目标与官网索引一致：{ templates: BotTemplate[] }
       const list = (payload as { templates?: unknown[] })?.templates;
       if (!Array.isArray(list)) throw new Error('模板源格式无效');
