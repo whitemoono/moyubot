@@ -107,9 +107,9 @@ function createWindow(): BrowserWindow {
     console.error(`[moyu] page failed to load: ${code} ${desc} ${url}`);
     if (!win.isDestroyed() && !win.isVisible()) win.show();
   });
-  win.webContents.on('did-finish-load', () => {
-    if (!win.isDestroyed() && !win.isVisible()) win.show();
-  });
+  // 注意：不要在 did-finish-load 时 show 窗口——HTML 此时已解析但 React 首帧还没绘制，
+  // 提前 show 会在深色背景(#111111)上露出尚未渲染的内容，造成"短暂黑屏+隐约图标"。
+  // 窗口只由 ready-to-show（首帧已绘制）及 6s 兜底负责显示。
 
   if (isDev) {
     void win.loadURL(DEV_URL);
