@@ -54,8 +54,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
             </div>;
           };
           return <>
-            {own.length ? <details className="capability-cloud-block capability-cloud-block--fold" data-testid={`cap-local-own`}><summary className="capability-cloud-title">自有 · 已启用（{own.length}）</summary><div className="capability-cloud-group">{own.map(renderRow)}</div></details> : null}
-            {others.length ? <details className="capability-cloud-block capability-cloud-block--fold" data-testid={`cap-local-others`}><summary className="capability-cloud-title">其它 · 可添加（{others.length}）</summary><div className="capability-cloud-group">{others.map(renderRow)}</div></details> : null}
+            {own.length ? <details className="cap-card" data-testid={`cap-local-own`}><summary className="cap-card__head"><span>自有 · 已启用</span><span className="cap-card__count">{own.length}</span></summary><div className="cap-card__body">{own.map(renderRow)}</div></details> : null}
+            {others.length ? <details className="cap-card" data-testid={`cap-local-others`}><summary className="cap-card__head"><span>其它 · 可添加</span><span className="cap-card__count">{others.length}</span></summary><div className="cap-card__body">{others.map(renderRow)}</div></details> : null}
           </>;
         })()}
       </>) : cloudServers.length ? null : <p className="inspector-note">云电脑还没有部署 MCP 服务。</p>}
@@ -85,8 +85,8 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
             </div>;
           };
           return <>
-            {own.length ? <details className="capability-cloud-block capability-cloud-block--fold" data-testid={`cap-local-own`}><summary className="capability-cloud-title">自有 · 已启用（{own.length}）</summary><div className="capability-cloud-group">{own.map(renderRow)}</div></details> : null}
-            {others.length ? <details className="capability-cloud-block capability-cloud-block--fold" data-testid={`cap-local-others`}><summary className="capability-cloud-title">其它 · 可添加（{others.length}）</summary><div className="capability-cloud-group">{others.map(renderRow)}</div></details> : null}
+            {own.length ? <details className="cap-card" data-testid={`cap-local-own`}><summary className="cap-card__head"><span>自有 · 已启用</span><span className="cap-card__count">{own.length}</span></summary><div className="cap-card__body">{own.map(renderRow)}</div></details> : null}
+            {others.length ? <details className="cap-card" data-testid={`cap-local-others`}><summary className="cap-card__head"><span>其它 · 可添加</span><span className="cap-card__count">{others.length}</span></summary><div className="cap-card__body">{others.map(renderRow)}</div></details> : null}
           </>;
         })()}
       </>) : cloudSkills.length ? null : <p className="inspector-note">云电脑还没有部署 Skills。</p>}
