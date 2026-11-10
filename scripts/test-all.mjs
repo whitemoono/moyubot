@@ -178,7 +178,16 @@ if (layers.size === 1) {
   for (const layer of ['node', 'electron']) {
     const group = runnable.filter((entry) => entry.layer === layer);
     if (!group.length) continue;
-    results.push(...(await runPool(group, layer === 'electron' ? 1 : args.jobs)));
+    if (layer === 'node') {
+      results.push(...(await runPool(group, args.jobs)));
+      continue;
+    }
+    // Electron 逐个跑，且每个之间留点心跳间隔：上一个 Chromium 还没退干净时，
+    // 下一个窗口的首绘会被拖住（表现为等 .chat__who 超时）。
+    for (const entry of group) {
+      results.push(...(await runPool([entry], 1)));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
   }
 }
 await retryFailures(results);
