@@ -781,6 +781,12 @@ button.group-member:hover, .group-member[aria-pressed="true"] { background: var(
 .capability-cloud-list::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
 .capability-cloud-title { font-size: 10px; color: var(--text-faint); margin-bottom: 2px; }
 .capability-cloud-badge { display: inline-flex; align-items: center; flex: 0 0 auto; height: 18px; padding: 0 6px; border-radius: 999px; font-size: 10px; color: var(--text); background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.capability-cloud-group { display: grid; gap: 2px; margin-top: 8px; }
+.capability-cloud-group .capability-cloud-title { display: block; padding: 4px 10px; background: color-mix(in srgb, var(--selected) 30%, transparent); border: 1px dashed var(--line-strong); border-radius: 10px; }
+.capability-item__main { flex: 1; min-width: 0; }
+.capability-cloud-group .capability-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+.capability-cloud-group .capability-item > .capability-item__main { flex: 1; min-width: 0; }
+.capability-cloud-group .capability-item details { flex: 0 0 auto; }
 .capability-cloud-block .capability-item { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
 .capability-cloud-block .capability-item > div { min-width: 0; }
 .capability-cloud-block .capability-item strong { display: block; font-size: 12px; font-weight: 550; }

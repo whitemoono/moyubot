@@ -23,6 +23,7 @@ import type {
   ScheduleUpdate,
   TelegramSettings,
   UiSettings,
+  SkillConfig,
 } from './types';
 import { DEFAULT_SYSTEM_PROMPT } from './types';
 import { newId, normalizeRemoteDirectory, safeJsonParse, sanitizeDirName } from './util';
@@ -265,6 +266,8 @@ export class Store {
     }
     if (!this.settings.workspaces.some((item) => item.id === this.settings.activeWorkspaceId)) this.settings.activeWorkspaceId = this.settings.workspaces[0]?.id;
     this.persistSettings();
+    // 迁移存量本地技能到各 Bot 家目录（幂等；不破坏已绑定）。
+    this.migrateLocalSkills();
     // 历史索引派生库需在 loadConversations 之前就绪（后者会用它回填）
     this.historySearch = new HistorySearch(path.join(dataDir, 'history.db'));
     this.loadConversations();
@@ -466,6 +469,41 @@ export class Store {
     this.settings = { ...this.settings, botMarket: next };
     this.persistSettings();
     return next;
+  }
+
+  /** 迁移存量本地技能：把仍在旧共享库 `dataDir/skills/<id>` 的技能，复制到拥有它的 Bot 的家目录 `local-artifacts/<botDir>/.moyu/skills/<name>`，
+   *  并更新 `SkillConfig.directory`。复制而非移动：新位置就绪后指向它，旧目录保留以免误删。幂等。 */
+  private migrateLocalSkills(): void {
+    const oldRoot = path.join(this.dataDir, 'skills');
+    if (!fs.existsSync(oldRoot)) return;
+    const localDir = path.join(this.dataDir, 'local-artifacts');
+    let changed = false;
+    const migrated: SkillConfig[] = (this.settings.skills ?? []).map((skill) => {
+      if (skill.workspaceId !== 'workspace_local') return skill;
+      // 只迁移仍在旧共享库目录下的技能（已在新位置或第三方位置的跳过）。
+      const oldDir = path.join(oldRoot, skill.id);
+      if (skill.directory !== oldDir && !fs.existsSync(oldDir)) return skill;
+      // 找第一个绑定该技能的 Bot 作为归属；无人绑定时保留共享库。
+      const owner = this.settings.bots.find((bot) => (bot.skillIds ?? []).includes(skill.id) && (bot.workspaceId ?? 'workspace_cloud') === 'workspace_local');
+      if (!owner) return skill;
+      const botDir = this.botDirName(owner.id);
+      const target = path.join(localDir, botDir, '.moyu', 'skills', skill.name);
+      try {
+        if (!fs.existsSync(target)) {
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          fs.cpSync(skill.directory, target, { recursive: true, dereference: false });
+        }
+        if (!fs.existsSync(path.join(target, 'SKILL.md'))) return skill; // 校验迁移完整
+        changed = true;
+        return { ...skill, directory: target };
+      } catch {
+        return skill; // 迁移失败保留原位置
+      }
+    });
+    if (changed) {
+      this.settings = { ...this.settings, skills: migrated };
+      this.persistSettings();
+    }
   }
 
   getProvider(providerId: string) {

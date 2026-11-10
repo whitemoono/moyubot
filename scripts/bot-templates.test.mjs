@@ -149,3 +149,31 @@ test('Store：我上传的模板记录（去重 / 移除 / 持久化）', () => 
   assert.equal(store2.botMarket().submissions.length, 1);
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* sqlite 可能占用，忽略清理失败 */ }
 });
+
+test('迁移：存量本地技能归档到拥有它的 Bot 家目录', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-migrate-'));
+  // 构造一个含“旧共享库技能 + 绑定 Bot”的 settings.json，触发构造函数迁移。
+  const legacyId = 'skill_legacy123';
+  const legacyDir = path.join(dir, 'skills', legacyId);
+  fs.mkdirSync(legacyDir, { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, 'SKILL.md'), '---\nname: test-skill\ndescription: 迁移测试\n---\n正文\n');
+  const data = {
+    version: 1, providers: [], bots: [{ id: 'bot_a', name: 'A', handle: 'a', avatar: { from: '#000', to: '#000', glyph: 'A' }, providerId: '', model: '', temperature: 0.7, systemPrompt: 'x', approvalPolicy: 'ask', tools: [], image: { aspect: '1:1' }, wakeOnTask: true, createdAt: 1, updatedAt: 1, workspaceId: 'workspace_local', skillIds: [legacyId] }],
+    cloud: { driver: 'mock', baseUrl: '', machineName: 'm', templateId: 't', autoSuspendAfterSeconds: 0, idleSuspendMinutes: 3, workspaceDir: dir, remoteWorkspaceDir: '/data' },
+    telegram: { enabled: false, token: '', allowedIds: [] },
+    ui: { accent: '#fff', appearance: 'dark', reduceMotion: false, density: 'comfortable', glassIntensity: 0.6 },
+    workspaces: [{ id: 'workspace_local', name: '本地', kind: 'local', computerName: '本机', directory: path.join(dir, 'local-workspace'), createdAt: 1 }],
+    activeWorkspaceId: 'workspace_local',
+    skills: [{ id: legacyId, workspaceId: 'workspace_local', name: 'test-skill', description: 'd', directory: legacyDir }],
+  };
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(data));
+  const store = new Store(dir);
+  const migrated = store.getSettings().skills.find((s) => s.id === legacyId);
+  assert.ok(migrated, '技能仍在清单中（id 未变）');
+  assert.ok(!migrated.directory.startsWith(path.join(dir, 'skills')), '目录已迁出旧共享库');
+  assert.match(migrated.directory, /\\\.moyu\\skills|\.moyu[\\/]skills/);
+  assert.ok(fs.existsSync(path.join(migrated.directory, 'SKILL.md')), '新位置有 SKILL.md');
+  const bot = store.getSettings().bots[0];
+  assert.ok((bot.skillIds ?? []).includes(legacyId), '绑定 id 保持不变');
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+});

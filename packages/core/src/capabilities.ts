@@ -290,7 +290,10 @@ export class CapabilityManager {
       return { target: 'cloud', name };
     }
     const id = newId('skill');
-    const directory = path.join(this.store.dataDir, 'skills', id);
+    // 本地工作区：默认归档到「发起安装的 Bot」的家目录 .moyu/skills/<name>（与云电脑的"自有"语义一致）；
+    // 未指定 botDirName（如设置页直接导入）时，落入共享技能库 dataDir/skills/<id>。
+    const ownedDir = options?.botDirName ? path.join(this.store.dataDir, 'local-artifacts', options.botDirName, '.moyu', 'skills', name) : undefined;
+    const directory = ownedDir ?? path.join(this.store.dataDir, 'skills', id);
     const destinationWithinSource = path.relative(root, directory);
     if (!destinationWithinSource.startsWith('..') && !path.isAbsolute(destinationWithinSource)) throw new Error('请选择独立的技能目录，不能选择包含技能库的父目录');
     fs.cpSync(root, directory, { recursive: true, dereference: false });

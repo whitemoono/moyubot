@@ -39,6 +39,8 @@ export function CapabilitiesSettings() {
   const cloudMcp = status.cloudServers ?? [];
   const cloudSkill = status.cloudSkills ?? [];
   const isCloud = workspaceId === 'workspace_cloud';
+  /** 绑定到某个技能/MCP 的本地 Bot 数（按引用 id 统计）。 */
+  const boundBots = (kind: 'skill' | 'mcp', id: string) => settings.bots.filter(b => (kind === 'skill' ? b.skillIds : b.mcpServerIds)?.includes(id)).map(b => b.name);
   const importSkill = () => void run(async () => {
     const result = await moyu().importSkill(workspaceId);
     if (!result) return;
@@ -82,10 +84,13 @@ export function CapabilitiesSettings() {
         <div className="cap-list">
           {servers.length ? <CapGroup id="mcp-local" title={isCloud ? '工作区配置' : '本机配置'} count={servers.length}>{servers.map(server => {
             const state = status.servers.find(s => s.id === server.id);
-            const detail = state?.state === 'connected' ? `已连接 · ${state.tools.length} 个工具`
+            const base = state?.state === 'connected' ? `已连接 · ${state.tools.length} 个工具`
               : state?.state === 'connecting' ? '连接中…'
               : state?.error ?? `${server.transport === 'stdio' ? server.command : server.url} · 未连接`;
-            return <CapRow key={server.id} testid={`cap-mcp-row-${server.id}`} name={server.name} badge={isCloud ? '云机' : '本机'} detail={detail} error={!!state?.error}>
+            const users = boundBots('mcp', server.id);
+            const badge = isCloud ? '云机' : (users.length ? `绑定 ${users.length} 个` : '本机');
+            const detail = users.length ? `${base} · 已绑定：${users.join('、')}` : base;
+            return <CapRow key={server.id} testid={`cap-mcp-row-${server.id}`} name={server.name} badge={badge} detail={detail} error={!!state?.error}>
               <div className="cap-item__actions">
                 <Button size="sm" variant="ghost" data-testid={`cap-mcp-test-${server.id}`} disabled={busy} onClick={() => void run(async () => { await moyu().testMcp(server.id); toast('MCP 连接成功'); })}>测试</Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('mcp', server.id))}>移除</Button>
@@ -122,11 +127,16 @@ export function CapabilitiesSettings() {
         </div>
 
         <div className="cap-list">
-          {skills.length ? <CapGroup id="skill-local" title={isCloud ? '工作区配置' : '本地技能库'} count={skills.length}>{skills.map(skill => <CapRow key={skill.id} name={skill.name} badge={isCloud ? '云机' : '本机'} detail={skill.description}>
-            <div className="cap-item__actions">
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button>
-            </div>
-          </CapRow>)}</CapGroup> : null}
+          {skills.length ? <CapGroup id="skill-local" title={isCloud ? '工作区配置' : '本地技能库'} count={skills.length}>{skills.map(skill => {
+            const users = boundBots('skill', skill.id);
+            const badge = users.length ? `绑定 ${users.length} 个` : isCloud ? '云机' : '本机';
+            const detail = users.length ? `${skill.description} · 已绑定：${users.join('、')}` : skill.description;
+            return <CapRow key={skill.id} name={skill.name} badge={badge} detail={detail}>
+              <div className="cap-item__actions">
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => moyu().removeCapability('skill', skill.id))}>移除</Button>
+              </div>
+            </CapRow>;
+          })}</CapGroup> : null}
           {cloudSkill.some(s => !s.botId) ? <CapGroup id="skill-shared" title="云电脑 · 共享" count={cloudSkill.filter(s => !s.botId).length}>{cloudSkill.filter(s => !s.botId).map(skill => <CapRow key={skill.id} name={skill.name} badge="共享" detail={skill.source} />)}</CapGroup> : null}
           {cloudSkill.some(s => s.botId) ? <CapGroup id="skill-own" title="云电脑 · 各 Bot 自有" count={cloudSkill.filter(s => s.botId).length}>{cloudSkill.filter(s => s.botId).map(skill => <CapRow key={skill.id} name={skill.name} badge="自有" detail={skill.source} />)}</CapGroup> : null}
           {!skills.length && !cloudSkill.length ? <p className="cap-hint">还没有技能。点右上角「添加」上传含 SKILL.md 的文件夹。</p> : null}

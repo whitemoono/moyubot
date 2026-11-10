@@ -731,8 +731,8 @@ ${memoryBlock}${projectBlock}${scheduleGuide}${this.capabilities?.catalog(bot) ?
             installMcp: async (json) => {
               if (!this.capabilities) throw new Error('能力管理不可用');
               const workspaceId = bot.workspaceId ?? 'workspace_cloud';
-              // Bot 自己安装的 MCP 部署到该 Bot 的云端 .moyu/mcp.json，与其它 Bot 及云机自带 claude 配置隔离。
-              const botDirName = workspaceId === 'workspace_cloud' ? this.store.botDirName(bot.id) : undefined;
+              // Bot 自己安装的 MCP 归档到该 Bot 的 .moyu/mcp.json（云/本地一致），与其它 Bot 隔离。
+              const botDirName = this.store.botDirName(bot.id);
               const before = new Set((this.store.settings.mcpServers ?? []).map((item) => item.id));
               const result = await this.capabilities.importMcp(workspaceId, json, { botDirName });
               if (result.target === 'cloud') return { target: 'cloud' as const, names: result.names };
