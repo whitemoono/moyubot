@@ -46,6 +46,8 @@ artifact:open · open-external · win
 
 主进程 → 渲染层只有两个单向事件：`moyu:event`（Agent 增量、工具开始/结束、审批请求）与 `moyu:cloud`（云状态变化）。
 
+> **开发提示**：`pnpm dev`（`apps/desktop/scripts/dev.mjs`）只起 Vite 热加载**渲染层**并启动 Electron，它**不会重新编译主进程**。改了 `apps/desktop/electron/*.ts`（IPC handler、`app.ts`、`preload.ts`）后，`dist-electron` 仍是旧产物，改动不会生效——必须先 `pnpm --filter @moyu/desktop exec tsc -p tsconfig.electron.json` 重编译主进程，再重启。
+
 ## Agent 循环（`agent.ts`）
 
 一次 `send()` 的流程：

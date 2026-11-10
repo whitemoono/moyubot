@@ -25,7 +25,7 @@ import type { BotActivity, ConversationActivities } from './lib/bot-activity';
 import { appendReplyProgress } from './lib/reply-flow';
 
 export type View = 'chat' | 'bots' | 'cloud' | 'tasks' | 'settings';
-export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'memories' | 'cloud' | 'usage' | 'feedback' | 'capabilities' | 'plugins';
+export type SettingsSection = 'profile' | 'providers' | 'appearance' | 'about' | 'bots' | 'memories' | 'cloud' | 'usage' | 'feedback' | 'capabilities' | 'plugins' | 'market';
 
 export interface Toast {
   id: string;

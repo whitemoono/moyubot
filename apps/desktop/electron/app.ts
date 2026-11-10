@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, app, clipboard, dialog, ipcMain, safeStorage, shell, net } from 'electron';
-import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, embedTexts, normalizeRemoteDirectory, resolveArtifact } from '@moyu/core';
+import { AgentRuntime, CloudHost, DesktopSessions, DiagnosticJournal, LocalHost, ScheduleRunner, Store, TOOL_SCHEMAS, BUILTIN_BOT_PRESETS, embedTexts, exportBotToTemplate, normalizeRemoteDirectory, resolveArtifact, templateToBot, validateBotTemplate } from '@moyu/core';
 import { AppUpdater } from './update-installer';
 import { MobileSync } from './mobile-sync';
 import { PtyManager } from './pty';
@@ -34,6 +34,9 @@ import type {
   AskRequest,
   AskDecision,
   UsageQuery,
+  BotMarketSubmission,
+  BotMarketState,
+  BotTemplate,
 } from '@moyu/core';
 import { createChatProvider } from '@moyu/core';
 import { CapabilityManager } from '@moyu/core';
@@ -515,6 +518,44 @@ export class MoyuApp {
 
     handle('moyu:bot:delete', (_event, botId: string) => {
       this.store.removeBot(botId);
+    });
+
+    // —— Bot 模板市场（内置预设 + 导入/导出）——
+    handle('moyu:market:presets', () => BUILTIN_BOT_PRESETS);
+    handle('moyu:market:import', (event, template: unknown, workspaceId?: string) => {
+      desktopCaller(event);
+      const valid = validateBotTemplate(template);
+      // 导入到指定工作区（本地/云都支持）；缺省跟随当前激活工作区。
+      const target = workspaceId && this.store.getSettings().workspaces.some((w) => w.id === workspaceId) ? workspaceId : this.store.getSettings().activeWorkspaceId ?? 'workspace_cloud';
+      const bot = templateToBot(valid, { workspaceId: target });
+      // upsertBot 会做 mcp/skill 归属校验；预设无引用，这里直接落库。
+      return this.store.upsertBot(bot);
+    });
+    handle('moyu:market:export', (event, botId: string) => {
+      desktopCaller(event);
+      const bot = this.store.getBot(botId);
+      if (!bot) throw new Error('Bot 不存在');
+      return { template: exportBotToTemplate(bot) };
+    });
+    handle('moyu:market:submissions', () => this.store.botMarket());
+    handle('moyu:market:submit', (event, submission: BotMarketSubmission) => {
+      desktopCaller(event);
+      if (!submission || typeof submission.handle !== 'string' || typeof submission.name !== 'string' || /[^a-zA-Z0-9_-]/.test(submission.handle)) throw new Error('模板提交信息无效');
+      return this.store.recordTemplateSubmission(submission);
+    });
+    handle('moyu:market:unsubmit', (event, handle: string) => {
+      desktopCaller(event);
+      return this.store.removeTemplateSubmission(handle);
+    });
+    handle('moyu:market:remote', async (_event, url: string) => {
+      if (typeof url !== 'string' || !/^https:\/\//i.test(url)) throw new Error('模板源需要 https 地址');
+      const response = await net.fetch(url, { method: 'GET' });
+      if (!response.ok) throw new Error(`模板源请求失败（${response.status}）`);
+      const payload: unknown = await response.json();
+      // 目标与官网索引一致：{ templates: BotTemplate[] }
+      const list = (payload as { templates?: unknown[] })?.templates;
+      if (!Array.isArray(list)) throw new Error('模板源格式无效');
+      return list.map((t) => validateBotTemplate(t));
     });
 
     handle('moyu:send', async (_event, input: SendMessageInput): Promise<SendMessageResult> => {

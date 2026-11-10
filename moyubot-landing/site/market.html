@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoyuBot · Bot 市场</title>
+  <meta name="description" content="浏览 MoyuBot 官方 Bot 模板：面向项目开发的研发助手预设。导入到你的工作区即可使用，模板不携带任何密钥。来自你配置的模型供应商与 Key 计费。" />
+  <link rel="icon" href="logo.webp?v=2" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&family=Noto+Sans+SC:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --page: #f4f7fe; --page-deep: #edf2fc; --ink: #0f172a; --ink-2: #1e293b; --ink-soft: #475569; --ink-mute: #64748b;
+      --blue: #3b6cf5; --blue-2: #608dff; --blue-deep: #1d4ed8; --indigo: #6366f1; --emerald: #10b981; --amber: #f59e0b;
+      --line: rgba(100,130,200,.16); --line-strong: rgba(100,130,200,.28);
+      --glass: rgba(255,255,255,.72); --glass-strong: rgba(255,255,255,.88); --glass-border: rgba(255,255,255,.92);
+      --shadow: 0 1px 0 rgba(255,255,255,.95) inset, 0 20px 50px -18px rgba(29,78,216,.14), 0 4px 14px -4px rgba(15,23,42,.05);
+      --ease: cubic-bezier(.16,1,.3,1); --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; border: none; background: none; }
+    :focus-visible { outline: 3px solid var(--blue-2); outline-offset: 3px; border-radius: 10px; }
+
+    .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; background:
+      radial-gradient(900px 600px at 12% 8%, rgba(59,108,245,.10), transparent 65%),
+      radial-gradient(850px 650px at 88% 14%, rgba(139,92,246,.10), transparent 65%),
+      linear-gradient(180deg,#f6f9ff 0%,#eef3fc 50%,#f5f8ff 100%); }
+
+    .nav { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 20px; padding: 14px 28px; max-width: 1200px; margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .brand img { width: 28px; height: 28px; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .nav-link { font-size: 13.5px; color: var(--ink-soft); font-weight: 600; }
+    .nav-link:hover { color: var(--ink); }
+    .nav-cta { background: linear-gradient(180deg,#4784ff,#3b6cf5); color: #fff!important; padding: 8px 16px; border-radius: 12px; font-weight: 700; font-size: 13.5px; box-shadow: 0 8px 18px -6px rgba(59,108,245,.65); }
+
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 28px 80px; }
+    .hero { max-width: 760px; margin-bottom: 36px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--blue-deep); background: rgba(96,141,255,.12); border: 1px solid rgba(96,141,255,.28); padding: 5px 12px; border-radius: 999px; margin-bottom: 18px; }
+    h1 { font-size: 44px; line-height: 1.1; font-weight: 900; letter-spacing: -.02em; }
+    h1 em { font-style: normal; background: linear-gradient(90deg,#3b6cf5,#8b5cf6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero p { margin-top: 16px; font-size: 17px; line-height: 1.7; color: var(--ink-soft); }
+    .hero .note { margin-top: 14px; font-size: 13px; color: var(--ink-mute); }
+
+    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+    .search { display: flex; align-items: center; gap: 8px; background: var(--glass); border: 1px solid var(--line); border-radius: 12px; padding: 9px 14px; flex: 1; min-width: 220px; box-shadow: var(--shadow); }
+    .search input { border: none; outline: none; background: none; font: inherit; font-size: 14px; width: 100%; color: var(--ink); }
+    .search svg { width: 15px; height: 15px; color: var(--ink-mute); }
+    .count { font-size: 13px; color: var(--ink-mute); font-weight: 500; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
+
+    .card { position: relative; display: flex; flex-direction: column; gap: 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 18px; padding: 20px; box-shadow: var(--shadow); overflow: hidden; }
+    .card .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .card h2 { font-size: 17px; font-weight: 800; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tag { font-size: 11px; font-weight: 700; color: var(--blue-deep); background: rgba(96,141,255,.12); border: 1px solid rgba(96,141,255,.24); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .desc { font-size: 13.5px; line-height: 1.6; color: var(--ink-soft); flex: 1; min-height: 62px; }
+    .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-mute); font-family: var(--mono); }
+    .card .author { margin-left: auto; color: var(--ink-soft); font-size: 12px; }
+    .foot { display: flex; align-items: center; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 11px; }
+    .btn-primary { background: linear-gradient(180deg,#4784ff,#3b6cf5); color: #fff; box-shadow: 0 8px 18px -6px rgba(59,108,245,.5); }
+    .btn-outline { border: 1px solid var(--line-strong); color: var(--ink-2); background: var(--glass-strong); }
+    .empty { grid-column: 1 / -1; text-align: center; color: var(--ink-mute); padding: 60px 0; }
+
+    .footer { border-top: 1px solid var(--line); padding: 28px; text-align: center; color: var(--ink-mute); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+  <nav class="nav" aria-label="主导航">
+    <a class="brand" href="index.html"><img src="logo.webp?v=2" alt="" />MoyuBot</a>
+    <div class="nav-right">
+      <a class="nav-link" href="index.html#squad">角色</a>
+      <a class="nav-link" href="index.html#features">能力</a>
+      <a class="nav-link" href="index.html#download">下载</a>
+      <a class="nav-cta" href="index.html#download">免费下载</a>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <div class="hero">
+      <span class="pill">Bot 模板市场 · 官方模板</span>
+      <h1>把 <em>AI 研发小队</em> 带到你的工作区</h1>
+      <p>覆盖代码评审、测试、文档、架构与界面设计的研发助手模板，任何项目都可用。导入后用自己的模型供应商与 Key 计费，模板不携带任何密钥或本机路径。</p>
+      <p class="note">在客户端「设置 → Bot 市场」中可直接导入；本文也是同一份模板清单的网页展示。</p>
+    </div>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+        <input id="q" type="search" placeholder="搜索模板：评审 / 测试 / 文档…" aria-label="搜索模板" autocomplete="off" />
+      </label>
+      <span class="count" id="count">…个模板</span>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <footer class="footer">MoyuBot · 开源多智能体 AI 工作空间 · Bot 模板不托管第三方执行，导入方自备模型 Key</footer>
+
+  <script>
+    (function () {
+      var grid = document.getElementById('grid');
+      var count = document.getElementById('count');
+      var q = document.getElementById('q');
+      var all = [];
+
+      fetch('bots/market-public.json')
+        .then(function (r) { if (!r.ok) throw new Error('list'); return r.json(); })
+        .then(function (idx) {
+          all = idx.templates || [];
+          render('');
+        })
+        .catch(function () {
+          grid.innerHTML = '<div class="empty">暂时无法加载模板索引。</div>';
+          count.textContent = '0 个模板';
+        });
+
+      function render(query) {
+        var kw = (query || '').trim().toLowerCase();
+        var list = all.filter(function (t) {
+          if (!kw) return true;
+          var hay = [t.meta.name, t.meta.description, t.meta.handle, (t.meta.tags || []).join(' ')].join(' ').toLowerCase();
+          return hay.indexOf(kw) >= 0;
+        });
+        count.textContent = list.length + ' 个模板';
+        if (!list.length) { grid.innerHTML = '<div class="empty">没有匹配的模板。</div>'; return; }
+        grid.innerHTML = list.map(function (t) {
+          var meta = t.meta;
+          var tags = (meta.tags || []).slice(0, 3).map(function (x) { return '<span class="tag">' + x + '</span>'; }).join('');
+          var tools = (t.bot.tools && t.bot.tools.length) ? t.bot.tools.length + ' 个工具' : '';
+          return '' +
+            '<article class="card">' +
+              '<div class="top"><h2>' + meta.name + '</h2><span class="tags">' + tags + '</span></div>' +
+              '<p class="desc">' + (meta.description || '') + '</p>' +
+              '<div class="meta"><code>' + meta.handle + '</code>' + (tools ? '<span>' + tools + '</span>' : '') + '<span class="author">' + (meta.author || 'MoyuBot') + '</span></div>' +
+              '<div class="foot"><button class="btn btn-primary" data-handle="' + meta.handle + '">导入到工作区</button></div>' +
+            '</article>';
+        }).join('');
+        grid.querySelectorAll('.btn-primary').forEach(function (btn) {
+          btn.addEventListener('click', function () { showHint(btn); });
+        });
+      }
+
+      var hintTimer;
+      function showHint(btn) {
+        var text = '在客户端「设置 → Bot 市场」导入';
+        btn.textContent = text;
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(function () { btn.textContent = '导入到工作区'; }, 2200);
+      }
+
+      q.addEventListener('input', function () { render(q.value); });
+    })();
+  </script>
+</body>
+</html>

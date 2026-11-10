@@ -15,12 +15,14 @@ import { UsageView } from './UsageView';
 import { WorkspacePathSettings } from '../components/WorkspacePathSettings';
 import { CapabilitiesSettings } from './CapabilitiesSettings';
 import { ToolsView } from './ToolsView';
+import { BotMarketView } from './BotMarketView';
 
 const ACCENTS = ['#f5f5f5', '#737373', '#404040', '#6366f1', '#ec4899', '#06b6d4', '#f97316', '#22c55e'];
 const SECTIONS = [
   { id: 'appearance', label: '通用', icon: 'sliders', hint: '让工作空间更合你的习惯。' },
   { id: 'profile', label: '个人资料', icon: 'users', hint: '为你的工作空间换个表情。' },
   { id: 'bots', label: 'Bot 管理', icon: 'bots', hint: '管理你的角色、模型、人格与工具。' },
+  { id: 'market', label: 'Bot 市场', icon: 'spark', hint: '浏览并导入官方 Bot 模板。' },
   { id: 'memories', label: '长期记忆', icon: 'memory', hint: '记忆整理成每个 Bot 一套的 Markdown 资料库，可随时查看与修改。' },
   { id: 'plugins', label: '工具插件', icon: 'grid', hint: '查看工作区可用的内置工具与扩展能力。' },
   { id: 'capabilities', label: 'MCP 与 Skills', icon: 'plug', hint: '为当前工作区添加工具服务与技能，再分配给 Bot。' },
@@ -63,6 +65,7 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
           {section === 'memories' ? <MemoriesView /> : null}
           {section === 'capabilities' ? <CapabilitiesSettings key={activeWorkspace?.id} /> : null}
           {section === 'usage' ? <UsageView /> : null}
+          {section === 'market' ? <BotMarketView /> : null}
           {section === 'feedback' ? <FeedbackSettings /> : null}
           <div hidden={section !== 'providers'} className="settings-provider-page"><ProvidersSettings onDirty={setProviderDirty} onEmbeddingDirty={setEmbeddingDirty} /></div>
           <div hidden={section !== 'bots'} className="settings-bots-page">{section === 'bots' ? <BotsView embedded onCreate={onCreateBot} /> : null}</div>

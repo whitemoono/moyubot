@@ -18,6 +18,9 @@ import { ConnectorsDialog } from './ConnectorsDialog';
 import { MobileConnectionDialog } from './MobileConnectionDialog';
 import { GroupContextMenu } from './GroupContextMenu';
 import { GroupChatContextMenu } from './GroupChatContextMenu';
+import { motion as motionLib } from 'motion/react';
+import { listContainer, listItem } from '../lib/motion-presets';
+import { useMotionEnabled } from '../lib/use-motion-enabled';
 
 type MenuAction = { kind: 'settings'; section: SettingsSection } | { kind: 'view'; view: View };
 
@@ -44,6 +47,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
   const [hiddenOpen, setHiddenOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const motion = useSidebarMotion(sidebarRef, settings.bots, settings.ui.reduceMotion);
+  const motionEnabled = useMotionEnabled();
   const [context, setContext] = useState<{ botId: string; x: number; y: number } | null>(null);
   const closeContext = useCallback(() => setContext(null), []);
   const [groupContext, setGroupContext] = useState<{ name: string; x: number; y: number } | null>(null);
@@ -105,11 +109,11 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
     const conv = conversations.find((entry) => !entry.group && entry.botId === botId);
     return conv ? botActivities[conv.id]?.kind : undefined;
   };
-  const renderBot = (item: Bot) => <button type="button" key={item.id} data-bot-id={item.id} className={`messenger-bot ${view === 'chat' && !conversation?.group && bot?.id === item.id ? 'is-active' : ''}`} aria-current={view === 'chat' && !conversation?.group && bot?.id === item.id ? 'page' : undefined} aria-haspopup="menu" title={item.name} onClick={() => selectBot(item.id)} onContextMenu={(event) => openContext(event, item)}>
+  const renderBot = (item: Bot) => <motionLib.button type="button" key={item.id} data-bot-id={item.id} variants={listItem} className={`messenger-bot ${view === 'chat' && !conversation?.group && bot?.id === item.id ? 'is-active' : ''}`} aria-current={view === 'chat' && !conversation?.group && bot?.id === item.id ? 'page' : undefined} aria-haspopup="menu" title={item.name} onClick={() => selectBot(item.id)} onContextMenu={(event) => openContext(event, item)}>
     <BotAvatar bot={item} className="messenger-bot__avatar" activity={activityFor(item.id)} animated={!item.sidebar?.hidden || hiddenOpen} />
     <span className="messenger-bot__text"><strong>{item.name}</strong><span>{runningBotIds.has(item.id) ? BOT_ACTIVITY[botActivities[item.id]?.kind ?? 'thinking'].label : previewFor(item.id)}</span></span>
     {item.sidebar?.unread ? <i className="messenger-unread" aria-label="未读" /> : runningBotIds.has(item.id) ? <span className="messenger-bot__activity" aria-label="运行中" /> : null}
-  </button>;
+  </motionLib.button>;
 
   const openSearch = () => { onExpand(); setMenuOpen(false); setContext(null); setGroupContext(null); setChatContext(null); setSearchOpen(true); };
   useEffect(() => {
@@ -151,7 +155,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
         </button>)}
       </div> : null}
       {pinnedBots.length ? <div className="messenger-pin-divider" role="separator" aria-label="置顶与其他 Bot" /> : null}
-      <nav className="messenger-bots" aria-label="你的 Bot">
+      <motionLib.nav className="messenger-bots" aria-label="你的 Bot" variants={listContainer} initial={motionEnabled ? 'hidden' : false} animate="show">
         {orderedGroups.map((group) => { const items = groups.get(group.name) ?? []; const open = collapsed || !group.collapsed;
           if (!group.name) return <div className="messenger-group" key="" data-bot-group="">{namedGroups.length ? <button type="button" className="messenger-group__name messenger-ungrouped__title" aria-label="未分组" aria-haspopup="menu" onContextMenu={(event) => openGroupContext(event, '')}><Icon name="folder" size={12} /><span>未分组</span><small>{items.length}</small></button> : null}{items.map(renderBot)}</div>;
           return <div className="messenger-group" key={group.name} data-bot-group={group.name}>
@@ -169,7 +173,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
           <div className="messenger-hidden__body">{hiddenBots.map(renderBot)}</div>
         </details> : null}
         {!filteredBots.length ? <p className="messenger-no-results">没有找到相关 Bot</p> : null}
-      </nav>
+      </motionLib.nav>
       <div className="messenger-footer">
         <button type="button" ref={menuButtonRef} className={`messenger-profile ${menuOpen ? 'is-active' : ''}`} aria-label="用户菜单" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setContext(null); setGroupContext(null); setChatContext(null); setMenuOpen((value) => !value); }} title={`${settings.userName || '本地用户'} · 功能菜单`}>
           <UserAvatar /><span className="messenger-profile__name">{settings.userName || '本地用户'}</span>

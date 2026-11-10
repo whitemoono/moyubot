@@ -33,6 +33,9 @@ import type {
   SendMessageResult,
   UsageQuery,
   UsageReport,
+  BotTemplate,
+  BotMarketState,
+  BotMarketSubmission,
 } from '@moyu/core';
 
 export interface ConversationSummary {
@@ -82,6 +85,13 @@ export interface MoyuBridge {
   updateBotGroup(name: string, action: BotGroupAction, workspaceId?: string): Promise<AppSettings>;
   copyConversationId(botId: string): Promise<string>;
   deleteBot(botId: string): Promise<void>;
+  listBotPresets(): Promise<BotTemplate[]>;
+  importBotTemplate(template: unknown, workspaceId?: string): Promise<Bot>;
+  exportBotTemplate(botId: string): Promise<{ template: BotTemplate }>;
+  marketSubmissions(): Promise<BotMarketState>;
+  submitTemplate(submission: BotMarketSubmission): Promise<BotMarketState>;
+  unsubmitTemplate(handle: string): Promise<BotMarketState>;
+  fetchMarketRemote(url: string): Promise<BotTemplate[]>;
   send(input: SendMessageInput): Promise<SendMessageResult>;
   stop(conversationId: string): Promise<boolean>;
   approve(decision: ApprovalDecision): Promise<void>;

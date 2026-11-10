@@ -7,6 +7,8 @@ import type {
   BotGroupAction,
   GroupChatAction,
   SidebarBotGroup,
+  BotMarketState,
+  BotMarketSubmission,
   CloudHostSettings,
   Conversation,
   Goal,
@@ -442,6 +444,28 @@ export class Store {
     this.settings.bots = this.settings.bots.filter((bot) => bot.id !== botId);
     if (this.settings.activeBotId === botId) this.settings.activeBotId = this.settings.bots[0]?.id;
     this.persistSettings();
+  }
+
+  /** 我上传的模板记录（只记元信息，不存模板本体）。 */
+  botMarket(): BotMarketState {
+    return this.settings.botMarket ?? { submissions: [] };
+  }
+
+  /** 记录一次模板上传；同 handle 去重（保留最新版本）。 */
+  recordTemplateSubmission(submission: BotMarketSubmission): BotMarketState {
+    const current = this.botMarket();
+    const rest = current.submissions.filter((item) => item.handle !== submission.handle);
+    const next: BotMarketState = { submissions: [...rest, { ...submission, submittedAt: Date.now() }] };
+    this.settings = { ...this.settings, botMarket: next };
+    this.persistSettings();
+    return next;
+  }
+
+  removeTemplateSubmission(handle: string): BotMarketState {
+    const next: BotMarketState = { submissions: this.botMarket().submissions.filter((item) => item.handle !== handle) };
+    this.settings = { ...this.settings, botMarket: next };
+    this.persistSettings();
+    return next;
   }
 
   getProvider(providerId: string) {
@@ -999,7 +1023,10 @@ export class Store {
     this.closed = true;
     if (this.embedBackfillTimer) { clearTimeout(this.embedBackfillTimer); this.embedBackfillTimer = undefined; }
     this.scheduleListeners.clear();
-    try { this.memoryDb?.close(); } catch { /* 已经关闭过：忽略 */ }
+    // 每个 SQLite 句柄都要关：漏一个，Windows 上就删不掉对应的 .db 文件（测试会 EBUSY）。
+    for (const db of [this.memoryDb, this.historySearch]) {
+      try { db?.close(); } catch { /* 已经关闭过：忽略 */ }
+    }
   }
 
   private async embedQuery(query: string): Promise<Float32Array | null> {

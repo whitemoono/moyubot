@@ -32,3 +32,13 @@ export { CONSOLIDATION_ROUNDS, CONSOLIDATION_CHARS, maybeConsolidateMemories, co
 export { PROJECT_UPDATE_ROUNDS, maybeAutoUpdateProject } from './project-auto-update';
 export { TelegramGateway } from './telegram';
 export * from './sync';
+export {
+  exportBotToTemplate,
+  validateBotTemplate,
+  templateToBot,
+  serializeTemplate,
+  parseTemplate,
+  TEMPLATE_BOT_FIELDS,
+} from './bot-templates';
+export type { BotTemplate, ImportedBot, BotTemplateSchedule } from './bot-templates';
+export { BUILTIN_BOT_PRESETS, GENERAL_BOT_PRESETS } from './presets';

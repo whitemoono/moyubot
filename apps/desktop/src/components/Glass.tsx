@@ -4,6 +4,9 @@ import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
 import { useDialogFocus } from '../lib/use-dialog-focus';
+import { motion } from 'motion/react';
+import { fade, sheetItem } from '../lib/motion-presets';
+import { useMotionEnabled } from '../lib/use-motion-enabled';
 
 type DivProps = HTMLAttributes<HTMLDivElement> & { children?: ReactNode };
 
@@ -153,12 +156,20 @@ export function Sheet({
   className?: string;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
+  const motionOn = useMotionEnabled();
   useDialogFocus(dialog, onClose, open);
 
   if (!open) return null;
   return (
-    createPortal(<div ref={dialog} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={title} onMouseDown={onClose}>
-      <div className={`sheet glass ${wide ? 'sheet--wide' : ''} ${className}`.trim()} onMouseDown={(event) => event.stopPropagation()}>
+    createPortal(<motion.div ref={dialog} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={title} onMouseDown={onClose} style={{ animation: 'none' }} initial={motionOn ? { opacity: 0 } : false} animate={{ opacity: 1 }} transition={fade}>
+      <motion.div
+        className={`sheet glass ${wide ? 'sheet--wide' : ''} ${className}`.trim()}
+        onMouseDown={(event) => event.stopPropagation()}
+        style={{ animation: 'none' }}
+        variants={sheetItem}
+        initial={motionOn ? 'hidden' : false}
+        animate="show"
+      >
         <header className="sheet__head">
           <div>
             <h2>{title}</h2>
@@ -168,8 +179,8 @@ export function Sheet({
         </header>
         <div className="sheet__body">{children}</div>
         {footer ? <footer className="sheet__foot">{footer}</footer> : null}
-      </div>
-    </div>, document.querySelector('.app') ?? document.body)
+      </motion.div>
+    </motion.div>, document.querySelector('.app') ?? document.body)
   );
 }
 

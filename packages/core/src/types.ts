@@ -494,6 +494,23 @@ export interface AppSettings {
   activeView?: string;
   /** 记忆召回的向量模型（OpenAI 兼容 /embeddings 端点）；不可用时自动降级为纯关键词检索。 */
   embedding?: EmbeddingSettings;
+  /** Bot 模板市场：用户在客户端的"我上传的"记录（模板本体不入库，只记来源引用）。 */
+  botMarket?: BotMarketState;
+}
+
+/** 「我上传的模板」记录：只记元信息与来源，不携带模板内容或任何密钥。 */
+export interface BotMarketSubmission {
+  handle: string;
+  name: string;
+  author?: string;
+  version?: string;
+  /** 提交目标（远程索引 URL / 本地）。 */
+  target: string;
+  submittedAt: number;
+}
+
+export interface BotMarketState {
+  submissions: BotMarketSubmission[];
 }
 
 /** 默认指向硅基流动的 bge-m3（免费档，中文效果好）；API Key 存在 SecretBox 的 embedding:key。 */

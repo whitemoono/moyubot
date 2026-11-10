@@ -19,6 +19,9 @@ import type { IconName } from '../components/Icon';
 import { BOT_ACTIVITY, inferMessageActivity } from '../lib/bot-activity';
 import type { BotActivityKind } from '../lib/bot-activity';
 import { replyTurns } from '../lib/reply-flow';
+import { motion } from 'motion/react';
+import { messageItem } from '../lib/motion-presets';
+import { useMotionEnabled } from '../lib/use-motion-enabled';
 
 /** 聊天图片放大预览（应用内 lightbox）。 */
 interface ImagePreview {
@@ -224,6 +227,17 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
 });
 
 const humanSize = (bytes?: number) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** 只给这条会话里新出现的消息做一次上浮。历史记录和减少动效都直接呈现。 */
+function AnimatedMessage({ enter, children }: { enter: boolean; children: React.ReactNode }) {
+  const play = useRef(enter);
+  if (!play.current) return <>{children}</>;
+  return (
+    <motion.div variants={messageItem} initial="hidden" animate="show" style={{ animation: 'none' }}>
+      {children}
+    </motion.div>
+  );
+}
 
 /** 文件类型角标：按扩展名给短标签与配色，替代千篇一律的文件夹图标。 */
 function fileBadge(name?: string): { label: string; tone: string } {
@@ -718,6 +732,21 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
   useEffect(() => setReply(undefined), [conversation?.id]);
   const members = conversation?.group?.memberBotIds.map((id) => settings.bots.find((item) => item.id === id)).filter((item): item is Bot => !!item) ?? [];
   const messages = conversation?.messages ?? [];
+  const motionOn = useMotionEnabled();
+  const messagePresence = useRef<{ conversationId?: string; ids: Set<string> }>({ ids: new Set() });
+  if (messagePresence.current.conversationId !== conversation?.id) {
+    messagePresence.current = { conversationId: conversation?.id, ids: new Set(messages.map((message) => message.id)) };
+  }
+  const enteringMessageIds = new Set<string>();
+  if (motionOn) {
+    for (const message of messages) {
+      if (!messagePresence.current.ids.has(message.id)) enteringMessageIds.add(message.id);
+    }
+  }
+  useEffect(() => {
+    if (messagePresence.current.conversationId !== conversation?.id) return;
+    for (const message of messages) messagePresence.current.ids.add(message.id);
+  }, [messages, conversation?.id]);
   const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
   const { ref: scrollRef, awayFromBottom: showJumpToBottom } = useAutoScroll<HTMLDivElement>(conversation?.id);
   const handleReply = useCallback((quote: NonNullable<Message['replyTo']>) => setReply({ conversationId: conversation?.id ?? '', quote }), [conversation?.id]);
@@ -818,7 +847,7 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <div className="chat__stage">
       <div className="messages" ref={scrollRef}>
         <div className="messages__inner">
-          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <MessageBubble key={message.id} message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} onPreviewImage={setPreview} onPreviewFile={setViewerFile} onMsgMenu={setMsgMenu} />)}
+          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <AnimatedMessage key={message.id} enter={enteringMessageIds.has(message.id)}><MessageBubble message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} onPreviewImage={setPreview} onPreviewFile={setViewerFile} onMsgMenu={setMsgMenu} /></AnimatedMessage>)}
         </div>
       </div>
 
