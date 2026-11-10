@@ -13,16 +13,13 @@
 
 ## 代码状态（已提交 + 已打 tag）
 
-```
-master HEAD:  7e80504 release: 0.3.0 - bot template market ...
-tag v0.3.0:   指向 7e80504（本地已重指向新 commit）
-```
+- `master` HEAD：`release: 0.3.0 - bot template market ...`（含 Bot 市场全部改动）
+- 本地 `v0.3.0` tag 已重指向当前 master HEAD
+- 工作区干净，无未提交改动
 
-工作区干净，无未提交改动。
+## 远程孤儿 tag 处理（必须第一步做）
 
-## ⚠️ 先处理远端的孤儿 tag
-
-GitHub 远端已有一个 **v0.3.0 孤儿 tag**：指向错误的旧 commit（`6b8599d`，实为 0.2.7 历史），且没有对应 release。**发布前必须先删掉它**，否则脚本创建 release 会挂到错误 commit。需要一行：
+GitHub 远端已有一个 **v0.3.0 孤儿 tag**：指向错误的旧 commit（`6b8599d`，实为 0.2.7 历史），且没有对应 release。发布前必须先删掉，否则 Release 会挂到错误 commit：
 
 ```
 git push origin --delete v0.3.0
@@ -35,7 +32,7 @@ git push origin master
 git push origin v0.3.0
 ```
 
-> 说明：远端 master 停在 `36be865`（stay on 0.2.9），本地上传 `7e80504` 是其后继 commit，是**普通快进**，不需要 force。若远端被其它人推进过导致非快进，再考虑 `--force`（先确认无他人提交）。
+> 远端 master 停在 `36be865`（stay on 0.2.9）；本地最新的 0.3.0 提交是其后继 commit，属于**普通快进**，不需要 force。若远端被其它人推进过导致非快进，再确认无他人提交后考虑 `--force`。
 
 ## 创建 Release + 上传产物
 
@@ -48,11 +45,22 @@ pnpm release:github --notes=docs/release-0.3.0.md
   - 读 `apps/desktop/package.json` 版本 → `v0.3.0`
   - 用 `docs/release-0.3.0.md` 作为发布说明（`--notes=` 指定）
   - 创建/更新 release → 上传 `SHA256SUMS.txt`、`MoyuBot.Setup.0.3.0.exe`、`.blockmap`
-  - 校验更新器所需的资产名（`apps/desktop/electron/updates.ts` 要求的格式）
+  - 校验更新器所需资产名格式（`apps/desktop/electron/updates.ts`）
 
-## 发布说明（已写在 docs/release-0.3.0.md）
+## 发布说明要点（见 docs/release-0.3.0.md）
 
 核心：**Bot 模板市场** —— 内置通用研发助手 6 个 + 远程 moyubot 专用 6 个；客户端「设置 → Bot 市场」打开即见、支持本地/云工作区导入；官网市场页 `https://moyubot.net/market.html`。
+
+## 产物验证记录（构建时已做）
+
+`MoyuBot.Setup.0.3.0.exe` 已确认：
+- asar 内含主进程入口 `dist-electron/main.js`、`app.js`、`preload.js`
+- asar 内含 Bot 市场核心 `@moyu/core/dist/bot-templates.js`、`presets.js`
+- 打包结构为标准 electron-builder 布局，与已发布的 v0.2.9 一致
+- 渲染 bundle（`dist/assets/index-*.js`）含市场代码
+- 版本号 0.3.0 已写入根与 desktop 的 `package.json`
+
+> **能启动验证说明**：在本会话受限 shell 里，打包后的 GUI exe 启动后正常退出（exit 0、无报错）——这是 `apps/desktop/scripts/dev.mjs` 注释指出的 Windows 现象（GUI-subsystem 程序从自动化控制台 spawn 常 exit 0），属沙箱限制而非产物问题。产物结构、入口、内置代码均已核对完整，发布后请在真实 Windows 桌面首次运行确认窗口正常。
 
 ## 验证发布结果
 
@@ -60,13 +68,4 @@ pnpm release:github --notes=docs/release-0.3.0.md
 - `https://github.com/whitemoono/moyubot/releases/tag/v0.3.0` 存在且非 draft
 - 资产齐全：exe + blockmap + `SHA256SUMS.txt`
 - 版本号与更新器匹配：tag `v0.3.0`、资产名 `MoyuBot.Setup.0.3.0.exe`
-
-## 产物验证记录（构建时已做）
-
-安装包 `MoyuBot.Setup.0.3.0.exe` 已确认：
-- asar 内含主进程入口 `dist-electron/main.js`、`app.js`、`preload.js` ✅
-- asar 内含 Bot 市场核心 `@moyu/core/dist/bot-templates.js`、`presets.js` ✅
-- 打包结构为标准 electron-builder 布局，与已发布的 v0.2.9 一致 ✅
-- 渲染 bundle（`dist/assets/index-*.js`）含市场代码 ✅
-
-> **能启动验证说明**：在本会话受限 shell 里，打包后的 GUI exe 会启动后正常退出（exit 0、无报错）——这是 `apps/desktop/scripts/dev.mjs` 注释指出的 Windows 现象（GUI-subsystem 程序从自动化控制台 spawn 常 exit 0），属沙箱限制而非产物问题。产物结构/入口/内置代码均已核对完整，发布后请在真实 Windows 桌面首次运行确认窗口正常。
+- 最新 release tag 应为 `v0.3.0`（更新器依据它提供升级）
