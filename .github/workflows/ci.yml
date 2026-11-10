@@ -32,6 +32,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       # @moyu/core 的 types 指向 dist/index.d.ts，干净 checkout 上必须先构建，
       # 否则 apps/desktop 的类型检查会因为找不到类型声明而失败。
+      # apps/web/server 是独立的 npm 包（自带 package-lock），pnpm install 不会装它，
+      # 而 pwa-execution 用例会 spawn 这个服务，所以单独装一次。
+      - name: Install sync server deps
+        run: npm ci --prefix apps/web/server --no-audit --no-fund
       - name: Build core
         run: pnpm --filter @moyu/core build
       # 有 4 个用例直接 require apps/desktop/dist-electron/*，干净 checkout 上要先编译主进程。

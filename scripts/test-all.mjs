@@ -138,6 +138,11 @@ if (!fs.existsSync(CORE_ENTRY)) {
 
 // 有几个用例直接 require apps/desktop/dist-electron/*：缺了就提前说清楚，
 // 否则只会看到一堆 "Cannot find module ../apps/desktop/dist-electron"。
+const SYNC_SERVER_DEPS = path.join(ROOT, 'apps', 'web', 'server', 'node_modules');
+if (!fs.existsSync(SYNC_SERVER_DEPS)) {
+  console.warn('! apps/web/server 依赖没装（pwa-execution 会失败），先跑：npm ci --prefix apps/web/server\n');
+}
+
 const DESKTOP_MAIN = path.join(ROOT, 'apps', 'desktop', 'dist-electron', 'app.js');
 if (!fs.existsSync(DESKTOP_MAIN)) {
   console.warn('! 缺少 apps/desktop/dist-electron（private-sync / pwa-execution / update-installer / updates 会失败），先跑：pnpm --filter @moyu/desktop build:main\n');
