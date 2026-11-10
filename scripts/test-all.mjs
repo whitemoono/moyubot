@@ -51,8 +51,8 @@ function discover() {
 }
 
 function parseCounts(output) {
-  const counts = { pass: 0, fail: 0, tests: 0, found: false };
-  for (const match of output.matchAll(/^# (tests|pass|fail) (\d+)\s*$/gm)) {
+  const counts = { pass: 0, fail: 0, tests: 0, skipped: 0, found: false };
+  for (const match of output.matchAll(/^# (tests|pass|fail|skipped) (\d+)\s*$/gm)) {
     counts[match[1]] = Number(match[2]);
     counts.found = true;
   }
@@ -108,7 +108,9 @@ async function runPool(entries, jobs = args.jobs) {
       const entry = entries[cursor++];
       const result = await runFile(entry);
       const mark = result.ok ? '✓' : '✗';
-      const detail = result.counts.found ? `${result.counts.pass} pass / ${result.counts.fail} fail` : `exit ${result.code}`;
+      const detail = result.counts.found
+        ? `${result.counts.pass} pass / ${result.counts.fail} fail${result.counts.skipped ? ` / ${result.counts.skipped} skip` : ''}`
+        : `exit ${result.code}`;
       process.stdout.write(`${mark} ${result.name.padEnd(34)} ${detail.padEnd(20)} ${result.seconds.toFixed(1)}s${result.timedOut ? '  (超时)' : ''}\n`);
       results.push(result);
     }
@@ -208,11 +210,11 @@ const failed = results.filter((result) => !result.ok);
 const retried = results.filter((result) => result.retried);
 // Electron 用例是普通脚本，不输出 TAP 计数：按"一个文件一个用例"算。
 const totals = results.reduce((sum, item) => item.counts.found
-  ? { pass: sum.pass + (item.counts.pass ?? 0), fail: sum.fail + (item.counts.fail ?? 0) }
-  : { pass: sum.pass + (item.ok ? 1 : 0), fail: sum.fail + (item.ok ? 0 : 1) },
-  { pass: 0, fail: 0 });
+  ? { pass: sum.pass + (item.counts.pass ?? 0), fail: sum.fail + (item.counts.fail ?? 0), skipped: sum.skipped + (item.counts.skipped ?? 0) }
+  : { pass: sum.pass + (item.ok ? 1 : 0), fail: sum.fail + (item.ok ? 0 : 1), skipped: sum.skipped },
+  { pass: 0, fail: 0, skipped: 0 });
 
-console.log(`\n合计：${totals.pass} pass / ${totals.fail} fail，用时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+console.log(`\n合计：${totals.pass} pass / ${totals.fail} fail${totals.skipped ? ` / ${totals.skipped} skip` : ''}，用时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
 if (retried.length) console.log(`其中 ${retried.length} 个文件是重试后通过的：${retried.map((item) => item.name).join('、')}`);
 
 if (failed.length) {
