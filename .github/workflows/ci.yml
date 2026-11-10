@@ -34,6 +34,9 @@ jobs:
       # 否则 apps/desktop 的类型检查会因为找不到类型声明而失败。
       - name: Build core
         run: pnpm --filter @moyu/core build
+      # 有 4 个用例直接 require apps/desktop/dist-electron/*，干净 checkout 上要先编译主进程。
+      - name: Build desktop main
+        run: pnpm --filter @moyu/desktop build:main
       - name: Typecheck
         run: pnpm -r typecheck
       - name: Unit tests (node layer)

@@ -136,6 +136,13 @@ if (!fs.existsSync(CORE_ENTRY)) {
   process.exit(2);
 }
 
+// 有几个用例直接 require apps/desktop/dist-electron/*：缺了就提前说清楚，
+// 否则只会看到一堆 "Cannot find module ../apps/desktop/dist-electron"。
+const DESKTOP_MAIN = path.join(ROOT, 'apps', 'desktop', 'dist-electron', 'app.js');
+if (!fs.existsSync(DESKTOP_MAIN)) {
+  console.warn('! 缺少 apps/desktop/dist-electron（private-sync / pwa-execution / update-installer / updates 会失败），先跑：pnpm --filter @moyu/desktop build:main\n');
+}
+
 const ELECTRON_ARTIFACTS = [
   path.join(ROOT, 'apps', 'desktop', 'dist', 'index.html'),
   path.join(ROOT, 'apps', 'desktop', 'dist-electron', 'app.js'),
