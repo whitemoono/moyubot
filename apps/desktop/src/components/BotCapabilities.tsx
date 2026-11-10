@@ -26,7 +26,6 @@ const STATES = { disconnected: '未连接', connecting: '连接中', connected: 
 
 export function BotCapabilities({ bot, onChange, disabled = false, inspector = false }: { bot: Bot; onChange: (patch: Pick<Bot, 'mcpServerIds' | 'skillIds'>) => void; disabled?: boolean; inspector?: boolean }) {
   const { settings, openSettings, toast } = useMoyu();
-  const [testing, setTesting] = useState<string | null>(null);
   const workspaceId = bot.workspaceId ?? settings.activeWorkspaceId ?? 'workspace_cloud';
   // 云工作区的详情只显示"云电脑已部署"的能力；本机进程(stdio)的 MCP/Skills 只在本地工作区出现。
   const isLocalWorkspace = workspaceId === 'workspace_local';
@@ -46,17 +45,12 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
           const renderRow = (server: { id: string; name: string; transport: string; command?: string; url?: string }) => {
             const state = status.servers.find(s => s.id === server.id);
             const enabled = bot.mcpServerIds?.includes(server.id) ?? false;
-            return <div className="capability-item" key={server.id}>
+            const detail = `${STATES[state?.state ?? 'disconnected']} · ${server.transport === 'stdio' ? server.command ?? '本机进程' : server.url ?? '远程服务'}${state?.tools.length ? ` · ${state.tools.length} 工具` : ''}`;
+            return <div className="capability-item" key={server.id} title={state?.error ?? detail}>
               <span className="capability-cloud-badge">{enabled ? '自有' : '未绑定'}</span>
               <div className="capability-item__main">
-                <Toggle testId={`bot-cap-mcp-${server.id}`} label={server.name} hint={`${STATES[state?.state ?? 'disconnected']} · ${server.transport === 'stdio' ? '本机进程' : '远程服务'}${state?.state === 'connected' ? ` · ${state.tools.length} 个工具` : ''}`} checked={enabled} disabled={disabled} onChange={value => toggle('mcpServerIds', server.id, value)} />
+                <Toggle testId={`bot-cap-mcp-${server.id}`} label={server.name} hint={detail} checked={enabled} disabled={disabled} onChange={value => toggle('mcpServerIds', server.id, value)} />
               </div>
-              {state?.error ? <p className="capability-error">{state.error}</p> : null}
-              {inspector && enabled && state?.state !== 'connected' ? <Button size="sm" variant="ghost" disabled={testing !== null} loading={testing === server.id} onClick={() => {
-                setTesting(server.id);
-                void moyu().testMcp(server.id).then(() => toast('MCP 连接成功')).catch((e: Error) => toast(e.message, 'error')).finally(() => setTesting(null));
-              }}>测试连接</Button> : null}
-              {state?.tools.length ? <details><summary>查看工具</summary><ul>{state.tools.map(tool => <li key={tool.name} title={tool.description}>{tool.name}</li>)}</ul></details> : null}
             </div>;
           };
           return <>
@@ -82,12 +76,12 @@ export function BotCapabilities({ bot, onChange, disabled = false, inspector = f
           const renderRow = (skill: { id: string; name: string; description: string }) => {
             const loaded = status.loadedSkills.find(s => s.botId === bot.id && s.skillId === skill.id);
             const enabled = bot.skillIds?.includes(skill.id) ?? false;
-            return <div className="capability-item" key={skill.id}>
+            const statusText = enabled ? (loaded ? `最近加载 ${new Date(loaded.loadedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '已启用') : '未启用';
+            return <div className="capability-item" key={skill.id} title={skill.description}>
               <span className="capability-cloud-badge">{enabled ? '自有' : '未绑定'}</span>
               <div className="capability-item__main">
-                <Toggle testId={`bot-cap-skill-${skill.id}`} label={skill.name} hint={enabled ? loaded ? `最近加载 ${new Date(loaded.loadedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '已启用 · 按需加载' : '未启用'} checked={enabled} disabled={disabled} onChange={value => toggle('skillIds', skill.id, value)} />
+                <Toggle testId={`bot-cap-skill-${skill.id}`} label={skill.name} hint={statusText} checked={enabled} disabled={disabled} onChange={value => toggle('skillIds', skill.id, value)} />
               </div>
-              <details><summary>技能说明</summary><p>{skill.description}</p></details>
             </div>;
           };
           return <>
