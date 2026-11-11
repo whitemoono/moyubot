@@ -1,6 +1,6 @@
-import { useEffect, useId, useState } from 'react';
-import type { Message, ToolCall, ToolResult } from '@moyu/core';
-import { useMoyu } from '../state';
+import { memo, useEffect, useId, useState } from 'react';
+import type { ToolCall, ToolResult } from '@moyu/core';
+import { useReplyTools } from '../state';
 import { Button } from './Glass';
 import { Icon, type IconName } from './Icon';
 
@@ -34,7 +34,7 @@ const TOOLS: Record<string, { label: string; icon: IconName }> = {
   web_search: { label: '搜索网络', icon: 'globe' },
 };
 
-export function ReplyToolCard({ call, result, message }: { call: ToolCall; result?: ToolResult; message: Pick<Message, 'streaming' | 'stopped'> }) {
+export const ReplyToolCard = memo(function ReplyToolCard({ call, result, streaming, stopped }: { call: ToolCall; result?: ToolResult; streaming?: boolean; stopped?: boolean }) {
   const bodyId = useId();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -43,8 +43,8 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
   const [askText, setAskText] = useState('');
   const [askBusy, setAskBusy] = useState(false);
   const [askReplies, setAskReplies] = useState<Record<number, { ok: boolean; text: string }>>({});
-  const { toast, subagents, continueSubagent, stopSubagent } = useMoyu();
-  const running = !result && !!message.streaming;
+  const { toast, subagents, continueSubagent, stopSubagent } = useReplyTools();
+  const running = !result && !!streaming;
   const open = expanded;
   const tool = TOOLS[call.name] ?? { label: call.name, icon: 'plug' as const };
   const command = call.name === 'cloud_exec' ? String(call.arguments.cmd ?? '') : '';
@@ -56,7 +56,7 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
     : [];
   const input = command || (subagentTasks.length ? subagentTasks.map((text, index) => `${index + 1}. ${text}`).join('\n') : call.name === 'run_script' ? String(call.arguments.script ?? '') : JSON.stringify(call.arguments, null, 2));
   const output = result?.detail || result?.summary;
-  const status = result ? result.ok ? '已完成' : '执行失败' : message.stopped ? '已停止' : running ? '执行中' : '未完成';
+  const status = result ? result.ok ? '已完成' : '执行失败' : stopped ? '已停止' : running ? '执行中' : '未完成';
   const scriptLine = call.name === 'run_script' ? (String(call.arguments.script ?? '').trim().split('\n').find((line) => line.trim()) ?? '') : '';
   // 逐项进度：优先用事件推来的实时状态；刷新页面后事件没了，就从参数 + 结果退化还原。
   const progress = subagents[call.id];
@@ -120,4 +120,4 @@ export function ReplyToolCard({ call, result, message }: { call: ToolCall; resul
       {output ? <pre className="reply-tool__output" aria-label="执行结果">{output}</pre> : null}
     </div> : null}
   </section>;
-}
+});

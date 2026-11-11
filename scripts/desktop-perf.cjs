@@ -100,7 +100,7 @@ function summarize(values) {
   };
 }
 
-async function runPerformance({ win, evaluate, until, conversationId, startupMs, output }) {
+async function runPerformance({ win, evaluate, until, conversationId, startupMs, output, trace }) {
   const runId = 'perf-run';
   const messageId = 'perf-live-reply';
   const message = { id: messageId, role: 'assistant', content: '', createdAt: Date.now(), streaming: true };
@@ -109,17 +109,31 @@ async function runPerformance({ win, evaluate, until, conversationId, startupMs,
   send({ type: 'run_start', runId });
   send({ type: 'message_start', message });
   await until((id) => !!document.querySelector(`[data-message-id="${id}"]`), 'benchmark reply mounted', 10_000, messageId);
-  const sample = evaluate(sampleRenderer, sampleMs);
   let content = '';
-  for (let burst = 0; burst < burstCount; burst++) {
-    for (let part = 0; part < burstSize; part++) {
-      const text = `片段 ${burst * burstSize + part + 1}。 `;
-      content += text;
-      send({ type: 'delta', messageId, text });
-    }
-    await delay(burstIntervalMs);
+  let streaming;
+  if (trace) {
+    await trace.startRecording({
+      included_categories: ['devtools.timeline', 'disabled-by-default-v8.cpu_profiler'],
+    });
   }
-  const streaming = await sample;
+  try {
+    const stream = async () => {
+      for (let burst = 0; burst < burstCount; burst++) {
+        for (let part = 0; part < burstSize; part++) {
+          const text = `片段 ${burst * burstSize + part + 1}。 `;
+          content += text;
+          send({ type: 'delta', messageId, text });
+        }
+        await delay(burstIntervalMs);
+      }
+    };
+    [streaming] = await Promise.all([evaluate(sampleRenderer, sampleMs), stream()]);
+  } finally {
+    if (trace) {
+      const tracePath = await trace.stopRecording(path.join(output, 'performance-trace.json'));
+      console.log(`Desktop performance trace: ${tracePath}`);
+    }
+  }
   await until((id, expected) => document.querySelector(`[data-message-content="${id}"]`)?.textContent?.trim() === expected, 'full stream rendered', 10_000, messageId, content.trim());
   send({ type: 'message_end', message: { ...message, content, streaming: false } });
   const metrics = (data) => ({
@@ -128,7 +142,7 @@ async function runPerformance({ win, evaluate, until, conversationId, startupMs,
   });
   const report = {
     environment: { os: os.platform(), release: os.release(), arch: os.arch(), cpu: os.cpus()[0]?.model, electron: process.versions.electron },
-    scenario: { historySize, burstSize, burstCount, burstIntervalMs, sampleMs, viewport: win.getContentSize(), offscreen: true },
+    scenario: { historySize, burstSize, burstCount, burstIntervalMs, sampleMs, viewport: win.getContentSize(), offscreen: true, tracing: !!trace },
     navigationToComposerReadyMs: Math.round(startupMs * 100) / 100,
     idle: metrics(idle),
     streaming: metrics(streaming),

@@ -183,6 +183,8 @@ pnpm dev          # 自动先编译 core，再启动 Vite + Electron
 `.work/desktop-smoke/<运行时间>/performance.json`。
 
 测量使用 1,000 条固定历史消息，比较空闲和接收 300 个固定文本片段期间的帧间隔、模拟输入到第二个动画帧的延迟（p50、p95、最大值），两种场景都持续滚动。启动指标从页面导航开始，到历史和可用输入框首次被检测到为止；不含 Electron 进程启动，也不等同于真实显示器上的输入延迟。建议在同一机器、相同构建方式下各运行至少三次再对比。
+
+排查渲染瓶颈时，在本地命令末尾追加 `--perf-trace`，生成 `performance-trace.json`，可导入 Chromium DevTools 的 Performance 面板查看 JavaScript、布局和绘制。录制会增加开销，对比性能数值时不要开启。
 | `pnpm dist` | 打 Windows NSIS 安装包到 `apps/desktop/release` |
 
 ## 目录结构

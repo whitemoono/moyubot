@@ -162,6 +162,14 @@ function readableAccent(hex: string): string {
 }
 
 const MoyuContext = createContext<MoyuContextValue | null>(null);
+type ReplyToolsState = Pick<MoyuContextValue, 'toast' | 'subagents' | 'continueSubagent' | 'stopSubagent'>;
+const ReplyToolsContext = createContext<ReplyToolsState | null>(null);
+
+export function useReplyTools(): ReplyToolsState {
+  const value = useContext(ReplyToolsContext);
+  if (!value) throw new Error('Missing MoyuProvider');
+  return value;
+}
 
 export function useMoyu(): MoyuContextValue {
   const value = useContext(MoyuContext);
@@ -922,6 +930,7 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     return result;
   }, [settings.bots, conversations, conversation, activities, runningConversations, compactingConversations, cloud.state, approvals]);
 
+  const replyTools = useMemo(() => ({ toast, subagents, continueSubagent, stopSubagent }), [toast, subagents, continueSubagent, stopSubagent]);
   const value: MoyuContextValue = {
     ready,
     settings: { ...settings, bots: workspaceBots, ui: { ...settings.ui, botGroups: [...new Map([...workspaceBots.flatMap((item) => item.sidebar?.group ? [{ name: item.sidebar.group }] : []), ...(activeWorkspace?.botGroups ?? [])].map((item) => [item.name, item])).values()], ungroupedGroupIndex: activeWorkspace?.ungroupedGroupIndex } },
@@ -1010,5 +1019,5 @@ export function MoyuProvider({ children }: { children: ReactNode }) {
     toast,
   };
 
-  return <MoyuContext.Provider value={value}>{children}</MoyuContext.Provider>;
+  return <MoyuContext.Provider value={value}><ReplyToolsContext.Provider value={replyTools}>{children}</ReplyToolsContext.Provider></MoyuContext.Provider>;
 }

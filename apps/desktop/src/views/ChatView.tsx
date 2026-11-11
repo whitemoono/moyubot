@@ -6,7 +6,7 @@ import { assetUrl, moyu } from '../lib/bridge';
 import { formatClock } from '../lib/format';
 import { highlightCode, openLinksExternally, renderMarkdown, sanitizeHtml } from '../lib/markdown';
 import { useMoyu } from '../state';
-import { BotAvatar } from '../components/BotAvatar';
+import { BotAvatar, BotAvatarVisual } from '../components/BotAvatar';
 import { ReplyToolCard } from '../components/ReplyToolCard';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
@@ -56,8 +56,9 @@ function ReplyPreview({ reply, onClick }: { reply: NonNullable<Message['replyTo'
   return <button type="button" className="message-quote" onClick={onClick} aria-label={`查看引用的 ${reply.author} 的消息`}><Icon name="reply" size={14} /><span><strong>{reply.author}</strong><span>{reply.content}</span></span></button>;
 }
 
-function MessageActions({ message, onReply }: { message: Message; onReply: (quote: NonNullable<Message['replyTo']>) => void }) {
-  const { toast } = useMoyu();
+type MessageToast = ReturnType<typeof useMoyu>['toast'];
+
+function MessageActions({ message, onReply, toast }: { message: Message; onReply: (quote: NonNullable<Message['replyTo']>) => void; toast: MessageToast }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => { if (copied) { const timer = window.setTimeout(() => setCopied(false), 1800); return () => window.clearTimeout(timer); } }, [copied]);
   const copy = async () => {
@@ -76,8 +77,38 @@ function MessageActions({ message, onReply }: { message: Message; onReply: (quot
   </div>;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onReply, onPreviewImage, onPreviewFile, onMsgMenu }: { message: Message; bot: Bot; isLatest: boolean; onReply: (quote: NonNullable<Message['replyTo']>) => void; onPreviewImage: (image: ImagePreview) => void; onPreviewFile: (file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }) => void; onMsgMenu: (menu: MessageSelectionMenuState) => void }) {
-  const { botActivities, setView, settings, toast, sendMessage } = useMoyu();
+function ContinueReplyButton() {
+  const { sendMessage } = useMoyu();
+  return <button type="button" onClick={() => void sendMessage('（继续）接着上次的进度往下做，不要重复已完成的步骤', [], undefined)}>继续</button>;
+}
+
+function ConfigureReplyButton() {
+  const { setView } = useMoyu();
+  return <button type="button" onClick={() => setView('settings')}>配置供应商</button>;
+}
+
+const ReplyMarkdown = memo(function ReplyMarkdown({ content, messageId }: { content: string; messageId: string }) {
+  return <div className="prose" data-message-content={messageId} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />;
+});
+
+interface MessageRowProps {
+  message: Message;
+  bot: Bot;
+  activeKind?: BotActivityKind;
+  enter: boolean;
+  reduceMotion: boolean;
+  toast: MessageToast;
+  onReply: (quote: NonNullable<Message['replyTo']>) => void;
+  onPreviewImage: (image: ImagePreview) => void;
+  onPreviewFile: (file: { path: string; name?: string; size?: number; origin?: 'cloud' | 'local' }) => void;
+  onMsgMenu: (menu: MessageSelectionMenuState) => void;
+}
+
+const MessageRow = memo(function MessageRow({ enter, ...props }: MessageRowProps) {
+  return <AnimatedMessage enter={enter}><MessageBubble {...props} /></AnimatedMessage>;
+});
+
+function MessageBubble({ message, bot, activeKind, reduceMotion, toast, onReply, onPreviewImage, onPreviewFile, onMsgMenu }: Omit<MessageRowProps, 'enter'>) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   // 选中消息文字后右键 → 弹出「复制」菜单（无选区时保持默认行为）。
@@ -105,7 +136,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
       <div className="msg msg--user" data-message-id={message.id} tabIndex={-1} onContextMenu={handleContextMenu}>
         <div className="msg__stack msg__stack--user">
         <div className="bubble bubble--user">
-          {message.replyTo ? <ReplyPreview reply={message.replyTo} onClick={() => jumpToMessage(message.replyTo!.messageId, settings.ui.reduceMotion)} /> : null}
+          {message.replyTo ? <ReplyPreview reply={message.replyTo} onClick={() => jumpToMessage(message.replyTo!.messageId, reduceMotion)} /> : null}
           {message.attachments?.length ? (
             <div className="artifact-grid artifact-grid--user">
               {message.attachments.map((attachment) => attachment.kind === 'file' ? (
@@ -133,37 +164,34 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           ) : null}
           {message.content ? <p className="bubble__text" data-message-content={message.id}>{message.content}</p> : null}
         </div>
-        <MessageActions message={message} onReply={(quote) => onReply({ ...quote, author: '你' })} />
+        <MessageActions message={message} toast={toast} onReply={(quote) => onReply({ ...quote, author: '你' })} />
         </div>
       </div>
     );
   }
 
   const results = new Map<string, ToolResult>((message.toolResults ?? []).map((result) => [result.id, result]));
-  const activity = botActivities[bot.id];
-  const current = isLatest && activity?.messageId === message.id;
-  const kind: BotActivityKind = message.streaming ? current && activity.kind !== 'idle' ? activity.kind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? (current && activity.kind === 'stopped' ? 'stopped' : 'idle') : current && activity.kind === 'done' ? 'done' : 'idle';
+  const kind: BotActivityKind = message.streaming ? activeKind && activeKind !== 'idle' ? activeKind : inferMessageActivity(message) : message.error ? 'error' : message.stopped ? (activeKind === 'stopped' ? 'stopped' : 'idle') : activeKind === 'done' ? 'done' : 'idle';
   // While the model is producing text, show the "thinking" animation (its pondering
   // motion) rather than the hand-writing one; tool-running states keep their motion.
   const avatarKind: BotActivityKind = message.streaming && kind === 'writing' ? 'thinking' : kind;
-  const animate = !!message.streaming || !!(current && ['done', 'error', 'stopped'].includes(activity.kind));
+  const animate = !!message.streaming || (activeKind !== undefined && ['done', 'error', 'stopped'].includes(activeKind));
   const content = message.error && message.content === `（没有回复：${message.error}）` ? '' : message.content;
-  const turns = useMemo(() => replyTurns({ ...message, content }), [message.content, message.modelTurns, content]);
-  const turnHtml = useMemo(() => turns.map((turn) => (turn.content ? renderMarkdown(turn.content) : '')), [turns]);
+  const turns = replyTurns({ ...message, content });
 
   return (
     <div className="msg msg--assistant reply-flow" data-message-id={message.id} tabIndex={-1} onContextMenu={handleContextMenu}>
       <div className="msg__stack">
       <div className="msg__body" ref={ref}>
         <div className="reply-author">
-          <BotAvatar bot={bot} activity="idle" animated={!!message.streaming || kind === 'stopped' || kind === 'done'} />
+          <BotAvatarVisual bot={bot} activity="idle" reduceMotion={reduceMotion} animated={!!message.streaming || kind === 'stopped' || kind === 'done'} />
           <strong>{message.botName ?? bot.name}</strong>
         </div>
         <div className="reply-turns">
         {turns.map((turn, index) => <div className="reply-turn" key={index}>
           {turn.reasoning ? <details className="reasoning reply-reasoning"><summary><Icon name="spark" size={14} /><span>思考过程</span><Icon name="chevron" size={13} /></summary><p>{turn.reasoning}</p></details> : null}
-          {turn.content ? <div className="prose" data-message-content={message.id} onClick={openLinksExternally} dangerouslySetInnerHTML={{ __html: turnHtml[index] ?? '' }} /> : null}
-          {turn.toolCalls?.filter((call) => !(call.name === 'deliver_file' && results.get(call.id)?.ok)).map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} message={message} />)}
+          {turn.content ? <ReplyMarkdown content={turn.content} messageId={message.id} /> : null}
+          {turn.toolCalls?.filter((call) => !(call.name === 'deliver_file' && results.get(call.id)?.ok)).map((call) => <ReplyToolCard key={call.id} call={call} result={results.get(call.id)} streaming={message.streaming} stopped={message.stopped} />)}
         </div>)}
         </div>
 
@@ -192,9 +220,9 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
         {message.paused === 'steps' ? <div className="reply-paused" role="status">
           <strong>本轮工具调用已达上限</strong>
           <p>任务没有失败，已执行的工具结果都保留着。可以点「继续」接着跑，或在输入框选「自动跑到底」让它在触顶后自动续上。</p>
-          <button type="button" onClick={() => void sendMessage('（继续）接着上次的进度往下做，不要重复已完成的步骤', [], undefined)}>继续</button>
+          <ContinueReplyButton />
         </div> : null}
-        {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <button type="button" onClick={() => setView('settings')}>配置供应商</button> : null}</div> : null}
+        {message.error ? <div className="reply-error" role="alert"><strong>暂时无法回复</strong><p className="msg__error">{message.error}</p>{/API\s*Key|密钥|供应商/i.test(message.error) ? <ConfigureReplyButton /> : null}</div> : null}
         {message.attachments?.filter((attachment) => attachment.kind === 'file').length ? (
           <div className="artifact-grid artifact-grid--files">
             {message.attachments
@@ -212,7 +240,7 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
               ))}
           </div>
         ) : null}
-        {message.streaming || kind === 'done' || kind === 'stopped' ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatar bot={bot} activity={avatarKind} animated={animate || kind === 'stopped' || kind === 'done'} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
+        {message.streaming || kind === 'done' || kind === 'stopped' ? <div className={`reply-status reply-flow__status ${message.streaming ? 'is-live' : ''}`} data-activity={kind} role="status" aria-live="polite"><BotAvatarVisual bot={bot} activity={avatarKind} reduceMotion={reduceMotion} animated={animate || kind === 'stopped' || kind === 'done'} /><span>{BOT_ACTIVITY[kind].label}</span>{message.streaming ? <span className="reply-status__pulse" aria-hidden="true"><i /><i /><i /></span> : null}</div> : null}
         {!message.streaming && message.usage ? (
           <span className="msg__usage">
             {message.usage.promptTokens ? `${message.usage.promptTokens} in` : ''}
@@ -220,11 +248,11 @@ const MessageBubble = memo(function MessageBubble({ message, bot, isLatest, onRe
           </span>
         ) : null}
       </div>
-      <MessageActions message={message} onReply={(quote) => onReply({ ...quote, author: message.botName ?? bot.name })} />
+      <MessageActions message={message} toast={toast} onReply={(quote) => onReply({ ...quote, author: message.botName ?? bot.name })} />
       </div>
     </div>
   );
-});
+}
 
 const humanSize = (bytes?: number) => !bytes ? '' : bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
@@ -721,7 +749,7 @@ function HeaderPill({ icon, label, popover, align = 'left', tone }: { icon: Reac
 }
 
 export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: boolean; onToggleInspector: () => void }) {
-  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, blockedGoal, reopenGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents } = useMoyu();
+  const { bot, conversation, settings, setView, activeWorkspace, goal, todos, resumableGoal, blockedGoal, reopenGoal, resumeGoal, sendMessage, completeGoal, toast, question, subagents, botActivities } = useMoyu();
   const [viewerFile, setViewerFile] = useState<{ path: string; name?: string; size?: number; origin?: 'cloud' | 'local' } | null>(null);
   const [reply, setReply] = useState<{ conversationId: string; quote: NonNullable<Message['replyTo']> }>();
   const [preview, setPreview] = useState<ImagePreview | null>(null);
@@ -751,7 +779,14 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
     if (messagePresence.current.conversationId !== conversation?.id) return;
     for (const message of messages) messagePresence.current.ids.add(message.id);
   }, [messages, conversation?.id]);
-  const latestAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
+  let latestAssistantId: string | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role !== 'assistant') continue;
+    latestAssistantId = message.id;
+    break;
+  }
+  const botsById = useMemo(() => new Map(settings.bots.map((item) => [item.id, item])), [settings.bots]);
   const { ref: scrollRef, awayFromBottom: showJumpToBottom } = useAutoScroll<HTMLDivElement>(conversation?.id);
   const handleReply = useCallback((quote: NonNullable<Message['replyTo']>) => setReply({ conversationId: conversation?.id ?? '', quote }), [conversation?.id]);
 
@@ -851,7 +886,11 @@ export function ChatView({ inspectorOpen, onToggleInspector }: { inspectorOpen: 
       <div className="chat__stage">
       <div className="messages" ref={scrollRef}>
         <div className="messages__inner">
-          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => <AnimatedMessage key={message.id} enter={enteringMessageIds.has(message.id)}><MessageBubble message={message} bot={settings.bots.find((item) => item.id === message.botId) ?? bot} isLatest={message.id === latestAssistantId} onReply={handleReply} onPreviewImage={setPreview} onPreviewFile={setViewerFile} onMsgMenu={setMsgMenu} /></AnimatedMessage>)}
+          {messages.length === 0 ? conversation.group ? <div className="empty group-welcome"><div className="group-welcome__avatars">{members.slice(0, 5).map((member) => <BotAvatar key={member.id} bot={member} size="xl" />)}</div><span className="welcome-eyebrow">一起聊，让想法碰撞</span><h1>{conversation.title}</h1><p className="empty__sub">{members.map((member) => member.name).join('、')} 已加入，发条消息开始吧。</p></div> : <EmptyState bot={bot} /> : messages.map((message) => {
+            const author = botsById.get(message.botId ?? '') ?? bot;
+            const activity = message.id === latestAssistantId ? botActivities[author.id] : undefined;
+            return <MessageRow key={message.id} message={message} bot={author} activeKind={activity?.messageId === message.id ? activity.kind : undefined} enter={enteringMessageIds.has(message.id)} reduceMotion={settings.ui.reduceMotion} toast={toast} onReply={handleReply} onPreviewImage={setPreview} onPreviewFile={setViewerFile} onMsgMenu={setMsgMenu} />;
+          })}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Bot } from '@moyu/core';
 import { useMoyu } from '../state';
@@ -20,36 +20,49 @@ const PORTRAITS = ['chibi', 'shiro', 'mikan', 'neko', 'tsuki', 'nemu', 'zeta'];
 const IDLE_EXPRESSIONS = ['curious', 'happy', 'playful', 'excited', 'proud', 'shy', 'laughing'];
 const randomDelay = (min: number, max: number) => min + Math.random() * (max - min);
 
-export function BotAvatar({
-  bot,
-  size = 'sm',
-  className = '',
-  animated = true,
-  activity,
-}: {
+type AvatarProps = {
   bot: AvatarBot;
   size?: 'sm' | 'lg' | 'xl';
   className?: string;
   animated?: boolean;
   activity?: BotActivityKind;
-}) {
+};
+
+export function BotAvatar(props: AvatarProps) {
   const { botActivities, settings } = useMoyu();
+  return <BotAvatarVisual {...props} reduceMotion={settings.ui.reduceMotion} fallbackActivity={botActivities[props.bot.id]?.kind} />;
+}
+
+// Message rows already know their activity. Keep their portraits out of the
+// app-wide context so streaming updates do not revisit every historical SVG.
+export const BotAvatarVisual = memo(function BotAvatarVisual({
+  bot,
+  size = 'sm',
+  className = '',
+  animated = true,
+  activity,
+  reduceMotion: userReducedMotion,
+  fallbackActivity,
+}: AvatarProps & { reduceMotion: boolean; fallbackActivity?: BotActivityKind }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const charRef = useRef<GrokCharacterInstance | null>(null);
-  const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const reduceMotion = !animated || settings.ui.reduceMotion || systemReducedMotion;
+  const watchMotion = animated && !userReducedMotion;
+  const [systemReducedMotion, setSystemReducedMotion] = useState(() => watchMotion && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const reduceMotion = !watchMotion || systemReducedMotion;
   const shape = PORTRAITS.includes(bot.avatar.shape ?? '') ? bot.avatar.shape! : 'chibi';
-  const kind = activity ?? botActivities[bot.id]?.kind ?? 'idle';
+  const kind = activity ?? fallbackActivity ?? 'idle';
   const mood = BOT_ACTIVITY[kind].motion;
   const portrait = grokPortrait(shape);
   const customImage = bot.avatar.imageDataUrl && /^data:image\/(?:png|jpeg|webp|gif);base64,/.test(bot.avatar.imageDataUrl) ? bot.avatar.imageDataUrl : undefined;
 
   useEffect(() => {
+    if (!watchMotion) return;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const update = () => setSystemReducedMotion(media.matches);
+    update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
-  }, []);
+  }, [watchMotion]);
 
   useEffect(() => {
     if (customImage || !GROK_ENGINE_ENABLED || !svgRef.current || reduceMotion) return;
@@ -149,4 +162,4 @@ export function BotAvatar({
       </svg>
     </span>
   );
-}
+});

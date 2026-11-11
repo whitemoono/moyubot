@@ -167,6 +167,7 @@ app.whenReady().then(async () => {
   }
   seed.addMemory(first.id, '习惯用中文沟通，喜欢简洁的回答。');
   const perf = process.argv.includes('--perf-only') ? require('./desktop-perf.cjs') : null;
+  const perfTrace = perf && process.argv.includes('--perf-trace') ? require('electron').contentTracing : undefined;
   const perfConversationId = perf?.seedHistory(seed, first.id);
   const { MoyuApp } = require('../apps/desktop/dist-electron/app.js');
   backend = new MoyuApp(dataDir, '0.1.0');
@@ -182,7 +183,7 @@ app.whenReady().then(async () => {
       win.webContents.once('dom-ready', () => evaluate(perf.waitForComposer, perf.historySize).then(resolve, reject));
     });
     const [, startupMs] = await Promise.all([win.loadFile(path.join(rendererDir, 'index.html')), ready]);
-    await perf.runPerformance({ win, evaluate, until, conversationId: perfConversationId, startupMs, output });
+    await perf.runPerformance({ win, evaluate, until, conversationId: perfConversationId, startupMs, output, trace: perfTrace });
     assert.deepEqual(rendererErrors, [], 'No renderer errors');
     return;
   }
