@@ -5,6 +5,11 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      desktop_perf:
+        description: Measure desktop startup and long-chat responsiveness
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -65,7 +70,7 @@ jobs:
       - run: pnpm --filter @moyu/core build
       - run: pnpm --filter @moyu/desktop build
 
-  # 需要真实 Electron 运行时的 3 个端到端用例（串行跑：每个都拉起一套 Chromium）。
+  # 需要真实 Electron 运行时的端到端用例（串行跑：每个都拉起一套 Chromium）。
   # 这一层是唯一真正覆盖 IPC + 渲染层接线的测试，必须阻塞。
   electron-tests:
     name: Electron layer (windows)
@@ -86,3 +91,10 @@ jobs:
         run: pnpm --filter @moyu/desktop build
       - name: Electron tests
         run: node scripts/test-all.mjs --layer=electron
+      - name: Desktop request queue smoke
+        timeout-minutes: 3
+        run: pnpm --filter @moyu/desktop exec electron --no-sandbox ../../scripts/desktop-smoke.cjs --requests-only
+      - name: Desktop performance baseline
+        if: ${{ inputs.desktop_perf }}
+        timeout-minutes: 3
+        run: pnpm --filter @moyu/desktop exec electron --no-sandbox ../../scripts/desktop-smoke.cjs --perf-only

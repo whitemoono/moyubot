@@ -1,7 +1,65 @@
-import type { AgentEvent, Message } from '@moyu/core';
+import type { AgentEvent, Conversation, Message } from '@moyu/core';
 
 type ModelTurn = NonNullable<Message['modelTurns']>[number];
 type ProgressEvent = Extract<AgentEvent, { type: 'delta' | 'reasoning' | 'tool_start' }>;
+export type ReplyFragment = Extract<ProgressEvent, { type: 'delta' | 'reasoning' }>;
+
+/** Apply one frame of fragments in one pass over the visible transcript. */
+export function applyReplyFragments(conversation: Conversation | null, fragments: readonly ReplyFragment[]): Conversation | null {
+  if (!conversation) return conversation;
+  const byMessage = new Map<string, ReplyFragment[]>();
+  for (const fragment of fragments) {
+    if (fragment.conversationId !== conversation.id) continue;
+    const pending = byMessage.get(fragment.messageId);
+    if (!pending) {
+      byMessage.set(fragment.messageId, [fragment]);
+      continue;
+    }
+    const last = pending.at(-1)!;
+    if (last.type === fragment.type) pending[pending.length - 1] = { ...last, text: last.text + fragment.text };
+    else pending.push(fragment);
+  }
+  if (!byMessage.size) return conversation;
+  let changed = false;
+  const messages = conversation.messages.map((message) => {
+    const pending = byMessage.get(message.id);
+    if (!pending) return message;
+    changed = true;
+    return pending.reduce(appendReplyProgress, message);
+  });
+  return changed ? { ...conversation, messages } : conversation;
+}
+
+/** Flush before discrete events so tool and completion events retain IPC order. */
+export function createReplyBuffer(
+  schedule: (callback: () => void) => number,
+  cancel: (handle: number) => void,
+  publish: (batch: ReplyFragment[]) => void,
+) {
+  let pending: ReplyFragment[] = [];
+  let handle: number | undefined;
+  const clear = () => {
+    if (handle !== undefined) cancel(handle);
+    handle = undefined;
+    const batch = pending;
+    pending = [];
+    return batch;
+  };
+  const flush = () => {
+    const batch = clear();
+    if (batch.length) publish(batch);
+  };
+  return {
+    push(fragment: ReplyFragment) {
+      pending.push(fragment);
+      // Hidden windows may stop receiving animation frames.
+      if (pending.length >= 128) flush();
+      else if (handle === undefined) handle = schedule(flush);
+    },
+    flush,
+    discard() { clear(); },
+  };
+}
 
 /** Include an unfinished response after the persisted, complete model turns. */
 export function replyTurns(message: Message): ModelTurn[] {

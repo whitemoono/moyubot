@@ -166,6 +166,8 @@ app.whenReady().then(async () => {
     seed.appendMessage(orbit.id, { id: `old-assistant-${n}`, role: 'assistant', content: `已整理阶段 ${n} 的资料，下一步继续跟踪。`, createdAt: n * 2 + 1 });
   }
   seed.addMemory(first.id, '习惯用中文沟通，喜欢简洁的回答。');
+  const perf = process.argv.includes('--perf-only') ? require('./desktop-perf.cjs') : null;
+  const perfConversationId = perf?.seedHistory(seed, first.id);
   const { MoyuApp } = require('../apps/desktop/dist-electron/app.js');
   backend = new MoyuApp(dataDir, '0.1.0');
   backend.store.secrets.set(backend.store.providerSecretKey(provider.id), 'desktop-test-only');
@@ -174,8 +176,42 @@ app.whenReady().then(async () => {
   backend.setWindow(win);
   win.webContents.on('console-message', (_event, details) => { if (details.level === 'error') rendererErrors.push(details.message); });
   win.webContents.on('render-process-gone', (_event, details) => rendererErrors.push(`Renderer exited: ${details.reason}`));
-  await win.loadFile(path.join(root, 'apps/desktop/dist/index.html'));
+  const rendererDir = process.env.MOYU_SMOKE_RENDERER_DIR ?? path.join(root, 'apps/desktop/dist');
+  if (perf) {
+    const ready = new Promise((resolve, reject) => {
+      win.webContents.once('dom-ready', () => evaluate(perf.waitForComposer, perf.historySize).then(resolve, reject));
+    });
+    const [, startupMs] = await Promise.all([win.loadFile(path.join(rendererDir, 'index.html')), ready]);
+    await perf.runPerformance({ win, evaluate, until, conversationId: perfConversationId, startupMs, output });
+    assert.deepEqual(rendererErrors, [], 'No renderer errors');
+    return;
+  }
+  await win.loadFile(path.join(rendererDir, 'index.html'));
   await until(() => !!document.querySelector('.chat--home'), 'initial home');
+  if (process.argv.includes('--requests-only')) {
+    const atlasConversation = backend.store.botConversation(first.id);
+    const novaConversation = backend.store.botConversation('ui-nova');
+    const atlas = { botId: first.id, conversationId: atlasConversation.id, createdAt: Date.now() };
+    const nova = { botId: 'ui-nova', conversationId: novaConversation.id, createdAt: Date.now() };
+    const atlasApproval = backend.waitForApproval({ ...atlas, id: 'approval-a', toolName: 'demo', summary: 'Atlas 的审批' });
+    const novaApproval = backend.waitForApproval({ ...nova, id: 'approval-b', toolName: 'demo', summary: 'Nova 的审批' });
+    const atlasAnswer = backend.waitForAnswer({ ...atlas, id: 'question-a', question: 'Atlas 的问题' });
+    const novaAnswer = backend.waitForAnswer({ ...nova, id: 'question-b', question: 'Nova 的问题' });
+    await until(() => document.querySelector('[aria-label="需要你的确认"] .approval__summary')?.textContent === 'Atlas 的审批', 'first approval is visible');
+    assert.equal(await evaluate(() => !!document.querySelector('.question-card')), false, 'Approval takes precedence over the question');
+    await button('拒绝', '[aria-label="需要你的确认"] button');
+    await until(() => document.querySelector('[aria-label="需要你的确认"] .approval__summary')?.textContent === 'Nova 的审批', 'second approval remains queued');
+    await button('允许一次', '[aria-label="需要你的确认"] button');
+    await until(() => document.querySelector('.question-card__question')?.textContent === 'Atlas 的问题', 'active conversation question is inline');
+    await input('.question-card textarea', 'Atlas 的答案');
+    await button('发送回答', '.question-card button');
+    await until(() => document.querySelector('[aria-label="Bot 需要你的回答"] .approval__summary')?.textContent === 'Nova 的问题', 'background conversation question opens next');
+    await button('跳过', '[aria-label="Bot 需要你的回答"] button');
+    assert.deepEqual(await Promise.all([atlasApproval, novaApproval, atlasAnswer, novaAnswer]), [false, true, 'Atlas 的答案', '']);
+    assert.deepEqual(rendererErrors, [], 'No renderer errors');
+    console.log('Desktop request queue smoke passed.');
+    return;
+  }
   if (process.argv.includes('--memories-only')) {
     const initial = backend.store.listMemories(first.id);
     const stamp = Date.now() - 60_000;

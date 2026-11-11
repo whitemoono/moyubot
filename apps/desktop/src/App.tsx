@@ -1,30 +1,31 @@
 import logoUrl from './assets/brand/logo.png';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useMoyu } from './state';
-import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { TitleBar } from './components/TitleBar';
 import { Button, Sheet } from './components/Glass';
 import { Icon } from './components/Icon';
 import { ChatView } from './views/ChatView';
-import { TasksView } from './views/TasksView';
-import { SettingsView } from './views/SettingsView';
 import { CreateBotDialog } from './components/CreateBotDialog';
 import { WorkspaceTerminal } from './components/WorkspaceTerminal';
 import { Onboarding } from './components/Onboarding';
+
+const Inspector = lazy(() => import('./components/Inspector').then(({ Inspector }) => ({ default: Inspector })));
+const TasksView = lazy(() => import('./views/TasksView').then(({ TasksView }) => ({ default: TasksView })));
+const SettingsView = lazy(() => import('./views/SettingsView').then(({ SettingsView }) => ({ default: SettingsView })));
 
 function Backdrop() {
   return <div className="wallpaper" aria-hidden="true" />;
 }
 
 function ApprovalSheet() {
-  const { approval, respondApproval } = useMoyu();
+  const { approval, respondApproval, requestSource } = useMoyu();
   if (!approval) return null;
   return (
     <Sheet
       open
       title="需要你的确认"
-      subtitle={`${approval.toolName} 请求操作工作区电脑`}
+      subtitle={`${requestSource(approval)} · ${approval.toolName} 请求操作工作区电脑`}
       onClose={() => void respondApproval(false)}
       footer={
         <>
@@ -53,17 +54,17 @@ function ApprovalSheet() {
 }
 
 function QuestionSheet() {
-  const { question, answerQuestion, conversation } = useMoyu();
+  const { question, answerQuestion, conversation, approval, view, settingsOpen, requestSource } = useMoyu();
   const [draft, setDraft] = useState('');
   useEffect(() => { setDraft(''); }, [question?.id]);
-  // 当前会话的提问由聊天页输入框上方的浮动卡片处理；这里只兜底"提问属于别的会话"的场景。
-  if (!question || question.conversationId === conversation?.id) return null;
+  // 只有聊天页可交互时，才让输入框上方的卡片接管当前会话的问题。
+  if (!question || approval || (view === 'chat' && !settingsOpen && question.conversationId === conversation?.id)) return null;
   const send = () => { if (draft.trim()) void answerQuestion({ requestId: question.id, answer: draft }); };
   return (
     <Sheet
       open
       title="Bot 需要你的回答"
-      subtitle="它查不到，或需要你拍板"
+      subtitle={requestSource(question)}
       onClose={() => void answerQuestion({ requestId: question.id, answer: '' })}
       footer={
         <>
@@ -110,7 +111,7 @@ function Toasts() {
 }
 
 export function App() {
-  const { ready, view, settings, settingsOpen, activeWorkspace } = useMoyu();
+  const { ready, view, settings, settingsOpen, closeSettings, activeWorkspace } = useMoyu();
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -167,15 +168,23 @@ export function App() {
           <main className="main-view workspace-main" key={view} ref={mainRef}>
             <div className="workspace-main__content" key={activeWorkspace?.id}>
             {view === 'chat' ? <ChatView inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen((value) => !value)} /> : null}
-            {view === 'tasks' ? <TasksView /> : null}
+            {view === 'tasks' ? <Suspense fallback={<div role="status">正在加载任务…</div>}><TasksView /></Suspense> : null}
             </div>
             <WorkspaceTerminal open={terminalOpen} onClose={() => setTerminalOpen(false)} />
           </main>
-          {inspectorOpen && view === 'chat' ? <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} /> : null}
+          {inspectorOpen && view === 'chat' ? (
+            <Suspense fallback={<aside className="rail inspector" role="status">正在加载对话详情…</aside>}>
+              <Inspector key={activeWorkspace?.id} onOpenTerminal={() => setTerminalOpen(true)} onClose={() => setInspectorOpen(false)} onCreateBot={() => setCreatingBot(true)} />
+            </Suspense>
+          ) : null}
         </div>
       )}
       {settingUp ? <Onboarding /> : <><ApprovalSheet /><QuestionSheet /></>}
-      {ready && settingsOpen ? <SettingsView key={activeWorkspace?.id} onCreateBot={() => setCreatingBot(true)} /> : null}
+      {ready && settingsOpen ? (
+        <Suspense fallback={<Sheet open title="设置" onClose={closeSettings}><p role="status">正在加载设置…</p></Sheet>}>
+          <SettingsView key={activeWorkspace?.id} onCreateBot={() => setCreatingBot(true)} />
+        </Suspense>
+      ) : null}
       {creatingBot ? <CreateBotDialog onClose={() => setCreatingBot(false)} /> : null}
       <Toasts />
     </div>

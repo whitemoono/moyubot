@@ -176,6 +176,13 @@ pnpm dev          # 自动先编译 core，再启动 Vite + Electron
 | `pnpm test:conversations` | 验证固定会话迁移、自动压缩、记忆去重、失败恢复及 Bot 隔离 |
 | `pnpm test:avatars` | 验证头像状态隔离、完成、失败、停止、授权恢复与历史消息 |
 | `pnpm seed` | 写入演示用 Bot / 供应商 / 定时任务 / 记忆 |
+
+桌面性能基线：先运行 `pnpm build`，再运行
+`pnpm --filter @moyu/desktop exec electron ../../scripts/desktop-smoke.cjs --perf-only`。
+也可以手动运行 GitHub Actions 的 CI 工作流并勾选 `desktop_perf`，在 Windows 作业日志中查看 JSON；本地报告写入
+`.work/desktop-smoke/<运行时间>/performance.json`。
+
+测量使用 1,000 条固定历史消息，比较空闲和接收 300 个固定文本片段期间的帧间隔、模拟输入到第二个动画帧的延迟（p50、p95、最大值），两种场景都持续滚动。启动指标从页面导航开始，到历史和可用输入框首次被检测到为止；不含 Electron 进程启动，也不等同于真实显示器上的输入延迟。建议在同一机器、相同构建方式下各运行至少三次再对比。
 | `pnpm dist` | 打 Windows NSIS 安装包到 `apps/desktop/release` |
 
 ## 目录结构
