@@ -10,6 +10,10 @@ on:
         description: Measure desktop startup and long-chat responsiveness
         type: boolean
         default: false
+      desktop_perf_compare:
+        description: Compare the desktop build against the pre-render-optimization baseline on one runner
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -95,6 +99,26 @@ jobs:
         timeout-minutes: 3
         run: pnpm --filter @moyu/desktop exec electron --no-sandbox ../../scripts/desktop-smoke.cjs --requests-only
       - name: Desktop performance baseline
-        if: ${{ inputs.desktop_perf }}
+        if: ${{ inputs.desktop_perf && !inputs.desktop_perf_compare }}
         timeout-minutes: 3
         run: pnpm --filter @moyu/desktop exec electron --no-sandbox ../../scripts/desktop-smoke.cjs --perf-only
+      - name: Check out the desktop performance reference
+        if: ${{ inputs.desktop_perf_compare }}
+        uses: actions/checkout@v4
+        with:
+          # 0e592f3 is the measured build before historical rows were isolated.
+          ref: 0e592f38405ebc8560ec04adeecfd3d929aeeb71
+          path: .work/perf-baseline
+          persist-credentials: false
+      - name: Build the desktop performance reference
+        if: ${{ inputs.desktop_perf_compare }}
+        working-directory: .work/perf-baseline
+        timeout-minutes: 8
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm build
+      - name: Compare desktop performance on one runner
+        if: ${{ inputs.desktop_perf_compare }}
+        timeout-minutes: 10
+        run: node scripts/desktop-perf-compare.cjs .work/perf-baseline .

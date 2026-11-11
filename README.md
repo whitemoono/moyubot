@@ -185,6 +185,8 @@ pnpm dev          # 自动先编译 core，再启动 Vite + Electron
 测量使用 1,000 条固定历史消息，比较空闲和接收 300 个固定文本片段期间的帧间隔、模拟输入到第二个动画帧的延迟（p50、p95、最大值），两种场景都持续滚动。启动指标从页面导航开始，到历史和可用输入框首次被检测到为止；不含 Electron 进程启动，也不等同于真实显示器上的输入延迟。建议在同一机器、相同构建方式下各运行至少三次再对比。
 
 排查渲染瓶颈时，在本地命令末尾追加 `--perf-trace`，生成 `performance-trace.json`，可导入 Chromium DevTools 的 Performance 面板查看 JavaScript、布局和绘制。录制会增加开销，对比性能数值时不要开启。
+
+要做同机对比，在 CI 手动运行时勾选 `desktop_perf_compare`。Windows 作业会将当前构建与优化前的 `0e592f3` 放在同一 runner 上，交错各跑三次，每次启动新的 Electron 进程和用户数据目录。日志会显示各次结果和中位数；脚本要求六次运行使用相同的 Electron 版本、窗口尺寸和采样参数。它测量的是新进程内的页面加载，未清空操作系统缓存。
 | `pnpm dist` | 打 Windows NSIS 安装包到 `apps/desktop/release` |
 
 ## 目录结构
