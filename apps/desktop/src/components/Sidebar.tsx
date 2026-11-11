@@ -141,6 +141,7 @@ export function Sidebar({ collapsed, onExpand, onCreateBot }: { collapsed: boole
   return (
     <aside ref={sidebarRef} className="sidebar sidebar--messenger" aria-label="Bot 列表">
       <div className="messenger-toolbar">
+        <span className="messenger-toolbar__title">会话</span>
         <IconButton name="search" label="搜索 Bot" aria-haspopup="dialog" aria-expanded={searchOpen} onClick={openSearch} />
         <IconButton name="plus" label="添加 Bot" onClick={onCreateBot} />
       </div>

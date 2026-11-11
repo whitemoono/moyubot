@@ -1,0 +1,139 @@
+/* Desktop settings, Bot editor and workspace controls share the same surfaces. */
+:root {
+  --ui-radius-control: 10px;
+  --ui-radius-card: 14px;
+  --ui-radius-dialog: 20px;
+  --ui-card-border: var(--line-strong);
+  --ui-card-bg: var(--surface);
+  --ui-gap: 16px;
+  --ui-page-gutter: clamp(18px, 2.4vw, 28px);
+  --ui-fast: 150ms;
+  --ui-enter: 230ms;
+}
+
+.settings-dialog, .sheet.sheet--bot-editor { border-radius: var(--ui-radius-dialog); }
+.settings-heading {
+  align-items: center;
+  padding: 18px var(--ui-page-gutter);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.sheet--bot-editor .sheet__head { align-items: center; padding: 18px var(--ui-page-gutter); }
+.settings-heading .icon-btn, .sheet--bot-editor .sheet__head > .icon-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  border-radius: var(--ui-radius-control);
+  border: 1px solid var(--line);
+  background: var(--hover);
+}
+.ui-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ui-heading > div { min-width: 0; }
+.ui-heading__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 12px;
+  border: 1px solid var(--workspace-ring);
+  background: var(--workspace-tint);
+  color: var(--workspace-accent);
+}
+.settings-heading .ui-heading h2, .sheet--bot-editor .ui-heading h2 {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 23px);
+  font-weight: 650;
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
+}
+.settings-heading .ui-heading p, .sheet--bot-editor .ui-heading p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.settings-content { padding: var(--ui-gap) var(--ui-page-gutter) 24px; scrollbar-gutter: stable; }
+.settings-main--providers .settings-content, .settings-main--cloud .settings-content { scrollbar-gutter: auto; }
+
+.settings-dialog .settings-tabs button { border: 1px solid transparent; border-radius: var(--ui-radius-control); }
+.settings-dialog .settings-tabs button[aria-current="page"] {
+  border-color: var(--workspace-ring);
+  background: var(--workspace-tint);
+  color: var(--text);
+}
+.settings-dialog .settings-tabs button[aria-current="page"] svg { color: var(--workspace-accent); }
+.settings-dialog .settings-tabs button[aria-current="page"]::before {
+  content: '';
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--workspace-accent);
+  animation: ui-marker var(--ui-enter) var(--ease-out);
+}
+
+:is(.settings-dialog, .sheet--bot-editor) :is(.btn, .input, .textarea, .picker__trigger) {
+  border-radius: var(--ui-radius-control);
+}
+:is(.settings-dialog, .sheet--bot-editor) :is(.input:focus, .textarea:focus, .picker__trigger:focus-visible) {
+  border-color: var(--workspace-accent);
+  box-shadow: 0 0 0 3px var(--workspace-tint);
+}
+:root :is(.settings-dialog, .sheet--bot-editor) .btn--primary,
+:root :is(.settings-dialog, .sheet--bot-editor) .btn--primary:hover {
+  color: var(--bg);
+  background: var(--workspace-accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+:is(.settings-dialog, .sheet--bot-editor) :is(.btn--glass, .btn--ghost):hover:not(:disabled) { background: var(--workspace-tint); }
+:is(.settings-dialog, .sheet--bot-editor) :is(.segmented .is-active, .provider-item.is-active, .usage-periods [aria-pressed="true"], .usage-switch [aria-pressed="true"], .computer-subnav [aria-selected="true"]) {
+  background: var(--workspace-tint);
+  color: var(--workspace-accent);
+}
+
+.settings-dialog :is(.settings-rows, .settings-form-group, .catalog-stat, .catalog-toolbar, .market-card, .tools-section, .bot-card, .feedback-card, .about-card, .computer-overview, .computer-card, .usage-stat, .usage-trend, .provider-presets > button, .provider-advanced, .provider-embedding),
+:root .settings-dialog .capabilities-settings .settings-card,
+.sheet--bot-editor .bot-editor .editor-block {
+  border: 1px solid var(--ui-card-border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-card-bg);
+}
+:root .settings-dialog .capabilities-settings .settings-card { padding: var(--ui-gap); gap: 12px; }
+.settings-dialog .settings-rows { background: var(--surface); }
+.settings-dialog .settings-section-title { font-size: 14px; font-weight: 650; color: var(--text); }
+.settings-dialog .settings-row strong { font-weight: 600; }
+.settings-dialog .settings-row p, .settings-dialog .settings-rows .switch__hint { font-size: 11px; line-height: 1.55; }
+.settings-dialog .bot-card--new { border-style: dashed; background: transparent; }
+.settings-dialog .usage-stat--total { border-color: var(--workspace-ring); background: var(--workspace-tint); }
+.settings-dialog .usage-stat--total > strong { color: var(--workspace-accent); }
+:root .settings-dialog .settings-card { animation: none; }
+
+/* One short transition per page, without unmounting forms or moving scroll containers. */
+.settings-heading .ui-heading { animation: ui-enter var(--ui-enter) var(--ease-out); }
+:root .settings-dialog .settings-content > :not([hidden]) { animation: ui-reveal var(--ui-enter) var(--ease-out); }
+.settings-dialog :is(.tools-section__grid, .cap-group__body, .cap-inline-form),
+.sheet--bot-editor .tool-group__grid { animation: ui-enter var(--ui-enter) var(--ease-out); }
+:is(.settings-dialog, .sheet--bot-editor) :is(.btn, .market-card__import, .tools-section__head, .cap-group__head, .bot-editor__nav button) {
+  transition: background-color var(--ui-fast) ease, color var(--ui-fast) ease, border-color var(--ui-fast) ease, translate var(--ui-fast) var(--ease-out);
+}
+:is(.settings-dialog, .sheet--bot-editor) :is(.btn, .market-card__import, .bot-editor__nav button):not(:disabled):active { translate: 0 1px; }
+@media (hover: hover) {
+  .settings-dialog :is(.market-card, .provider-presets > button) { transition: border-color var(--ui-fast) ease, translate var(--ui-fast) var(--ease-out); }
+  .settings-dialog :is(.market-card, .provider-presets > button):hover { border-color: var(--workspace-ring); translate: 0 -2px; }
+}
+
+:root .chat .composer .send-btn:not(:disabled) { color: var(--bg); background: var(--workspace-accent); }
+:root .chat .composer .send-btn:not(:disabled):hover { filter: brightness(1.08); }
+
+@keyframes ui-enter { from { opacity: .45; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ui-reveal { from { opacity: .35; } to { opacity: 1; } }
+@keyframes ui-marker { from { opacity: 0; scale: 1 .45; } to { opacity: 1; scale: 1 1; } }
+
+/* workspace.css also disables animation globally for system and app motion preferences. */
+:root.reduce-motion :is(.settings-dialog, .sheet--bot-editor) :is(.market-card, .provider-presets > button, .btn, .market-card__import, .bot-editor__nav button) { translate: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.settings-dialog, .sheet--bot-editor) :is(.market-card, .provider-presets > button, .btn, .market-card__import, .bot-editor__nav button) { translate: none; }
+}

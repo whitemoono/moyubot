@@ -73,12 +73,14 @@ export function CapabilitiesSettings() {
   );
 
   return <div className="capabilities-settings">
+    {error ? <p className="capability-error" role="alert">{error}</p> : null}
     <div className="cap-split">
       {/* ── MCP 服务 ─────────────────────────────────────────── */}
       <Panel className="settings-card cap-column">
         <div className="cap-column__head">
-          <h3>MCP 服务</h3>
-          <Button size="sm" icon="plus" data-testid="cap-mcp-add" onClick={() => setShowMcpImport(true)}>添加</Button>
+          <span className="catalog-icon"><Icon name="plug" size={18} /></span>
+          <div><h3>MCP 服务</h3><p>{servers.length} 个已配置{isCloud ? ` · ${cloudMcp.length} 个云端部署` : ' · 本地工作区'}</p></div>
+          <Button size="sm" icon="plus" data-testid="cap-mcp-add" aria-expanded={showMcpImport} onClick={() => setShowMcpImport(open => !open)}>添加 MCP</Button>
         </div>
 
         <div className="cap-list">
@@ -101,7 +103,7 @@ export function CapabilitiesSettings() {
             detail={`${server.transport === 'stdio' ? server.command : server.url} · ${server.source}`} />)}</CapGroup> : null}
           {cloudMcp.some(s => s.botId) ? <CapGroup id="mcp-own" title="云电脑 · 各 Bot 自有" count={cloudMcp.filter(s => s.botId).length}>{cloudMcp.filter(s => s.botId).map(server => <CapRow key={server.id} name={server.name} badge="自有"
             detail={`${server.transport === 'stdio' ? server.command : server.url} · ${server.source}`} />)}</CapGroup> : null}
-          {!servers.length && !cloudMcp.length ? <p className="cap-hint">还没有 MCP 服务。点右上角「添加」，或让 Bot 在对话里安装。</p> : null}
+          {!servers.length && !cloudMcp.length && !showMcpImport ? <div className="cap-empty"><strong>还没有 MCP 服务</strong><small>导入 JSON 配置，或让 Bot 在对话里安装。</small></div> : null}
         </div>
 
         {showMcpImport ? <div className="cap-inline-form">
@@ -122,8 +124,9 @@ export function CapabilitiesSettings() {
       {/* ── 技能 ─────────────────────────────────────────────── */}
       <Panel className="settings-card cap-column">
         <div className="cap-column__head">
-          <h3>技能</h3>
-          <Button size="sm" icon="plus" data-testid="cap-skill-add" disabled={busy} onClick={importSkill}>添加</Button>
+          <span className="catalog-icon"><Icon name="spark" size={18} /></span>
+          <div><h3>技能</h3><p>{skills.length} 个已配置{isCloud ? ` · ${cloudSkill.length} 个云端部署` : ' · 本地工作区'}</p></div>
+          <Button size="sm" icon="plus" data-testid="cap-skill-add" disabled={busy} onClick={importSkill}>导入技能</Button>
         </div>
 
         <div className="cap-list">
@@ -139,19 +142,22 @@ export function CapabilitiesSettings() {
           })}</CapGroup> : null}
           {cloudSkill.some(s => !s.botId) ? <CapGroup id="skill-shared" title="云电脑 · 共享" count={cloudSkill.filter(s => !s.botId).length}>{cloudSkill.filter(s => !s.botId).map(skill => <CapRow key={skill.id} name={skill.name} badge="共享" detail={skill.source} />)}</CapGroup> : null}
           {cloudSkill.some(s => s.botId) ? <CapGroup id="skill-own" title="云电脑 · 各 Bot 自有" count={cloudSkill.filter(s => s.botId).length}>{cloudSkill.filter(s => s.botId).map(skill => <CapRow key={skill.id} name={skill.name} badge="自有" detail={skill.source} />)}</CapGroup> : null}
-          {!skills.length && !cloudSkill.length ? <p className="cap-hint">还没有技能。点右上角「添加」上传含 SKILL.md 的文件夹。</p> : null}
+          {!skills.length && !cloudSkill.length ? <div className="cap-empty"><strong>还没有技能</strong><small>导入包含 SKILL.md 的文件夹，再为 Bot 启用。</small></div> : null}
         </div>
       </Panel>
     </div>
 
-    <Panel className="settings-card">
-      <h3>联网搜索 <small>web_search 工具</small></h3>
-      <p className="settings-note">默认 DuckDuckGo 免密钥可用；换后端需填写密钥或实例地址。此处设置对所有工作区生效。</p>
+    <Panel className="settings-card cap-search-card">
+      <div className="cap-column__head">
+        <span className="catalog-icon"><Icon name="search" size={18} /></span>
+        <div><h3>联网搜索</h3><p>设置所有工作区共用的搜索后端。部分后端需要 API 密钥或实例地址。</p></div>
+      </div>
+      <div className="cap-search-fields">
       <Field label="搜索后端"><Select label="搜索后端" value={search.provider} options={SEARCH_PROVIDERS} onChange={(value) => setSearch({ ...search, provider: value as WebSearchProvider })} /></Field>
-      {search.provider !== 'duckduckgo' && search.provider !== 'searxng' ? <Field label="API Key" hint="与供应商密钥同样加密保存在本机。"><input className="input mono" aria-label="搜索 API Key" type="password" value={search.apiKey ?? ''} placeholder="填写后保存" onChange={(event) => setSearch({ ...search, apiKey: event.target.value })} /></Field> : null}
+      {search.provider !== 'bing-web' && search.provider !== 'duckduckgo' && search.provider !== 'searxng' ? <Field label="API Key" hint="与供应商密钥同样加密保存在本机。"><input className="input mono" aria-label="搜索 API Key" type="password" value={search.apiKey ?? ''} placeholder="填写后保存" onChange={(event) => setSearch({ ...search, apiKey: event.target.value })} /></Field> : null}
       {search.provider === 'searxng' ? <Field label="实例地址" hint="该实例需允许 format=json 输出。"><input className="input mono" aria-label="SearXNG 地址" value={search.endpoint ?? ''} placeholder="https://searx.example.com" onChange={(event) => setSearch({ ...search, endpoint: event.target.value })} /></Field> : null}
-      <Button disabled={busy} onClick={() => void run(async () => { await saveSettings({ webSearch: { ...search, apiKey: search.apiKey?.trim() || undefined, endpoint: search.endpoint?.trim() || undefined } }); toast('联网搜索设置已保存'); })}>保存搜索设置</Button>
+      </div>
+      <div className="cap-search-actions"><Button disabled={busy} onClick={() => void run(async () => { await saveSettings({ webSearch: { ...search, apiKey: search.apiKey?.trim() || undefined, endpoint: search.endpoint?.trim() || undefined } }); toast('联网搜索设置已保存'); })}>保存搜索设置</Button></div>
     </Panel>
-    {error ? <p className="capability-error" role="alert">{error}</p> : null}
   </div>;
 }

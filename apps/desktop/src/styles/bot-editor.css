@@ -1,0 +1,145 @@
+.sheet.sheet--bot-editor {
+  width: min(930px, 100%);
+  max-height: min(90dvh, 850px);
+}
+
+.sheet--bot-editor .sheet__head {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet--bot-editor .sheet__head h2 {
+  font-size: 22px;
+  overflow-wrap: anywhere;
+}
+
+.sheet--bot-editor .sheet__body {
+  padding: 0;
+  background: var(--bg);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.sheet--bot-editor .sheet__foot {
+  flex-shrink: 0;
+  padding: 12px 24px;
+  background: var(--surface);
+}
+
+.bot-editor {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 20px;
+}
+
+.bot-editor__nav {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.bot-editor__nav-label {
+  padding: 6px 9px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.bot-editor__nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: left;
+}
+
+.bot-editor__nav button svg { color: var(--workspace-accent); }
+.bot-editor__nav button:hover { background: var(--workspace-tint); color: var(--text); }
+
+.bot-editor .editor-block {
+  min-width: 0;
+  padding: 20px;
+  gap: 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: 15px;
+  background: var(--surface);
+}
+
+.bot-editor__sections > [tabindex="-1"] { scroll-margin-block: 12px; }
+.bot-editor__sections > [tabindex="-1"]:focus { outline: 2px solid var(--workspace-ring); outline-offset: -2px; border-radius: 15px; }
+
+.bot-editor .editor-block h3 {
+  color: var(--text);
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bot-editor__section-head p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.bot-editor .identity-row { align-items: center; }
+.bot-editor .identity-fields { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bot-editor__portrait {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: 1px solid var(--workspace-ring);
+  border-radius: 18px;
+  background: var(--workspace-tint);
+}
+
+.bot-editor .editor-block > .avatar-picker {
+  margin-top: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  gap: 14px;
+}
+
+.bot-editor .avatar-choice[aria-pressed="true"] {
+  border-color: var(--workspace-ring);
+  background: var(--workspace-tint);
+}
+
+.bot-editor .field__label { color: var(--text-dim); font-size: 12px; }
+.bot-editor .field__hint { font-size: 11px; line-height: 1.55; }
+.bot-editor .textarea { min-height: 132px; line-height: 1.65; }
+.bot-editor .key-row { flex-wrap: wrap; }
+.bot-editor .key-row > .input, .bot-editor .key-row > .picker { flex: 1 1 155px; }
+.bot-editor .key-row .btn { white-space: nowrap; }
+.bot-editor__endpoint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -6px 0 0; color: var(--text-faint); font-size: 11px; overflow-wrap: anywhere; }
+.bot-editor__key-status { padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.bot-editor__key-status[data-configured="true"] { color: var(--workspace-accent); background: var(--workspace-tint); }
+
+.bot-editor .bot-capabilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.bot-editor .bot-capabilities .editor-block { margin: 0; padding: 14px; background: var(--bg); }
+.bot-editor .tool-group__grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 184px), 1fr)); }
+
+@media (max-width: 730px) {
+  .bot-editor { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  .bot-editor__nav { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bot-editor__nav-label { grid-column: 1 / -1; }
+  .bot-editor .editor-block { padding: 14px; }
+}
+
+@media (max-width: 460px) {
+  .sheet--bot-editor .sheet__head, .sheet--bot-editor .sheet__foot { padding-inline: 12px; }
+  .bot-editor__nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bot-editor .identity-fields, .bot-editor .bot-capabilities { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,6 +1,6 @@
 {
   "name": "moyubot",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "MoyuBot — multi-provider bots sharing one sleeping cloud computer, in a focused desktop workspace",
   "license": "MIT",
@@ -34,7 +34,7 @@
     "test:plan-mode": "pnpm --filter @moyu/core build && node --test scripts/plan-mode.test.mjs",
     "test:workflow": "pnpm --filter @moyu/core build && node --test scripts/workflow.test.mjs",
     "seed": "node scripts/seed-demo.mjs",
-    "dist": "pnpm build && pnpm --filter @moyu/desktop dist",
+    "dist": "pnpm --filter @moyu/core build && pnpm --filter @moyu/desktop dist",
     "release:github": "node scripts/publish-release.mjs"
   },
   "devDependencies": {

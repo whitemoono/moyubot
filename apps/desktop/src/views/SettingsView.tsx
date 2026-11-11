@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AppSettings } from '@moyu/core';
 import { useMoyu } from '../state';
 import { useDialogFocus } from '../lib/use-dialog-focus';
-import { Button, IconButton, Panel, Segmented, Toggle } from '../components/Glass';
+import { Button, IconButton, Panel, Segmented, SurfaceHeading, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { ProfileSettings } from '../components/ProfileSettings';
 import { AboutSettings } from './AboutSettings';
@@ -37,6 +37,10 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
   const { settings, saveSettings, version, toast, settingsSection: section, setSettingsSection: setSection, closeSettings, activeWorkspace } = useMoyu();
   const sections = SECTIONS.map((item) => item.id === 'cloud' && activeWorkspace?.kind === 'local' ? { ...item, label: '本地电脑', hint: '工作区内的 Bot 共用本机 Windows，文件与命令在本地完成。' } : item);
   const dialog = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (content.current) content.current.scrollTop = 0;
+  }, [section]);
   const [providerDirty, setProviderDirty] = useState(false);
   const [embeddingDirty, setEmbeddingDirty] = useState(false);
   const [cloudDirty, setCloudDirty] = useState(false);
@@ -59,8 +63,8 @@ export function SettingsView({ onCreateBot }: { onCreateBot: () => void }) {
         <div className="settings-navigation__footer"><Icon name="shield" size={14} /><span>本地工作空间<small>MoyuBot · v{version}</small></span></div>
       </aside>
       <div className={`settings-main settings-main--${section}`}>
-        <header className="settings-heading"><div><h2 id="settings-title">{selected.label}</h2><p>{selected.hint}</p></div><IconButton name="close" label="关闭设置" onClick={close} /></header>
-        <div className="settings-content">
+        <header className="settings-heading"><SurfaceHeading key={section} id="settings-title" icon={selected.icon} title={selected.label} subtitle={selected.hint} /><IconButton name="close" label="关闭设置" onClick={close} /></header>
+        <div className="settings-content" ref={content}>
           {section === 'plugins' ? <ToolsView /> : null}
           {section === 'memories' ? <MemoriesView /> : null}
           {section === 'capabilities' ? <CapabilitiesSettings key={activeWorkspace?.id} /> : null}

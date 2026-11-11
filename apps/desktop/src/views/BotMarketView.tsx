@@ -14,6 +14,7 @@ export function BotMarketView() {
   const [submissions, setSubmissions] = useState<BotMarketState['submissions']>([]);
   // 导入目标工作区：默认当前激活工作区，用户可显式切换
   const [targetWorkspaceId, setTargetWorkspaceId] = useState<string>('');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -46,7 +47,7 @@ export function BotMarketView() {
     }
   }, [settings.bots, saveBot, workspaces, toast]);
 
-  const total = official.length + remote.length;
+  const term = query.trim().toLowerCase();
   // 分组：内置通用套 + 远程专用套（去重 handle）
   const groups: { key: string; title: string; note: string; templates: BotTemplate[] }[] = [];
   const allGeneral = [...official, ...remote];
@@ -55,54 +56,65 @@ export function BotMarketView() {
   const special = allGeneral.filter((t) => (t.meta.category ?? '通用') === 'moyubot 专用');
   if (general.length) groups.push({ key: 'general', title: '通用研发助手', note: '内置 · 任何项目可用', templates: general });
   if (special.length) groups.push({ key: 'special', title: 'MoyuBot 专用研发助手', note: '远程 · 标定本仓库', templates: special });
+  const visibleGroups = groups.map(group => ({ ...group, templates: group.templates.filter(({ meta }) =>
+    [meta.name, meta.handle, meta.description, ...(meta.tags ?? [])].some(value => value?.toLowerCase().includes(term)),
+  ) })).filter(group => group.templates.length);
 
   return (
     <div className="market-page">
-      <div className="tools-stats">
-        <div className="stat-card"><strong>{official.length}</strong><span>内置模板</span></div>
-        <div className="stat-card"><strong>{remote.length}</strong><span>远程模板</span></div>
-        <div className="stat-card"><strong>{submissions.length}</strong><span>我上传的</span></div>
-        <div className="stat-card"><strong>{settings.bots.length}</strong><span>工作区 Bot</span></div>
+      <div className="catalog-stats">
+        {[
+          { icon: 'bots', value: official.length, label: '内置模板' },
+          { icon: 'cloud', value: remote.length, label: '远程模板' },
+          { icon: 'grid', value: submissions.length, label: '我上传的' },
+          { icon: 'check', value: settings.bots.filter(bot => (bot.workspaceId ?? 'workspace_cloud') === workspaceId).length, label: '目标工作区 Bot' },
+        ].map(item => <div className="catalog-stat" key={item.label}><Icon name={item.icon} size={16} /><strong>{item.value}</strong><span>{item.label}</span></div>)}
       </div>
-
-      <p className="market-note"><Icon name="check" size={13} />从模板新建的 Bot 默认走「每次确认」（approvalPolicy = ask），你可在 Bot 编辑页自行调整。</p>
-
-      <div className="market-ws">
-        <span className="market-ws__label">导入目标工作区：</span>
-        <select className="input" value={targetWorkspaceId} onChange={(e) => setTargetWorkspaceId(e.target.value)} aria-label="导入目标工作区">
+      <div className="catalog-toolbar market-ws">
+        <label className="catalog-search">
+          <Icon name="search" size={16} />
+          <input className="input" aria-label="搜索 Bot 模板" placeholder="搜索名称、标签或简介…" value={query} onChange={e => setQuery(e.target.value)} />
+        </label>
+        <label className="market-ws__target">
+          <span className="market-ws__label">导入到</span>
+          <select className="input" value={workspaceId} onChange={(e) => setTargetWorkspaceId(e.target.value)} aria-label="导入目标工作区">
           {(workspaces.length ? workspaces : [activeWorkspace]).filter(Boolean).map((w) => (
             <option key={w!.id} value={w!.id}>{w!.kind === 'cloud' ? '云电脑工作区' : '本地工作区'}</option>
           ))}
-        </select>
-        <span className="market-ws__hint">将导入到「{workspaceLabel}」</span>
+          </select>
+        </label>
       </div>
+      <p className="market-note"><Icon name="shield" size={15} />导入到{workspaceLabel}的 Bot 默认在执行操作前请求确认。</p>
 
-      {groups.map((group) => (
+      {visibleGroups.map((group) => (
         <section className="market-group" key={group.key}>
           <div className="market-group__head">
             <strong>{group.title}</strong>
             <small>{group.note} · {group.templates.length} 个</small>
           </div>
-          <div className="tools-section__grid">
+          <div className="market-grid">
             {group.templates.map((template) => {
               const installed = settings.bots.some((bot) => bot.name === template.meta.name && (bot.workspaceId ?? 'workspace_cloud') === workspaceId);
               const toolCount = template.bot.tools?.length ?? 0;
               return (
                 <div className="tool-card market-card" key={template.meta.handle}>
                   <div className="tool-card__head">
+                    <span className="catalog-icon"><Icon name={group.key === 'special' ? 'spark' : 'bots'} size={18} /></span>
                     <strong className="market-card__name">{template.meta.name}</strong>
-                    {installed ? <span className="tool-badge tool-badge--use">已导入</span> : <span className="tool-badge tool-badge--idle">{template.meta.tags?.slice(0, 2).join(' · ')}</span>}
                   </div>
-                  <p className="market-card__desc">{template.meta.description}</p>
-                  <div className="market-card__meta"><code>{template.meta.handle}</code>{toolCount ? <span>{toolCount} 个工具</span> : null}</div>
-                  <button type="button" className="market-card__import" disabled={installed} onClick={() => void importTemplate(template, workspaceId)}>{installed ? '已导入' : `导入「${template.meta.name}」`}</button>
+                  <p className="market-card__desc">{template.meta.description || '这个模板还没有简介。'}</p>
+                  <div className="market-card__meta">{template.meta.tags?.slice(0, 2).map(tag => <span className="catalog-tag" key={tag}>{tag}</span>)}{toolCount ? <span className="catalog-tag">{toolCount} 个工具</span> : null}</div>
+                  <div className="market-card__foot">
+                    <code title={template.meta.handle}>{template.meta.handle}</code>
+                    <button type="button" className="market-card__import" aria-label={installed ? undefined : `导入「${template.meta.name}」`} disabled={installed} onClick={() => void importTemplate(template, workspaceId)}><Icon name={installed ? 'check' : 'plus'} size={14} />{installed ? '已导入' : '导入'}</button>
+                  </div>
                 </div>
               );
             })}
           </div>
         </section>
       ))}
-      {total === 0 && !remoteLoading ? <p className="market-empty">暂无可用模板。</p> : null}
+      {!visibleGroups.length ? <p className="catalog-empty" role="status">{remoteLoading ? '正在加载模板…' : term ? '没有匹配的模板，试试其他关键词。' : '暂无可用模板。'}</p> : null}
 
       <h3 className="settings-section-title">我上传的模板</h3>
       <div className="settings-card">
@@ -116,7 +128,7 @@ export function BotMarketView() {
             ))}
           </div>
         ) : (
-          <p className="market-empty">还没有上传记录。在 Bot 编辑页「分享为模板」后，可从这里把 handle 提交到官网（后端接入后开放）。</p>
+          <p className="catalog-empty">还没有上传记录。</p>
         )}
       </div>
     </div>

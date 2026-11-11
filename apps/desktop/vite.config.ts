@@ -14,9 +14,18 @@ const CSP = [
   "font-src 'self' data:",
 ].join('; ');
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Share renderer-safe validation without bundling the Node core runtime.
-  resolve: { alias: { '@moyu/core/dist/generation': fileURLToPath(new URL('../../packages/core/src/generation.ts', import.meta.url)) } },
+  resolve: {
+    alias: [
+      { find: '@moyu/core/dist/generation', replacement: fileURLToPath(new URL('../../packages/core/src/generation.ts', import.meta.url)) },
+      // The community avatar engine is only for local development; see docs/ASSETS.md.
+      ...(mode === 'distribution' ? [{
+        find: /^\.\.\/assets\/grok\/grok-engine$/,
+        replacement: fileURLToPath(new URL('./src/assets/grok/grok-engine-distribution.ts', import.meta.url)),
+      }] : []),
+    ],
+  },
   plugins: [
     react(),
     {
@@ -37,4 +46,4 @@ export default defineConfig({
     port: 5273,
     strictPort: true,
   },
-});
+}));

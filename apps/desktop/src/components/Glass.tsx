@@ -140,10 +140,18 @@ export function Segmented<T extends string>({
   );
 }
 
+export function SurfaceHeading({ icon, title, subtitle, id }: { icon: string; title: string; subtitle?: string; id?: string }) {
+  return <div className="ui-heading">
+    <span className="ui-heading__icon" aria-hidden="true"><Icon name={icon} size={20} /></span>
+    <div><h2 id={id}>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div>
+  </div>;
+}
+
 export function Sheet({
   open,
   title,
   subtitle,
+  headingIcon,
   onClose,
   children,
   footer,
@@ -153,6 +161,7 @@ export function Sheet({
   open: boolean;
   title: string;
   subtitle?: string;
+  headingIcon?: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -175,10 +184,10 @@ export function Sheet({
         animate="show"
       >
         <header className="sheet__head">
-          <div>
+          {headingIcon ? <SurfaceHeading icon={headingIcon} title={title} subtitle={subtitle} /> : <div>
             <h2>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
-          </div>
+          </div>}
           <IconButton name="close" label="关闭" onClick={onClose} />
         </header>
         <div className="sheet__body">{children}</div>

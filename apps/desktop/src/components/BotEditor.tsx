@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import type { ApprovalPolicy, Bot, ProviderConfig } from '@moyu/core';
 import { moyu } from '../lib/bridge';
 import { useMoyu } from '../state';
@@ -10,6 +10,16 @@ import { AvatarPicker } from './AvatarPicker';
 import { Select } from './Select';
 import { BotGenerationEditor } from './BotGenerationEditor';
 import { BotCapabilities } from './BotCapabilities';
+import '../styles/bot-editor.css';
+
+const SECTIONS = [
+  { id: 'identity', label: '基本资料', icon: 'bots' },
+  { id: 'model', label: '模型与供应商', icon: 'plug' },
+  { id: 'behavior', label: '人格与权限', icon: 'shield' },
+  { id: 'tools', label: '可用工具', icon: 'grid' },
+  { id: 'budget', label: '生成与预算', icon: 'sliders' },
+  { id: 'extensions', label: '扩展能力', icon: 'spark' },
+] as const;
 
 export function BotEditor({
   initial,
@@ -27,6 +37,8 @@ export function BotEditor({
   onDelete?: () => Promise<void>;
 }) {
   const { secrets, saveProviderKey, toast } = useMoyu();
+  const sectionPrefix = useId();
+  const sectionId = (name: typeof SECTIONS[number]['id']) => `${sectionPrefix}-${name}`;
   const [draft, setDraft] = useState<Bot>(initial);
   const [builtinTools, setBuiltinTools] = useState<{ name: string; description?: string }[]>([]);
   const [toolSectionCollapsed, setToolSectionCollapsed] = useState<Record<string, boolean>>({});
@@ -74,8 +86,10 @@ export function BotEditor({
     <Sheet
       open
       wide
+      className="sheet--bot-editor"
+      headingIcon="bots"
       title={title}
-      subtitle="供应商和模型独立配置；云电脑是所有 Bot 共用的一台。"
+      subtitle="配置这个 Bot 的外观、模型和工作方式。"
       onClose={onClose}
       footer={
         <>
@@ -94,11 +108,20 @@ export function BotEditor({
         </>
       }
     >
-      <div className="editor-grid">
-        <section className="editor-block">
-          <h3>身份</h3>
+      <div className="bot-editor">
+        <nav className="bot-editor__nav" aria-label="Bot 设置目录">
+          <span className="bot-editor__nav-label" aria-hidden="true">设置目录</span>
+          {SECTIONS.map(({ id, label, icon }) => <button key={id} type="button" aria-controls={sectionId(id)} onClick={() => {
+            const target = document.getElementById(sectionId(id));
+            target?.focus({ preventScroll: true });
+            target?.scrollIntoView({ block: 'start' });
+          }}><Icon name={icon} size={16} /><span>{label}</span></button>)}
+        </nav>
+        <div className="editor-grid bot-editor__sections">
+        <section id={sectionId('identity')} tabIndex={-1} className="editor-block">
+          <header className="bot-editor__section-head"><h3>基本资料</h3><p>设置会话列表中显示的名称和头像。</p></header>
           <div className="identity-row">
-            <BotAvatar bot={draft} size="xl" />
+            <div className="bot-editor__portrait"><BotAvatar bot={draft} size="xl" /></div>
             <div className="identity-fields">
               <Field label="名字">
                 <input
@@ -115,8 +138,8 @@ export function BotEditor({
           <AvatarPicker value={draft.avatar} onChange={(avatar) => patch('avatar', avatar)} />
         </section>
 
-        <section className="editor-block">
-          <h3>供应商</h3>
+        <section id={sectionId('model')} tabIndex={-1} className="editor-block">
+          <header className="bot-editor__section-head"><h3>模型与供应商</h3><p>选择回复使用的模型，并检查供应商连接。</p></header>
           <Field label="供应商">
             <Select label="Bot 供应商" value={draft.providerId} options={providers.map((item) => ({ value: item.id, label: item.name, hint: item.kind === 'gemini' ? 'Gemini 协议' : item.kind === 'anthropic' ? 'Anthropic 协议' : 'OpenAI 兼容' }))}
               onChange={(value) => {
@@ -127,9 +150,9 @@ export function BotEditor({
             />
           </Field>
           {provider ? (
-            <p className="inline-hint mono">
-              {provider.baseUrl}
-              {hasKey ? ' · 已保存密钥' : ' · 还没填密钥'}
+            <p className="bot-editor__endpoint">
+              <span className="mono">{provider.baseUrl}</span>
+              <span className="bot-editor__key-status" data-configured={!!hasKey}>{hasKey ? '已保存密钥' : '未设置密钥'}</span>
             </p>
           ) : null}
           <Field label="API Key">
@@ -141,11 +164,11 @@ export function BotEditor({
                 value={key}
                 onChange={(event) => setKey(event.target.value)}
               />
-              <Button size="sm" variant="glass" onClick={() => void saveProviderKey(draft.providerId, key).then(() => toast('密钥已加密保存'))}>
-                保存
+              <Button size="sm" variant="glass" disabled={!draft.providerId || !key} onClick={() => void saveProviderKey(draft.providerId, key).then(() => toast('密钥已加密保存'))}>
+                保存密钥
               </Button>
-              <Button size="sm" variant="ghost" loading={testing} onClick={() => void test()}>
-                测试
+              <Button size="sm" variant="ghost" disabled={!draft.providerId} loading={testing} onClick={() => void test()}>
+                测试连接
               </Button>
             </div>
           </Field>
@@ -170,8 +193,8 @@ export function BotEditor({
           </Field>
         </section>
 
-        <section className="editor-block editor-block--wide">
-          <h3>人格与权限</h3>
+        <section id={sectionId('behavior')} tabIndex={-1} className="editor-block">
+          <header className="bot-editor__section-head"><h3>人格与权限</h3><p>定义 Bot 怎么回答，以及执行操作前是否需要确认。</p></header>
           <Field label="系统提示词" hint="支持 {bot_name} 占位符">
             <textarea className="textarea" rows={6} value={draft.systemPrompt} onChange={(event) => patch('systemPrompt', event.target.value)} />
           </Field>
@@ -196,8 +219,8 @@ export function BotEditor({
           </Field>
         </section>
 
-        <section className="editor-block editor-block--wide">
-          <h3>可用工具</h3>
+        <section id={sectionId('tools')} tabIndex={-1} className="editor-block">
+          <header className="bot-editor__section-head"><h3>可用工具</h3><p>按类别选择这个 Bot 可以调用的内置工具。</p></header>
           <div className="tool-groups">
             {toolGroups.map((group) => {
               const defaultEnabled = builtinTools.map((item) => item.name);
@@ -216,6 +239,7 @@ export function BotEditor({
                     key={tool.id}
                     type="button"
                     className={`tool-toggle ${enabled ? 'is-on' : ''}`}
+                    aria-pressed={enabled}
                     onClick={() => patch('tools', toggleTool(draft.tools, tool.id, defaultEnabled))}
                   >
                     <span className="tool-toggle__check"><Icon name="check" size={12} /></span>
@@ -226,8 +250,14 @@ export function BotEditor({
             })}
           </div>
         </section>
-        <BotGenerationEditor bot={draft} provider={provider} onChange={generation => patch('generation', generation)} />
-        <div className="editor-block--wide"><BotCapabilities bot={draft} onChange={next => setDraft(prev => ({ ...prev, ...next }))} /></div>
+        <div id={sectionId('budget')} tabIndex={-1}>
+          <BotGenerationEditor bot={draft} provider={provider} onChange={generation => patch('generation', generation)} />
+        </div>
+        <section id={sectionId('extensions')} tabIndex={-1} className="editor-block bot-editor__extensions">
+          <header className="bot-editor__section-head"><h3>扩展能力</h3><p>查看这个工作区可用的 MCP 服务和技能。</p></header>
+          <BotCapabilities bot={draft} onChange={next => setDraft(prev => ({ ...prev, ...next }))} />
+        </section>
+        </div>
       </div>
     </Sheet>
   );

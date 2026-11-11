@@ -1,6 +1,6 @@
 {
   "name": "@moyu/desktop",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "MoyuBot Windows desktop workspace (Electron + React)",
   "license": "MIT",
@@ -11,7 +11,7 @@
     "build:main": "tsc -p tsconfig.electron.json",
     "start": "electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "dist": "electron-builder --win nsis"
+    "dist": "tsc -p tsconfig.electron.json && vite build --mode distribution && electron-builder --win nsis --publish never"
   },
   "dependencies": {
     "@moyu/core": "workspace:*",
