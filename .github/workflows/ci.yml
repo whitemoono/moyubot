@@ -102,14 +102,15 @@ jobs:
         if: ${{ inputs.desktop_perf && !inputs.desktop_perf_compare }}
         timeout-minutes: 3
         run: pnpm --filter @moyu/desktop exec electron --no-sandbox ../../scripts/desktop-smoke.cjs --perf-only
-      - name: Check out the desktop performance reference
+      - name: Create the desktop performance reference worktree
         if: ${{ inputs.desktop_perf_compare }}
-        uses: actions/checkout@v4
-        with:
+        run: |
           # 0e592f3 is the measured build before historical rows were isolated.
-          ref: 0e592f38405ebc8560ec04adeecfd3d929aeeb71
-          path: .work/perf-baseline
-          persist-credentials: false
+          $baseline = '0e592f38405ebc8560ec04adeecfd3d929aeeb71'
+          git fetch --no-tags --deepen=20 origin refs/heads/codex/desktop-performance-ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # The legacy avatar gitlink has no .gitmodules URL and is not used by the build.
+          git -c submodule.recurse=false worktree add --detach .work/perf-baseline $baseline
       - name: Build the desktop performance reference
         if: ${{ inputs.desktop_perf_compare }}
         working-directory: .work/perf-baseline
