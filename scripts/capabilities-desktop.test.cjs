@@ -23,9 +23,14 @@ async function waitStore(check, label, timeout = 15000) {
   throw new Error('Timed out (store): ' + label);
 }
 
-async function click(selector) {
-  assert.ok(await evaluate(s => { const el = document.querySelector(s); el?.click(); return !!el; }, selector), selector);
-  await delay(150);
+/** 新 UI 有过渡动画：点击前轮询等元素出现，而不是固定 delay 抢跑。 */
+async function click(selector, timeout = 6000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await evaluate(s => { const el = document.querySelector(s); if (!el) return false; el.click(); return true; }, selector)) { await delay(150); return; }
+    await delay(80);
+  }
+  throw new Error('找不到元素：' + selector);
 }
 async function input(selector, value) {
   await evaluate((s, value) => {

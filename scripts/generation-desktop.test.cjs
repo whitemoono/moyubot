@@ -16,13 +16,22 @@ async function until(fn, label) {
   while (Date.now() < deadline) { if (await evaluate(fn)) return; await delay(60); }
   throw new Error('Timed out: ' + label);
 }
-async function click(selector) {
-  assert.ok(await evaluate(s => { const el = document.querySelector(s); el?.click(); return !!el; }, selector), selector);
-  await delay(120);
+/** 新 UI 有过渡动画：点击前轮询等元素出现，而不是固定 delay 抢跑。 */
+async function click(selector, timeout = 6000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await evaluate(s => { const el = document.querySelector(s); if (!el) return false; el.click(); return true; }, selector)) { await delay(120); return; }
+    await delay(80);
+  }
+  throw new Error('找不到元素：' + selector);
 }
-async function textClick(selector, text) {
-  assert.ok(await evaluate((s, text) => { const el = [...document.querySelectorAll(s)].find(el => el.textContent.trim() === text); el?.click(); return !!el; }, selector, text), text);
-  await delay(150);
+async function textClick(selector, text, timeout = 6000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await evaluate((s, t) => { const el = [...document.querySelectorAll(s)].find(el => el.textContent.trim() === t); if (!el) return false; el.click(); return true; }, selector, text)) { await delay(150); return; }
+    await delay(80);
+  }
+  throw new Error('找不到文案：' + text);
 }
 async function input(label, value) {
   await evaluate((label, value) => {

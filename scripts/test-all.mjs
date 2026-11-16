@@ -52,7 +52,8 @@ function discover() {
 
 function parseCounts(output) {
   const counts = { pass: 0, fail: 0, tests: 0, skipped: 0, found: false };
-  for (const match of output.matchAll(/^# (tests|pass|fail|skipped) (\d+)\s*$/gm)) {
+  // Node 26 默认输出 spec reporter（"ℹ pass 5"），老版本是 TAP（"# pass 5"），两种都认。
+  for (const match of output.matchAll(/^(?:#|ℹ)\s*(tests|pass|fail|skipped)\s+(\d+)\s*$/gm)) {
     counts[match[1]] = Number(match[2]);
     counts.found = true;
   }
