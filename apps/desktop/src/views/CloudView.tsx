@@ -7,7 +7,7 @@ import { Button, Field, Toggle } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { Select } from '../components/Select';
 import { TerminalCommand } from '../components/TerminalCommand';
-import { XtermView } from '../components/XtermView';
+import { LazyXtermView } from '../components/LazyXtermView';
 
 interface TerminalLine { kind: 'cmd' | 'out' | 'err'; text: string }
 const IDLE_OPTIONS = [300, 600, 900, 1800].map((seconds) => ({ value: String(seconds), label: `${seconds / 60} 分钟` }));
@@ -56,7 +56,7 @@ function LocalWorkspaceView({ active = true }: { active?: boolean }) {
   return <div className="computer-page"><div className="computer-page__scroll">
     <section className="computer-overview computer-overview--ready" aria-label="本地工作区状态"><div className="computer-overview__top"><div className="computer-device" aria-hidden="true"><Icon name="terminal" size={42} /><i /></div><div className="computer-overview__identity"><div><h3>本机 Windows</h3><span className="computer-status"><i />本机已就绪</span></div><p>所有本地工作区 Bot 共用这台电脑</p></div></div><div className="computer-metrics"><div><span>工作区</span><strong>{activeWorkspace?.name}</strong></div><div><span>执行位置</span><strong>本机</strong></div><div><span>终端</span><strong>PowerShell</strong></div><div><span>状态</span><strong>在线</strong></div></div></section>
     <div className="computer-workspace"><Icon name="folder" size={14} /><span>工作目录<strong>{activeWorkspace?.directory}</strong></span><Button size="sm" disabled={executing} onClick={() => void chooseLocalDirectory().catch((error: Error) => toast(error.message, 'error'))}>选择目录</Button></div>
-    <section className="computer-terminal"><header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>本机终端</span><small>PowerShell · 交互式 · 本地执行</small></div></header><div className="computer-terminal__xterm"><XtermView kind="local" /></div></section>
+    <section className="computer-terminal"><header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>本机终端</span><small>PowerShell · 交互式 · 本地执行</small></div></header><div className="computer-terminal__xterm"><LazyXtermView kind="local" /></div></section>
   </div></div>;
 }
 
@@ -159,7 +159,7 @@ function CloudWorkspacePanel({ active = true, onDirty }: { active?: boolean; onD
       <section id="computer-panel-terminal" role="tabpanel" aria-labelledby="computer-tab-terminal" hidden={tab !== 'terminal'} className="computer-terminal">
         {settings.cloud.driver === 'e2b' ? (<>
           <header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>云终端</span><small>{driverLabel(settings.cloud.driver)} · 交互式 Shell</small></div></header>
-          {awake && !dirty ? <div className="computer-terminal__xterm"><XtermView kind="cloud" /></div> : <div className="computer-terminal__output"><div className="computer-terminal__empty"><Icon name="terminal" size={26} /><strong>{dirty ? '请先保存配置' : '唤醒后开始工作'}</strong><p>{dirty ? '保存 E2B 配置后再打开交互终端。' : '先在上方唤醒云电脑，再打开交互式 Shell。'}</p></div></div>}
+          {awake && !dirty ? <div className="computer-terminal__xterm"><LazyXtermView kind="cloud" /></div> : <div className="computer-terminal__output"><div className="computer-terminal__empty"><Icon name="terminal" size={26} /><strong>{dirty ? '请先保存配置' : '唤醒后开始工作'}</strong><p>{dirty ? '保存 E2B 配置后再打开交互终端。' : '先在上方唤醒云电脑，再打开交互式 Shell。'}</p></div></div>}
         </>) : (<>
           <header><div><span className="computer-terminal__lights"><i /><i /><i /></span><span>云终端</span><small>{settings.cloud.driver === 'mock' ? '演示环境 · 模拟输出' : `${driverLabel(settings.cloud.driver)} · 远程执行`}</small></div><Button size="sm" variant="ghost" icon="trash" disabled={executing || !lines.length} onClick={() => setLines([])}>清空</Button></header>
           <div className="computer-terminal__output" ref={output} role="log" aria-live="polite" aria-label="云终端输出">{lines.length ? lines.map((line, index) => <pre key={index} className={`computer-terminal__line computer-terminal__line--${line.kind}`}>{line.kind === 'cmd' ? <span>$ </span> : null}{line.text}</pre>) : <div className="computer-terminal__empty"><Icon name="terminal" size={26} /><strong>{awake ? '环境已就绪' : '唤醒后开始工作'}</strong><p>{settings.cloud.driver === 'mock' ? '演示模式返回模拟结果，可先体验命令流程。' : '在共享云电脑执行命令，结果显示在这里。'}</p></div>}{executing ? <p className="computer-terminal__running"><span className="spinner" />正在执行…</p> : null}</div>

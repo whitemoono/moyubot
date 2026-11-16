@@ -11,7 +11,12 @@
   --ui-enter: 230ms;
 }
 
-.settings-dialog, .sheet.sheet--bot-editor { border-radius: var(--ui-radius-dialog); }
+.settings-dialog, .sheet.sheet--bot-editor {
+  --workspace-accent: var(--text);
+  --workspace-tint: var(--selected);
+  --workspace-ring: var(--line-strong);
+  border-radius: var(--ui-radius-dialog);
+}
 .settings-heading {
   align-items: center;
   padding: 18px var(--ui-page-gutter);

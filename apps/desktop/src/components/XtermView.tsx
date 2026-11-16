@@ -13,16 +13,11 @@ import { moyu } from '../lib/bridge';
  */
 export function XtermView({ kind, className = '', onReady }: { kind: 'local' | 'cloud'; className?: string; onReady?: (api: { fit: () => void }) => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | undefined>(undefined);
-  const fitRef = useRef<FitAddon | undefined>(undefined);
-  const idRef = useRef<string>('');
-  const openedRef = useRef(false);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const id = `pty_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    idRef.current = id;
 
     const term = new Terminal({
       cursorBlink: true,
@@ -35,11 +30,11 @@ export function XtermView({ kind, className = '', onReady }: { kind: 'local' | '
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
-    termRef.current = term;
-    fitRef.current = fit;
     try { fit.fit(); } catch { /* host not laid out yet */ }
 
     let disposed = false;
+    let opened = false;
+    const close = () => { void moyu().ptyClose(id).catch(() => {}); };
     const offData = moyu().onPtyData(({ id: sid, data }) => { if (sid === id && !disposed) term.write(data); });
     const offExit = moyu().onPtyExit(({ id: sid, exitCode }) => {
       if (sid === id && !disposed) term.write(`\r\n\x1b[90m[process exited with code ${exitCode}]\x1b[0m\r\n`);
@@ -51,9 +46,10 @@ export function XtermView({ kind, className = '', onReady }: { kind: 'local' | '
     (async () => {
       try {
         await moyu().ptyOpen(id, kind, term.cols, term.rows);
-        openedRef.current = true;
+        if (disposed) close();
+        else opened = true;
       } catch (error) {
-        term.write(`\r\n\x1b[31m无法启动终端：${(error as Error).message}\x1b[0m\r\n`);
+        if (!disposed) term.write(`\r\n\x1b[31m无法启动终端：${(error as Error).message}\x1b[0m\r\n`);
       }
     })();
 
@@ -61,7 +57,7 @@ export function XtermView({ kind, className = '', onReady }: { kind: 'local' | '
 
     const ro = new ResizeObserver(() => {
       try { fit.fit(); } catch { return; }
-      if (openedRef.current) void moyu().ptyResize(id, term.cols, term.rows);
+      if (opened) void moyu().ptyResize(id, term.cols, term.rows);
     });
     ro.observe(host);
 
@@ -70,7 +66,7 @@ export function XtermView({ kind, className = '', onReady }: { kind: 'local' | '
       ro.disconnect();
       offData();
       offExit();
-      if (openedRef.current) void moyu().ptyClose(id);
+      if (opened) close();
       term.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

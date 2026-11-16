@@ -5,10 +5,58 @@ import ts from 'typescript';
 
 const source = fs.readFileSync(new URL('../apps/desktop/src/lib/reply-flow.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { replyTurns, appendReplyProgress } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
+const { replyTurns, appendReplyProgress, applyReplyFragments, createReplyBuffer } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const empty = () => ({ id: 'reply', role: 'assistant', content: '', createdAt: 1, streaming: true });
 const call = (id = 'command') => ({ id, name: 'cloud_exec', arguments: { cmd: 'node --version' } });
 const progress = (message, type, data) => appendReplyProgress(message, { type, conversationId: 'chat', messageId: message.id, ...data });
+
+test('one frame updates only matching messages and preserves history references', () => {
+  const history = Array.from({ length: 1_000 }, (_, index) => ({ ...empty(), id: `history-${index}`, streaming: false }));
+  const other = { ...empty(), id: 'second' };
+  const conversation = { id: 'chat', messages: [...history, empty(), other] };
+  const fragment = (text, type = 'delta', messageId = 'reply', conversationId = 'chat') => ({ text, type, messageId, conversationId });
+  const batch = [
+    fragment('甲'), fragment('无关', 'delta', 'reply', 'background'),
+    fragment('乙'), fragment('另一条', 'delta', 'second'),
+    fragment('思考', 'reasoning'), fragment('丙'),
+  ];
+  const result = applyReplyFragments(conversation, batch);
+  const expected = batch.filter(({ conversationId, messageId }) => conversationId === 'chat' && messageId === 'reply').reduce(appendReplyProgress, empty());
+  assert.deepEqual(result.messages.at(-2), expected);
+  assert.equal(result.messages.at(-1).content, '另一条');
+  assert.ok(history.every((message, index) => result.messages[index] === message));
+  assert.strictEqual(applyReplyFragments(conversation, [batch[1]]), conversation);
+});
+
+test('frame buffering keeps fragments before tool events and never replays a canceled frame', () => {
+  const callbacks = new Map();
+  const sizes = [];
+  let nextHandle = 0;
+  let conversation = { id: 'chat', messages: [empty()] };
+  const buffer = createReplyBuffer(
+    (callback) => { callbacks.set(++nextHandle, callback); return nextHandle; },
+    (handle) => callbacks.delete(handle),
+    (batch) => { sizes.push(batch.length); conversation = applyReplyFragments(conversation, batch); },
+  );
+  const delta = (text) => ({ type: 'delta', text, conversationId: 'chat', messageId: 'reply' });
+  buffer.push(delta('调用'));
+  buffer.push(delta('工具'));
+  assert.equal(callbacks.size, 1);
+  assert.equal(conversation.messages[0].content, '');
+  buffer.flush();
+  assert.equal(callbacks.size, 0);
+  conversation.messages[0] = progress(conversation.messages[0], 'tool_start', { call: call() });
+  buffer.push(delta('随后'));
+  buffer.push(delta('完成'));
+  callbacks.get(nextHandle)();
+  assert.deepEqual(sizes, [2, 2]);
+  assert.deepEqual(replyTurns(conversation.messages[0]).map((turn) => turn.content), ['调用工具', '随后完成']);
+  buffer.push(delta('已卸载'));
+  buffer.discard();
+  assert.equal(callbacks.size, 0);
+  buffer.flush();
+  assert.deepEqual(sizes, [2, 2]);
+});
 
 test('streaming keeps text, commands, more thinking and final text in their original turns', () => {
   let message = progress(empty(), 'reasoning', { text: '先检查环境。' });
